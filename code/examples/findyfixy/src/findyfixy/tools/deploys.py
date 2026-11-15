@@ -39,10 +39,10 @@ from langchain_core.tools import BaseTool, StructuredTool
 from langgraph.prebuilt import ToolNode
 from pydantic import BaseModel, Field
 
-from findyfixy.paths import DATA
+from findyfixy.paths import data_dir
 
 # Resolved from this file, so it works from any working directory.
-DEFAULT_DEPLOYS_PATH = DATA / "deploys.json"
+DEFAULT_DEPLOYS_PATH = data_dir("v1") / "deploys.json"
 
 # One week. A longer window is almost certainly a mistake, and an unbounded
 # window on a real API is an expensive query.

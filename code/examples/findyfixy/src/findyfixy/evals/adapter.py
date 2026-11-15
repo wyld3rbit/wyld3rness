@@ -81,8 +81,21 @@ def to_case(golden: GoldenCase) -> Case:
         question=golden.question,
         reference=golden.reference,
         expected={SEVERITY: golden.expected_severity},
-        meta={"source_id": golden.source_id, "twin_id": golden.twin_id},
+        meta=_meta(golden),
     )
+
+
+def _meta(golden: GoldenCase) -> dict[str, Any]:
+    """The ids the adapter needs, plus a v2 case's expected action class when it has one.
+
+    v1 cases carry exactly the two ids they always did, so a v1 record is
+    unchanged byte for byte.
+    """
+    meta: dict[str, Any] = {"source_id": golden.source_id, "twin_id": golden.twin_id}
+    expected_action = getattr(golden, "expected_action", None)
+    if expected_action is not None:
+        meta["expected_action"] = expected_action
+    return meta
 
 
 # ---- Holdout recall ---------------------------------------------------------

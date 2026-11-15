@@ -20,6 +20,14 @@ This module does no work at import time beyond building the path constants.
 """
 
 from pathlib import Path
+from typing import Literal, get_args
+
+# The versioned data sets. v1 is frozen: its files never change, so a v1 gate
+# run stays comparable with every earlier attested run (the regression check).
+# v2 adds the hard cases (Day 7). A new version gets a new folder; an existing
+# folder is never edited in place.
+DataVersion = Literal["v1", "v2"]
+DATA_VERSIONS: tuple[DataVersion, ...] = get_args(DataVersion)
 
 PACKAGE = Path(__file__).resolve().parent
 ROOT = PACKAGE.parents[1]  # code/examples/findyfixy/
@@ -31,3 +39,14 @@ REPORTS = ROOT / "reports"  # generated evaluation reports (git-ignored)
 PRICES = ROOT / "config" / "prices.toml"  # committed reference prices per token (make obs-prices)
 PAGE = PACKAGE / "console" / "static" / "architecture.html"  # the page the console serves
 LANGFUSE_ENV = WORKSPACE / "infra" / "langfuse" / ".env"  # the local trace backend's secrets (git-ignored)
+
+
+def data_dir(version: DataVersion) -> Path:
+    """The folder of one data version: its corpus, golden set and deploy log.
+
+    Raises ValueError on an unknown version, so a typo in an environment
+    variable stops the run instead of reading a folder that does not exist.
+    """
+    if version not in DATA_VERSIONS:
+        raise ValueError(f"unknown data version {version!r}; expected one of {', '.join(DATA_VERSIONS)}")
+    return DATA / version

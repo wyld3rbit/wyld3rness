@@ -25,6 +25,7 @@ if TYPE_CHECKING:
 
     from psycopg import Connection
 
+    from findyfixy.paths import DataVersion
     from findyfixy.retrieval.ingest import Embedder
     from findyfixy.retrieval.retrieve import Retriever, Stage
     from findyfixy.triage.graph import Recall
@@ -48,20 +49,27 @@ def connect() -> "Connection":
 
 
 def build_retriever(
-    conn: "Connection", embedder: "Embedder | None" = None, stage: "Stage | None" = None
+    conn: "Connection",
+    embedder: "Embedder | None" = None,
+    stage: "Stage | None" = None,
+    version: "DataVersion" = "v1",
 ) -> "Retriever":
-    """Hybrid retriever over every passage in the database.
+    """Hybrid retriever over every passage of one data version's table.
 
     Loads the embedding model and the reranker (about 1.3 GB of weights). Pass an
     `embedder` you already have to share one loaded model. `stage` wraps each
-    retrieval stage (`stage_spans` makes them tracing spans).
+    retrieval stage (`stage_spans` makes them tracing spans). `version` picks
+    the table (v1 by default, the frozen corpus every earlier run used).
     """
     from findyfixy.retrieval.ingest import make_embedder
     from findyfixy.retrieval.retrieve import Retriever, load_passages, make_reranker, no_stages, postgres_vector_search
 
     embedder = embedder or make_embedder()
     return Retriever(
-        load_passages(conn), postgres_vector_search(conn, embedder), make_reranker(), stage=stage or no_stages
+        load_passages(conn, version),
+        postgres_vector_search(conn, embedder, version),
+        make_reranker(),
+        stage=stage or no_stages,
     )
 
 
@@ -106,10 +114,18 @@ class SharedRetrieval:
     and embedding (well under a second), never across a model call.
     """
 
-    def __init__(self, *, make_embedder: "Callable[[], Embedder] | None" = None, stage: "Stage | None" = None) -> None:
-        """Hold nothing yet. `make_embedder` is for tests; `stage` traces the retrieval stages."""
+    def __init__(
+        self,
+        *,
+        make_embedder: "Callable[[], Embedder] | None" = None,
+        stage: "Stage | None" = None,
+        version: "DataVersion" = "v1",
+    ) -> None:
+        """Hold nothing yet. `make_embedder` is for tests; `stage` traces the retrieval stages;
+        `version` picks the data version recall reads (v1 by default)."""
         self._make_embedder = make_embedder
         self._stage = stage
+        self._version = version
         self._lock = threading.Lock()
         self._embedder: Embedder | None = None
         self._conn: Connection | None = None
@@ -134,7 +150,7 @@ class SharedRetrieval:
             embedder = self._load_embedder()
             conn = connect()
             try:
-                self._retriever = build_retriever(conn, embedder, self._stage)
+                self._retriever = build_retriever(conn, embedder, self._stage, self._version)
             except BaseException:
                 conn.close()
                 raise

@@ -13,6 +13,8 @@ import pytest
 
 from findyfixy.retrieval.corpus import build_corpus, write_jsonl
 from findyfixy.retrieval.ingest import (
+    _INDEX,
+    _SCHEMA,
     DIMENSIONS,
     MODEL_NAME,
     SECTIONS,
@@ -23,6 +25,7 @@ from findyfixy.retrieval.ingest import (
     plan_changes,
     read_chunks,
     staleness,
+    table_for,
 )
 
 ROW = {
@@ -156,10 +159,35 @@ def test_the_live_check_reads_the_source_against_the_table(tmp_path: Path) -> No
     path.write_text(json.dumps(ROW) + "\n")
     synced = {c.id: c.hash for c in read_chunks(path)}
     conn = FakeConnection(synced)
-    assert database_staleness(conn, path) == []
+    assert database_staleness(conn, path=path) == []
     assert all(q.lstrip().upper().startswith("SELECT") for q in conn.queries)
-    assert database_staleness(FakeConnection({}), path)[0].startswith("the database is stale: run make ingest (4")
-    assert database_staleness(FakeConnection(None), path) == ["the database has no chunks table: run make ingest"]
+    assert database_staleness(FakeConnection({}), path=path)[0].startswith("the database is stale: run make ingest (4")
+    assert database_staleness(FakeConnection(None), path=path) == ["the database has no chunks table: run make ingest"]
+
+
+def test_each_data_version_reads_only_its_own_table(tmp_path: Path) -> None:
+    """v1 keeps the table every earlier run used; v2 has its own, so neither can see the other's rows."""
+    path = tmp_path / "incidents.jsonl"
+    path.write_text(json.dumps(ROW) + "\n")
+    synced = {c.id: c.hash for c in read_chunks(path)}
+    for version, table in (("v1", "chunks"), ("v2", "chunks_v2")):
+        conn = FakeConnection(synced)
+        assert database_staleness(conn, version, path) == []
+        assert {q.split("FROM ")[1].split()[0] for q in conn.queries} == {table}
+    missing = database_staleness(FakeConnection(None), "v2", path)
+    assert missing == ["the database has no chunks_v2 table: run make ingest"]
+    with pytest.raises(ValueError, match="unknown data version"):
+        table_for("v3")  # type: ignore[arg-type]
+
+
+def test_the_v1_schema_and_sql_are_unchanged() -> None:
+    """v1's table, index and statements read exactly as before versioning, so its rows and plans are the same."""
+    assert table_for("v1") == "chunks"
+    assert _INDEX.format(table="chunks") == (
+        "CREATE INDEX IF NOT EXISTS chunks_embedding_hnsw ON chunks USING hnsw (embedding vector_cosine_ops)"
+    )
+    assert "CREATE TABLE IF NOT EXISTS chunks (" in _SCHEMA.format(table="chunks", dimensions=384)
+    assert "embedding       vector(384) NOT NULL" in _SCHEMA.format(table="chunks", dimensions=384)
 
 
 def test_read_chunks_gives_800_from_the_corpus(tmp_path: Path) -> None:

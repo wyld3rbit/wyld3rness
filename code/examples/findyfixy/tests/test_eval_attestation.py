@@ -90,7 +90,16 @@ def path_constants() -> dict[str, str]:
 
 
 def _base(node: ast.expr, constants: dict[str, str]) -> str | None:
-    """The relative path a `NAME` or `paths.NAME` stands for, else None."""
+    """The relative path a `NAME`, `paths.NAME` or `data_dir(...)` stands for, else None.
+
+    `data_dir("v1")` is `DATA / "v1"`. With a version that is not a literal the
+    call stands for some folder under `DATA`, written `<version>`: still a data
+    read, and still covered only if the whole data directory is declared.
+    """
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "data_dir":
+        (arg,) = node.args
+        version = arg.value if isinstance(arg, ast.Constant) and isinstance(arg.value, str) else "<version>"
+        return f"{constants['DATA']}/{version}"
     if isinstance(node, ast.Name):
         return constants.get(node.id)
     if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "paths":
@@ -129,7 +138,13 @@ def built_paths(path: Path, constants: dict[str, str]) -> set[str]:
 
 
 def covered(rel: str) -> bool:
-    """True when a declared file is `rel`, or a declared directory holds it."""
+    """True when a declared file is `rel`, or a declared directory holds it.
+
+    A path built for some data version (`data/<version>/...`) is read as its v1
+    instance: the gate runs v1 only, and v2 runs go through answers_v2.py,
+    outside this closure.
+    """
+    rel = rel.replace("<version>", "v1")
     return any(rel == extra or (extra.endswith("/") and rel.startswith(extra)) for extra in ATTEST_EXTRA)
 
 
@@ -153,7 +168,7 @@ def test_the_declared_inputs_fingerprint_on_this_tree() -> None:
     """Every extra exists, the data directory is expanded, and its README is not an input."""
     found = fingerprint(WORKSPACE, ATTEST_ENTRY, ATTEST_EXTRA, ATTEST_SOURCE_ROOTS)
     ex = "examples/findyfixy/"
-    assert {ex + "data/golden.jsonl", ex + "data/incidents.jsonl", "uv.lock", ex + "docker-compose.yml"} <= set(
+    assert {ex + "data/v1/golden.jsonl", ex + "data/v1/incidents.jsonl", "uv.lock", ex + "docker-compose.yml"} <= set(
         found.files
     )
     assert ex + "data/README.md" not in found.files and len(found.digest) == 64

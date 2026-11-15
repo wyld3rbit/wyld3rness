@@ -40,7 +40,7 @@ class FakeConnection:
         FakeConnection.closed += 1
 
 
-def install(monkeypatch, builds: list[int], fail_first: bool = False, delay: float = 0.0) -> FakeRetriever:
+def install(monkeypatch, builds: list[str], fail_first: bool = False, delay: float = 0.0) -> FakeRetriever:
     """Replace the database and the retriever build with fakes. Returns the fake retriever."""
     retriever = FakeRetriever()
     FakeConnection.closed = 0
@@ -48,8 +48,8 @@ def install(monkeypatch, builds: list[int], fail_first: bool = False, delay: flo
     def fake_connect():
         return FakeConnection()
 
-    def fake_build(conn, embedder=None, stage=None):
-        builds.append(1)
+    def fake_build(conn, embedder=None, stage=None, version="v1"):
+        builds.append(version)
         time.sleep(delay)
         if fail_first and len(builds) == 1:
             raise OSError("database is down")
@@ -66,12 +66,21 @@ def shared() -> wiring.SharedRetrieval:
 
 
 def test_recall_builds_nothing_until_it_is_first_used(monkeypatch) -> None:
-    builds: list[int] = []
+    builds: list[str] = []
     install(monkeypatch, builds)
     recall = shared().recall(3)
     assert builds == []
     recall("q")
-    assert builds == [1]
+    assert builds == ["v1"]
+
+
+def test_recall_reads_the_data_version_it_was_built_for(monkeypatch) -> None:
+    """The version reaches the retriever build, so a v2 run reads v2's table and a v1 run v1's."""
+    builds: list[str] = []
+    install(monkeypatch, builds)
+    embed = lambda texts: [[float(len(t))] for t in texts]  # noqa: E731
+    wiring.SharedRetrieval(make_embedder=lambda: embed, version="v2").recall(3)("q")
+    assert builds == ["v2"]
 
 
 def test_recall_asks_for_k_and_returns_briefs(monkeypatch) -> None:
@@ -82,7 +91,7 @@ def test_recall_asks_for_k_and_returns_briefs(monkeypatch) -> None:
 
 
 def test_the_retriever_is_built_once_even_when_runs_overlap(monkeypatch) -> None:
-    builds: list[int] = []
+    builds: list[str] = []
     install(monkeypatch, builds, delay=0.05)
     recall = shared().recall(3)
     threads = [threading.Thread(target=recall, args=("q",)) for _ in range(8)]
@@ -90,18 +99,18 @@ def test_the_retriever_is_built_once_even_when_runs_overlap(monkeypatch) -> None
         t.start()
     for t in threads:
         t.join()
-    assert builds == [1]  # eight runs, one build
+    assert builds == ["v1"]  # eight runs, one build
 
 
 def test_a_failed_first_build_is_retried_on_the_next_call(monkeypatch) -> None:
-    builds: list[int] = []
+    builds: list[str] = []
     install(monkeypatch, builds, fail_first=True)
     recall = shared().recall(3)
     with pytest.raises(OSError):
         recall("q")
     assert FakeConnection.closed == 1  # the failed build closed its connection
     assert len(recall("q")) == 2  # the database came back
-    assert builds == [1, 1]
+    assert builds == ["v1", "v1"]
 
 
 def test_the_default_k_is_the_shared_recall_k() -> None:
@@ -112,7 +121,7 @@ def test_the_default_k_is_the_shared_recall_k() -> None:
 
 def test_recall_and_the_judge_share_one_embedder_and_one_retriever(monkeypatch) -> None:
     """The point of sharing: triage recall and eval candidates reuse one build."""
-    builds: list[int] = []
+    builds: list[str] = []
     install(monkeypatch, builds)
     made: list[int] = []
 
@@ -124,12 +133,12 @@ def test_recall_and_the_judge_share_one_embedder_and_one_retriever(monkeypatch) 
     retrieval.recall(3)("q")
     retrieval.candidates("q", 4)
     assert retrieval.embed(["a", "b"]) == [[1.0], [1.0]]
-    assert builds == [1] and made == [1]
+    assert builds == ["v1"] and made == [1]
 
 
 def test_close_closes_the_connection_and_a_later_use_rebuilds(monkeypatch) -> None:
     """Closing releases the database; the next call builds again."""
-    builds: list[int] = []
+    builds: list[str] = []
     install(monkeypatch, builds)
     retrieval = shared()
     retrieval.candidates("q", 1)
@@ -137,4 +146,4 @@ def test_close_closes_the_connection_and_a_later_use_rebuilds(monkeypatch) -> No
     retrieval.close()  # harmless twice
     assert FakeConnection.closed == 1
     retrieval.candidates("q", 1)
-    assert builds == [1, 1]
+    assert builds == ["v1", "v1"]

@@ -10,7 +10,10 @@
 #      findyfixy.pth), each a single line naming its src/ folder.
 # On any finding, stop and read it. Do not upgrade or remove to make it pass.
 
-.PHONY: audit hooks scan up down setup ingest console triage test test-harness lint eval-retrieval eval eval-gate eval-baseline eval-freeze eval-compare eval-negative case golden verify-attestation obs-secrets obs-up obs-down obs-prices
+.PHONY: audit hooks scan up down setup ingest console triage test test-harness lint eval-retrieval eval eval-gate eval-baseline eval-freeze eval-compare eval-negative case golden data-v2 verify-attestation obs-secrets obs-up obs-down obs-prices
+
+# The data version `make eval` reads: v1 (frozen, the gate's set) or v2 (Day 7's hard cases).
+DATA ?= v1
 
 # Memory for the Colima VM, in GB. 6 on most days, 8 on Langfuse days:
 #   make up COLIMA_MEMORY=8
@@ -128,7 +131,7 @@ eval-retrieval:
 # Answer-quality evaluation: findyfixy/evals/answers.py runs FindyFixy through the
 # harness in wyld3rness/eval/. Needs make up and Ollama. Each run takes many
 # minutes. Reports land in code/examples/findyfixy/reports/ (git-ignored).
-#   eval          run and print the scores, no gate
+#   eval          run and print the scores, no gate. DATA=v2 runs the hard set (default v1, the frozen set).
 #   eval-gate     the release gate: exit 1 if answers got worse vs examples/findyfixy/evals/baseline.json.
 #                 A pass of the full set on a clean tree also writes
 #                 examples/findyfixy/evals/attestation.json. Commit it: CI checks it. It does
@@ -136,7 +139,7 @@ eval-retrieval:
 #   eval-baseline freeze this run as the new baseline. Review the diff before committing.
 #   eval-negative the proof the gate works: run WITHOUT recall; it must fail
 eval:
-	$(RUN) findyfixy-eval
+	$(RUN) $(if $(filter v2,$(DATA)),findyfixy-eval-v2,findyfixy-eval)
 
 eval-gate:
 	$(RUN) findyfixy-eval --gate
@@ -154,6 +157,11 @@ eval-negative:
 # import path. The workflow runs the same command from the training root.
 verify-attestation:
 	python3 -I src/wyld3rness/eval/attest.py verify --root . --attestation examples/findyfixy/evals/attestation.json
+
+# data-v2: rebuild data/v2 (corpus, golden set, deploy log) from v1 plus the
+# hand-written additions in findyfixy/evals/golden_v2.py. A test pins the files.
+data-v2:
+	$(RUN) findyfixy-data-v2
 
 # golden: print the 30 golden cases (alert, expected severity, reference) to read
 # and check by eye. Read-only.

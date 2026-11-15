@@ -46,9 +46,9 @@ from pathlib import Path
 import re
 from typing import Any, Literal
 
-from findyfixy.paths import DATA
+from findyfixy.paths import DATA, data_dir
 
-INCIDENTS_PATH = DATA / "incidents.jsonl"
+INCIDENTS_PATH = data_dir("v1") / "incidents.jsonl"  # the labels were written against corpus v1
 EVAL_PATH = DATA / "retrieval_eval.jsonl"
 
 # Text fields a hostname can appear in. The same fields the chunks are made of.

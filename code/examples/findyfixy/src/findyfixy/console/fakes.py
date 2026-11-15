@@ -97,7 +97,7 @@ SCENARIOS: dict[str, dict[str, list[str]]] = {
         "large": ["not json", "still not json"],
     },
     # Scenarios with the tool step. The tool and the ToolNode are the real
-    # ones, reading data/deploys.json. Only the tool-calling model is scripted.
+    # ones, reading data/v1/deploys.json. Only the tool-calling model is scripted.
     "tool_lookup": {"small": [scripted_reply(0.9)], "large": []},
     "tool_wrong_window": {"small": [scripted_reply(0.9)], "large": []},
 }

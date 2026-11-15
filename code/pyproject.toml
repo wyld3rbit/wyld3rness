@@ -96,6 +96,8 @@ select = ["E", "W", "F", "I", "B", "UP", "SIM", "RUF"]
 # Synthetic incident text, one sentence per string: splitting them adds noise, not clarity.
 "examples/findyfixy/src/findyfixy/retrieval/corpus.py" = ["E501"]
 "examples/findyfixy/src/findyfixy/evals/queries.py" = ["E501"]
+"examples/findyfixy/src/findyfixy/retrieval/corpus_v2.py" = ["E501"]
+"examples/findyfixy/src/findyfixy/evals/golden_v2.py" = ["E501"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["wyld3rness", "findyfixy"]
