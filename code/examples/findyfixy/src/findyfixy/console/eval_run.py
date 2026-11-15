@@ -165,8 +165,12 @@ def run_and_judge(
     on_event: EvalEmit,
     should_stop: Callable[[], bool],
     baseline_path: Path,
+    gated: bool = True,
 ) -> None:
     """Drive one eval run to exactly one terminal event: `eval_finished` or `eval_failed`.
+
+    `gated` False (a v2 run) never applies the gate: `gate` is None, as for a
+    set the baseline was not defined on. The baseline is v1's alone.
 
     A stop ends with `eval_failed` and reason "stopped". The catch is broad on
     purpose. This runs on the console's run thread, and whatever goes wrong (a
@@ -175,7 +179,7 @@ def run_and_judge(
     """
     try:
         result = run(n, emit=emit, on_event=on_event, should_stop=should_stop)
-        problems = verdict(result, baseline_path)
+        problems = verdict(result, baseline_path) if gated else None
     except EvalStopped as err:
         on_event("eval_failed", error_type="EvalStopped", error=str(err), reason="stopped")
         return

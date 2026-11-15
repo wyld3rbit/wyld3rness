@@ -26,15 +26,21 @@ Failure model
 from __future__ import annotations
 
 from collections.abc import Sequence
-from functools import partial
+from contextlib import AbstractContextManager
 from pathlib import Path
 import sys
+from typing import TYPE_CHECKING
 
 from findyfixy.evals.answers import LEGACY_CONTROL, NO_RECALL_HELP, open_live_session
 from findyfixy.evals.golden_v2 import golden_v2_path, load_golden_v2
+from findyfixy.events import Emit, no_emit
 from findyfixy.paths import EVALS, REPORTS, ROOT
 from wyld3rness.eval import cli
-from wyld3rness.eval.cli import SessionFactory
+from wyld3rness.eval.cli import Session, SessionFactory
+
+if TYPE_CHECKING:
+    from findyfixy.wiring import SharedRetrieval
+    from wyld3rness.trace.tracing import Tracing
 
 PROG = "findyfixy-eval-v2"
 # The flags that belong to the v1 gate alone.
@@ -54,6 +60,30 @@ def asks_for_v1_only(args: Sequence[str]) -> bool:
     return False
 
 
+def open_v2_session(
+    negative_control: bool,
+    *,
+    emit: Emit = no_emit,
+    retrieval: SharedRetrieval | None = None,
+    tracing: Tracing | None = None,
+) -> AbstractContextManager[Session]:
+    """The live session over v2: its cases and its table. The one place a v2 session is wired.
+
+    The command line and the console both use it. The cases are read here, as
+    the session opens, so a run always scores the file whose hash its report
+    records. A shared `retrieval` (the console's) is used through its v2
+    sibling, so no second copy of the models loads.
+    """
+    return open_live_session(
+        negative_control,
+        emit=emit,
+        retrieval=retrieval.with_version("v2") if retrieval is not None else None,
+        tracing=tracing,
+        version="v2",
+        goldens=load_golden_v2(),
+    )
+
+
 def main(
     argv: Sequence[str] | None = None,
     *,
@@ -69,7 +99,7 @@ def main(
     if asks_for_v1_only(args):
         print(f"{PROG}: the gate and the baseline cover v1 only; run v2 without them", file=sys.stderr)
         return 2
-    session = open_session or partial(open_live_session, version="v2", goldens=load_golden_v2())
+    session = open_session or open_v2_session
     return cli.main(
         args,
         prog=PROG,

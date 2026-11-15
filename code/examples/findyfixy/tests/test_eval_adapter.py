@@ -42,6 +42,7 @@ RECORD_KEYS = {
     "recalled_ids",
     "twin_recalled",
     "model_used",
+    "confidence",
     "latency_s",
     "severity",
     "severity_match",
@@ -237,6 +238,7 @@ def test_a_findyfixy_record_has_exactly_the_keys_of_every_saved_report() -> None
     assert set(ok) == RECORD_KEYS and set(failed) == RECORD_KEYS
     assert ok["severity"] == "sev2" and ok["severity_match"] is False and ok["expected_severity"] == "sev1"
     assert ok["model_used"] == "small" and ok["twin_id"] == "T" and ok["labels"] == ["severity"]
+    assert ok["confidence"] == 0.9 and failed["confidence"] is None
     assert list(report["aggregates"]) == ["overall", "twin", "no_twin"]
     assert all(set(a) == AGGREGATE_KEYS for a in report["aggregates"].values())
     assert next(iter(report["aggregates"]["overall"]["scores"])) == "severity_match"

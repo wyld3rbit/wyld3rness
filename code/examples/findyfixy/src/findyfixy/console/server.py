@@ -104,7 +104,7 @@ from findyfixy.events import Emit, Event, make_emit, make_stamped_emit
 from findyfixy.llm import answer_options, ollama_ask
 from findyfixy.observability.adapter import EventSpans, traced_sink
 from findyfixy.observability.tracing import open_tracing
-from findyfixy.paths import EVALS, PAGE, ROOT, WORKSPACE
+from findyfixy.paths import EVALS, PAGE, ROOT, WORKSPACE, DataVersion
 from findyfixy.retrieval.incidents import DEFAULT_PATH, Incident, load_incidents
 from findyfixy.settings import load_env, optional_models
 from findyfixy.tools.deploys import make_deploys_tool
@@ -175,6 +175,9 @@ class EvalRequest(BaseModel):
 
     mode: Mode
     cases: StrictInt = Field(ge=1)
+    # Which golden set a live run uses: v1 (frozen, the gate's set) or v2 (the
+    # hard cases, scores only). Fake runs have their own invented set.
+    data: DataVersion = "v1"
 
 
 class Busy(Exception):
@@ -237,6 +240,7 @@ class RunHub:
         fake_delay: float = 0.6,
         clock: Callable[[], float] = time.perf_counter,
         live_eval: EvalSuite | None = None,
+        live_eval_v2: EvalSuite | None = None,
         baseline_path: Path = BASELINE_PATH,
         tracing: Tracing | None = None,
     ) -> None:
@@ -244,7 +248,8 @@ class RunHub:
 
         `live_eval` is the real eval run and its golden set's size (built in
         `main` when models are configured); None means live eval runs are
-        refused as not configured. Fake eval runs are always available and
+        refused as not configured. `live_eval_v2` is the same over the v2 hard
+        cases and table; it never applies the gate. Fake eval runs are always available and
         need no model.
 
         `tracing`, when set, turns every run into a trace (findyfixy/observability/adapter.py).
@@ -253,6 +258,7 @@ class RunHub:
         self._tracing = tracing
         self._live_models = live_models
         self._live_eval = live_eval
+        self._live_eval_v2 = live_eval_v2
         self._fake_eval = fake_eval(sleep, fake_delay)
         self._baseline_path = baseline_path
         self.incidents = incidents or []
@@ -292,7 +298,11 @@ class RunHub:
 
     def eval_sizes(self) -> dict[str, int | None]:
         """How many cases each mode's eval set has. None for live when it is not configured."""
-        return {"live": self._live_eval.size if self._live_eval else None, "fake": self._fake_eval.size}
+        return {
+            "live": self._live_eval.size if self._live_eval else None,
+            "live_v2": self._live_eval_v2.size if self._live_eval_v2 else None,
+            "fake": self._fake_eval.size,
+        }
 
     def _begin(self, terminal: tuple[str, ...], *, stoppable: bool) -> int:
         """Claim the one run slot and reset the stream. Raises `Busy`. Returns the run id.
@@ -324,16 +334,22 @@ class RunHub:
         if req.mode == "live":
             if self._live_eval is None:
                 raise NotConfigured("live eval needs SMALL_MODEL and LARGE_MODEL")
-            suite = self._live_eval
+            chosen = self._live_eval if req.data == "v1" else self._live_eval_v2
+            if chosen is None:
+                raise NotConfigured("live v2 eval is not configured: data/v2/golden.jsonl could not be read")
+            suite = chosen
+        elif req.data != "v1":
+            raise ValueError("the v2 hard cases run live only; fake mode has its own invented set")
         else:
             suite = self._fake_eval
         if req.cases > suite.size:
             raise ValueError(f"cases must be between 1 and {suite.size} for {req.mode} mode")
         run_id = self._begin(_EVAL_TERMINAL, stoppable=True)
-        threading.Thread(target=self._eval, args=(suite.run, req.cases), daemon=True).start()
+        gated = req.data == "v1"
+        threading.Thread(target=self._eval, args=(suite.run, req.cases, gated), daemon=True).start()
         return run_id
 
-    def _eval(self, run: EvalRun, n: int) -> None:
+    def _eval(self, run: EvalRun, n: int, gated: bool = True) -> None:
         """The eval run thread. Always ends with exactly one terminal event.
 
         Two emitters feed one stream: the graph's events (app vocabulary) and
@@ -345,7 +361,13 @@ class RunHub:
         on_event = make_stamped_emit(self._publish, self._clock, HarnessEvent)
         try:
             run_and_judge(
-                run, n, emit=emit, on_event=on_event, should_stop=self._stop.is_set, baseline_path=self._baseline_path
+                run,
+                n,
+                emit=emit,
+                on_event=on_event,
+                should_stop=self._stop.is_set,
+                baseline_path=self._baseline_path,
+                gated=gated,
             )
         finally:
             with self._cond:
@@ -891,6 +913,31 @@ def parse_args(argv: list[str]) -> tuple[bool, int]:
     return reload, port
 
 
+def _v2_suite(retrieval: SharedRetrieval, tracing: Tracing | None) -> EvalSuite | None:
+    """The live eval over the v2 hard cases, or None (with a warning) when v2's data cannot be read.
+
+    v2 is optional: a missing or invalid data/v2 file turns off the v2 choice
+    and nothing else, so v1 evals and triage still run. The session itself is
+    answers_v2.open_v2_session, the one place a v2 session is wired; it reads
+    the cases each time it opens.
+    """
+    from findyfixy.evals.answers_v2 import open_v2_session
+    from findyfixy.evals.golden_v2 import golden_v2_path, load_golden_v2
+
+    try:
+        size = len(load_golden_v2())
+    except (OSError, ValueError) as err:
+        print(f"v2 hard cases off: cannot read {golden_v2_path().name} ({type(err).__name__}: {err})", file=sys.stderr)
+        return None
+    return live_eval(
+        partial(open_v2_session, retrieval=retrieval, tracing=tracing),
+        golden_path=golden_v2_path(),
+        repo_dir=ROOT,
+        progress=lambda msg: print(msg, file=sys.stderr, flush=True),
+        size=size,
+    )
+
+
 def main(argv: list[str] | None = None) -> None:
     """Read the environment, build the hub, serve until Ctrl-C.
 
@@ -925,7 +972,7 @@ def main(argv: list[str] | None = None) -> None:
     # Closed last, which sends what is still queued.
     with open_tracing() as tracing:
         retrieval = SharedRetrieval(stage=stage_spans(tracing)) if models else None
-        live_eval_suite = None
+        live_eval_suite = live_eval_v2_suite = None
         if retrieval is not None:
             from findyfixy.evals.answers import open_live_session
             from findyfixy.evals.golden import DEFAULT_PATH as GOLDEN_PATH
@@ -938,6 +985,7 @@ def main(argv: list[str] | None = None) -> None:
                 progress=lambda msg: print(msg, file=sys.stderr, flush=True),
                 size=len(load_golden(GOLDEN_PATH)),
             )
+            live_eval_v2_suite = _v2_suite(retrieval, tracing)
         hub = RunHub(
             tracing=tracing,
             live_models=(models.small, models.large) if models else None,
@@ -945,6 +993,7 @@ def main(argv: list[str] | None = None) -> None:
             investigator=investigator,
             recall=retrieval.recall(RECALL_K) if retrieval else None,
             live_eval=live_eval_suite,
+            live_eval_v2=live_eval_v2_suite,
         )
         dev = WORKSPACE if os.environ.get("FINDYFIXY_DEV") else None
         server = serve(hub, port=port, dev_root=dev)

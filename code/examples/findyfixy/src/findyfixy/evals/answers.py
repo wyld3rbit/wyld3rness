@@ -178,9 +178,11 @@ def open_live_session(
     under the harness's case span, and the scores land on it.
 
     `version` picks the table recall reads, and `goldens` the cases (v1's
-    golden set when None). Only answers_v2.py passes anything else: this
-    module stays v1-only so the attestation never covers v2. A shared
-    `retrieval` must read the same version; the console only runs v1.
+    golden set when None). Only answers_v2.open_v2_session passes anything
+    else (the v2 command line and the console both go through it); this module
+    never imports v2 code, so the attestation never covers v2. A shared
+    `retrieval` must already read `version`: open_v2_session passes the v2
+    sibling of the console's.
     """
     from findyfixy.llm import ollama_ask
     from findyfixy.triage.graph import build_graph

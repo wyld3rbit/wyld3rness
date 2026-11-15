@@ -18,7 +18,7 @@ Notable changes to wyld3rness and its example app. The format follows [Keep a Ch
 - **Incident memory.** Synthetic past incidents are chunked, embedded and stored in Postgres with pgvector by an ingestion job that is safe to re-run. ([ADR 0003](docs/adr/0003-incident-memory-in-postgres.md))
 - **Hybrid retrieval.** Keyword and vector search fused by reciprocal rank, then a cross-encoder reranker, returning incidents rather than chunks. ([ADR 0004](docs/adr/0004-hybrid-retrieval-with-reranker.md))
 - **Console.** A local page that runs a triage or an eval and shows each step on the live architecture diagram.
-- **Versioned data.** The corpus, golden set and deploy log live in `data/v1/` (frozen, the gate's set) and `data/v2/` (30 hard cases: no precedent, conflicting signals, cascades, noisy alerts, poisoned incidents with injected instructions, and destructive rollbacks). Each version has its own database table. `make eval DATA=v2` measures v2 through its own command, which the v1 attestation does not cover, and never runs the gate.
+- **Versioned data.** The corpus, golden set and deploy log live in `data/v1/` (frozen, the gate's set) and `data/v2/` (30 hard cases: no precedent, conflicting signals, cascades, noisy alerts, poisoned incidents with injected instructions, and destructive rollbacks). Each version has its own database table. `make eval DATA=v2` measures v2 through its own command, which the v1 attestation does not cover, and never runs the gate. The console's Eval run panel picks either set; one loaded embedder and reranker serve both. Each case record now carries the model's self-reported confidence.
 
 ### Tooling and security
 

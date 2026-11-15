@@ -48,7 +48,7 @@ def install(monkeypatch, builds: list[str], fail_first: bool = False, delay: flo
     def fake_connect():
         return FakeConnection()
 
-    def fake_build(conn, embedder=None, stage=None, version="v1"):
+    def fake_build(conn, embedder=None, stage=None, version="v1", reranker=None):
         builds.append(version)
         time.sleep(delay)
         if fail_first and len(builds) == 1:
@@ -60,9 +60,16 @@ def install(monkeypatch, builds: list[str], fail_first: bool = False, delay: flo
     return retriever
 
 
+def fake_reranker():
+    """A stand-in cross-encoder: never loaded."""
+    return lambda query, texts: [0.0] * len(texts)
+
+
 def shared() -> wiring.SharedRetrieval:
     """A shared retrieval whose embedder is a fake: no model is loaded."""
-    return wiring.SharedRetrieval(make_embedder=lambda: lambda texts: [[float(len(t))] for t in texts])
+    return wiring.SharedRetrieval(
+        make_embedder=lambda: lambda texts: [[float(len(t))] for t in texts], make_reranker=fake_reranker
+    )
 
 
 def test_recall_builds_nothing_until_it_is_first_used(monkeypatch) -> None:
@@ -79,8 +86,44 @@ def test_recall_reads_the_data_version_it_was_built_for(monkeypatch) -> None:
     builds: list[str] = []
     install(monkeypatch, builds)
     embed = lambda texts: [[float(len(t))] for t in texts]  # noqa: E731
-    wiring.SharedRetrieval(make_embedder=lambda: embed, version="v2").recall(3)("q")
+    wiring.SharedRetrieval(make_embedder=lambda: embed, make_reranker=fake_reranker, version="v2").recall(3)("q")
     assert builds == ["v2"]
+
+
+def test_versions_share_one_connection_embedder_and_reranker(monkeypatch) -> None:
+    """A v2 sibling builds its own retriever, over the v1 instance's connection, embedder and reranker."""
+    calls: list[tuple[object, str, object]] = []
+    install(monkeypatch, [])
+    original = wiring.build_retriever
+
+    def recording(conn, embedder=None, stage=None, version="v1", reranker=None):
+        calls.append((conn, version, reranker))
+        return original(conn, embedder, stage, version, reranker)
+
+    monkeypatch.setattr(wiring, "build_retriever", recording)
+    loads: list[int] = []
+
+    def make_embedder():
+        loads.append(1)
+        return lambda texts: [[float(len(t))] for t in texts]
+
+    rerankers: list[int] = []
+
+    def make_reranker():
+        rerankers.append(1)
+        return "the loaded cross-encoder"
+
+    v1 = wiring.SharedRetrieval(make_embedder=make_embedder, make_reranker=make_reranker)
+    v2 = v1.with_version("v2")
+    v1.recall(3)("q")
+    v2.recall(3)("q")
+    v2.recall(3)("q")  # built once per version
+    (c1, ver1, r1), (c2, ver2, r2) = calls
+    assert (ver1, ver2) == ("v1", "v2") and c1 is c2
+    assert r1 == r2 == "the loaded cross-encoder"
+    assert loads == [1] and rerankers == [1] and v2.version == "v2"
+    v2.close()
+    assert FakeConnection.closed == 1  # one shared connection, closed once for both
 
 
 def test_recall_asks_for_k_and_returns_briefs(monkeypatch) -> None:
@@ -129,7 +172,7 @@ def test_recall_and_the_judge_share_one_embedder_and_one_retriever(monkeypatch) 
         made.append(1)
         return lambda texts: [[1.0] for _ in texts]
 
-    retrieval = wiring.SharedRetrieval(make_embedder=make_embedder)
+    retrieval = wiring.SharedRetrieval(make_embedder=make_embedder, make_reranker=fake_reranker)
     retrieval.recall(3)("q")
     retrieval.candidates("q", 4)
     assert retrieval.embed(["a", "b"]) == [[1.0], [1.0]]

@@ -223,7 +223,12 @@ class FindyFixy:
             if triage is None:
                 raise ValueError("graph returned no triage")
         except Exception as err:
-            meta = {"recalled_ids": [p.incident_id for p in seen], "twin_recalled": False, "model_used": None}
+            meta = {
+                "recalled_ids": [p.incident_id for p in seen],
+                "twin_recalled": False,
+                "model_used": None,
+                "confidence": None,
+            }
             if spans is not None:
                 spans.finish_run(error=f"{type(err).__name__}: {err}")
             return Answer.failed(f"{type(err).__name__}: {err}", meta)
@@ -239,6 +244,9 @@ class FindyFixy:
                 "recalled_ids": recalled,
                 "twin_recalled": twin_id is not None and twin_id in recalled,
                 "model_used": state.get("model_used"),
+                # The model's self-reported confidence, the number the router escalates on.
+                # Recorded so a report can show it beside the score (Day 7, step 2).
+                "confidence": triage.confidence,
             },
         )
 
