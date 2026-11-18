@@ -14,7 +14,7 @@ help:
 	@echo "Start / stop:     make up   make down"
 	@echo "Run the product:  make console   make triage   make ingest"
 	@echo "Measure / test:   make test   make test-harness   make lint   make eval-retrieval"
-	@echo "Answer quality:   make eval   make eval-gate   make eval-baseline   make eval-negative   (make eval DATA=v2: the hard set)"
+	@echo "Answer quality:   make eval   make eval-gate   make eval-baseline   make eval-negative   (make eval DATA=v2: the hard set; FIXED=1: the earlier fixed path)"
 	@echo "CI gate:          make verify-attestation   (the attestation eval-gate writes on a pass)"
 	@echo "See test cases:   make golden   make case ID=g07   make data-v2   (rebuild data/v2)"
 	@echo "Freeze baseline:  make eval-freeze REPORT=examples/findyfixy/reports/eval-<timestamp>.json"

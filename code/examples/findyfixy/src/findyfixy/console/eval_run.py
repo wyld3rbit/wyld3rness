@@ -89,8 +89,13 @@ class EvalResult:
 class EvalRun(Protocol):
     """One eval run of the first `n` cases. App events go to `emit`, harness events to `on_event`."""
 
-    def __call__(self, n: int, *, emit: Emit, on_event: EvalEmit, should_stop: Callable[[], bool]) -> EvalResult:
-        """Run the cases and return the report. Writes no file. Raises `EvalStopped` on a stop."""
+    def __call__(
+        self, n: int, *, emit: Emit, on_event: EvalEmit, should_stop: Callable[[], bool], agent: bool = False
+    ) -> EvalResult:
+        """Run the cases and return the report. Writes no file. Raises `EvalStopped` on a stop.
+
+        `agent` runs the agent instead of the fixed path (Day 7), where the run supports it.
+        """
         ...
 
 
@@ -105,7 +110,7 @@ class EvalSuite:
 class LiveSessionFactory(Protocol):
     """`open_live_session`'s shape: the control flag, and where the graph's events go."""
 
-    def __call__(self, negative_control: bool, *, emit: Emit) -> AbstractContextManager[Session]:
+    def __call__(self, negative_control: bool, *, emit: Emit, agent: bool = True) -> AbstractContextManager[Session]:
         """Open the app's resources and yield the session; close them on exit."""
         ...
 
@@ -127,15 +132,17 @@ def live_eval(
     the caller when it wires the console.
     """
 
-    def run(n: int, *, emit: Emit, on_event: EvalEmit, should_stop: Callable[[], bool]) -> EvalResult:
-        """Open the live session with this run's emitter, keep `n` cases, run them."""
+    def run(
+        n: int, *, emit: Emit, on_event: EvalEmit, should_stop: Callable[[], bool], agent: bool = False
+    ) -> EvalResult:
+        """Open the live session with this run's emitter (and the agent, when asked), keep `n` cases, run them."""
         total = 0
 
         @contextmanager
         def first_n(negative_control: bool) -> Iterator[Session]:
             """The live session, cut to its first `n` cases. Closing is the factory's job."""
             nonlocal total
-            with open_session(negative_control, emit=emit) as session:
+            with open_session(negative_control, emit=emit, agent=agent) as session:
                 total = len(session.cases)
                 yield replace(session, cases=list(session.cases)[:n])
 
@@ -166,11 +173,13 @@ def run_and_judge(
     should_stop: Callable[[], bool],
     baseline_path: Path,
     gated: bool = True,
+    agent: bool = False,
 ) -> None:
     """Drive one eval run to exactly one terminal event: `eval_finished` or `eval_failed`.
 
     `gated` False (a v2 run) never applies the gate: `gate` is None, as for a
-    set the baseline was not defined on. The baseline is v1's alone.
+    set the baseline was not defined on. The baseline is v1's alone. `agent`
+    is passed to the run; the caller sets `gated` False with it.
 
     A stop ends with `eval_failed` and reason "stopped". The catch is broad on
     purpose. This runs on the console's run thread, and whatever goes wrong (a
@@ -178,7 +187,7 @@ def run_and_judge(
     instead of waiting on a stream that never ends.
     """
     try:
-        result = run(n, emit=emit, on_event=on_event, should_stop=should_stop)
+        result = run(n, emit=emit, on_event=on_event, should_stop=should_stop, agent=agent)
         problems = verdict(result, baseline_path) if gated else None
     except EvalStopped as err:
         on_event("eval_failed", error_type="EvalStopped", error=str(err), reason="stopped")

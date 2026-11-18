@@ -1,0 +1,11 @@
+{
+  "_comment": "Synthetic service map. upstream: the services whose failure can break this one (it calls them, or its work arrives from them).",
+  "auth": [],
+  "billing": ["auth", "ledger", "search"],
+  "gateway": ["auth"],
+  "ledger": [],
+  "notifications": ["scheduler"],
+  "scheduler": [],
+  "search": ["auth"],
+  "voice-verification": ["gateway"]
+}

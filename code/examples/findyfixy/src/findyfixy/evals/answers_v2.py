@@ -27,11 +27,19 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from contextlib import AbstractContextManager
+from functools import partial
 from pathlib import Path
 import sys
 from typing import TYPE_CHECKING
 
-from findyfixy.evals.answers import LEGACY_CONTROL, NO_RECALL_HELP, open_live_session
+from findyfixy.evals.answers import (
+    GATE_FLAGS,
+    LEGACY_CONTROL,
+    NO_RECALL_HELP,
+    asks_for,
+    open_live_session,
+    take_fixed_flag,
+)
 from findyfixy.evals.golden_v2 import golden_v2_path, load_golden_v2
 from findyfixy.events import Emit, no_emit
 from findyfixy.paths import EVALS, REPORTS, ROOT
@@ -43,21 +51,6 @@ if TYPE_CHECKING:
     from wyld3rness.trace.tracing import Tracing
 
 PROG = "findyfixy-eval-v2"
-# The flags that belong to the v1 gate alone.
-V1_ONLY = ("--gate", "--write-baseline", "--baseline-from")
-
-
-def asks_for_v1_only(args: Sequence[str]) -> bool:
-    """True when an argument is, or abbreviates, one of `V1_ONLY`. Pure.
-
-    argparse accepts any unambiguous prefix (`--ga` for `--gate`), so an exact
-    match would let an abbreviation through. `--flag=value` counts too.
-    """
-    for arg in args:
-        name = arg.split("=", 1)[0]
-        if name.startswith("--") and len(name) > 2 and any(flag.startswith(name) for flag in V1_ONLY):
-            return True
-    return False
 
 
 def open_v2_session(
@@ -66,13 +59,15 @@ def open_v2_session(
     emit: Emit = no_emit,
     retrieval: SharedRetrieval | None = None,
     tracing: Tracing | None = None,
+    agent: bool = True,
 ) -> AbstractContextManager[Session]:
     """The live session over v2: its cases and its table. The one place a v2 session is wired.
 
     The command line and the console both use it. The cases are read here, as
     the session opens, so a run always scores the file whose hash its report
     records. A shared `retrieval` (the console's) is used through its v2
-    sibling, so no second copy of the models loads.
+    sibling, so no second copy of the models loads. `agent` (the default) runs
+    the agent with v2's deploy log; False runs the earlier fixed path.
     """
     return open_live_session(
         negative_control,
@@ -81,6 +76,7 @@ def open_v2_session(
         tracing=tracing,
         version="v2",
         goldens=load_golden_v2(),
+        agent=agent,
     )
 
 
@@ -95,11 +91,11 @@ def main(
     `open_session` is injected in tests; the default is the live session bound
     to v2's cases and table. No attestation is ever written.
     """
-    args = list(argv) if argv is not None else sys.argv[1:]
-    if asks_for_v1_only(args):
+    fixed, args = take_fixed_flag(list(argv) if argv is not None else sys.argv[1:])
+    if asks_for(args, GATE_FLAGS):
         print(f"{PROG}: the gate and the baseline cover v1 only; run v2 without them", file=sys.stderr)
         return 2
-    session = open_session or open_v2_session
+    session = open_session or (partial(open_v2_session, agent=False) if fixed else open_v2_session)
     return cli.main(
         args,
         prog=PROG,

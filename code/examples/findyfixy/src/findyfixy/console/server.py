@@ -101,7 +101,7 @@ from findyfixy.console.fakes import (
 )
 from findyfixy.console.stress import DESCRIPTIONS, STRESSES, Stress, make_ollama_ask
 from findyfixy.events import Emit, Event, make_emit, make_stamped_emit
-from findyfixy.llm import answer_options, ollama_ask
+from findyfixy.llm import answer_options, ollama_ask, ollama_decision_ask
 from findyfixy.observability.adapter import EventSpans, traced_sink
 from findyfixy.observability.tracing import open_tracing
 from findyfixy.paths import EVALS, PAGE, ROOT, WORKSPACE, DataVersion
@@ -111,7 +111,7 @@ from findyfixy.tools.deploys import make_deploys_tool
 from findyfixy.tools.investigate import Investigator, build_investigator
 from findyfixy.triage.graph import QUESTIONS, THRESHOLD, Recall, build_graph
 from findyfixy.triage.record import RECALL_K, Ask, TriageError
-from findyfixy.wiring import SharedRetrieval, stage_spans
+from findyfixy.wiring import SharedRetrieval, build_agent, stage_spans
 from wyld3rness.trace.tracing import Tracing
 
 Mode = Literal["live", "fake"]
@@ -157,6 +157,10 @@ class RunRequest(BaseModel):
     stress: Stress = "none"
     # Live mode only. Run the tool step (look up deploys) before triage.
     use_tools: bool = False
+    # Live mode only (Day 7). Run the agent: investigate with its own tools,
+    # then decide. It replaces the tool step and recall, and asks for a
+    # `Decision`, so stress and the injected retry (built for `Triage`) are refused with it.
+    agent: bool = False
     # Live mode only. Repeat real runs until a reply fails validation, or until
     # this many runs have been made. None means a single run.
     hunt_max: int | None = Field(default=None, ge=1, le=HUNT_LIMIT)
@@ -178,6 +182,12 @@ class EvalRequest(BaseModel):
     # Which golden set a live run uses: v1 (frozen, the gate's set) or v2 (the
     # hard cases, scores only). Fake runs have their own invented set.
     data: DataVersion = "v1"
+    # Live only (Day 7): run the agent, the system under test. False runs the
+    # earlier fixed path for comparison, scores only: the gate's baseline is the agent's.
+    # Unset means the mode's own system: the agent live, the scripted system in
+    # fake mode. So a request that leaves it out gets what the command line
+    # runs, never the fixed path with the gate silently off.
+    agent: bool | None = None
 
 
 class Busy(Exception):
@@ -243,6 +253,7 @@ class RunHub:
         live_eval_v2: EvalSuite | None = None,
         baseline_path: Path = BASELINE_PATH,
         tracing: Tracing | None = None,
+        make_agent: Callable[[str, Recall], Investigator] | None = None,
     ) -> None:
         """Hold the wiring. Nothing runs until `start` or `start_eval`.
 
@@ -254,7 +265,11 @@ class RunHub:
 
         `tracing`, when set, turns every run into a trace (findyfixy/observability/adapter.py).
         None leaves the run exactly as it was.
+
+        `make_agent(model, recall)` builds the agent's loop for a live agent
+        run (findyfixy/wiring.py, `build_agent`); None turns agent runs off.
         """
+        self._make_agent = make_agent
         self._tracing = tracing
         self._live_models = live_models
         self._live_eval = live_eval
@@ -290,6 +305,11 @@ class RunHub:
     def tools_available(self) -> bool:
         """True when a real tool step was configured (live mode only)."""
         return self._investigator is not None
+
+    @property
+    def agent_available(self) -> bool:
+        """True when a live agent run can be built: models, recall and the agent builder."""
+        return self._live_models is not None and self._recall is not None and self._make_agent is not None
 
     @property
     def live_available(self) -> bool:
@@ -331,6 +351,9 @@ class RunHub:
         chosen set's size is a `ValueError` (422), checked before the slot is
         taken.
         """
+        agent = req.mode == "live" if req.agent is None else req.agent
+        if agent and req.mode != "live":
+            raise ValueError("the agent runs live only")
         if req.mode == "live":
             if self._live_eval is None:
                 raise NotConfigured("live eval needs SMALL_MODEL and LARGE_MODEL")
@@ -345,11 +368,14 @@ class RunHub:
         if req.cases > suite.size:
             raise ValueError(f"cases must be between 1 and {suite.size} for {req.mode} mode")
         run_id = self._begin(_EVAL_TERMINAL, stoppable=True)
-        gated = req.data == "v1"
-        threading.Thread(target=self._eval, args=(suite.run, req.cases, gated), daemon=True).start()
+        # The baseline is made on v1 with the agent, so a live fixed-path run is
+        # scores only. A fake run has its own scripted system and keeps showing
+        # the gate read-only, which is the point of the demo.
+        gated = req.data == "v1" and (req.mode == "fake" or agent)
+        threading.Thread(target=self._eval, args=(suite.run, req.cases, gated, agent), daemon=True).start()
         return run_id
 
-    def _eval(self, run: EvalRun, n: int, gated: bool = True) -> None:
+    def _eval(self, run: EvalRun, n: int, gated: bool = True, agent: bool = False) -> None:
         """The eval run thread. Always ends with exactly one terminal event.
 
         Two emitters feed one stream: the graph's events (app vocabulary) and
@@ -368,6 +394,7 @@ class RunHub:
                 should_stop=self._stop.is_set,
                 baseline_path=self._baseline_path,
                 gated=gated,
+                agent=agent,
             )
         finally:
             with self._cond:
@@ -392,15 +419,24 @@ class RunHub:
             question = req.question.strip()
             forced = req.force_escalation
             investigator = None
-            if req.use_tools:
+            if req.agent:
+                if self._make_agent is None or self._recall is None:
+                    raise NotConfigured("the agent needs the database and models configured")
+                if req.use_tools or req.stress != "none" or req.force_retry:
+                    raise ValueError(
+                        "the agent has its own tools and asks for a decision: no tool step, stress or retry"
+                    )
+                ask = ollama_decision_ask
+                investigator = self._make_agent(small, self._recall)
+            elif req.use_tools:
                 if self._investigator is None:
                     raise NotConfigured("the tool step is not configured")
                 investigator = self._investigator
             if req.hunt_max is not None and (forced or req.force_retry):
                 raise ValueError("hunt cannot be combined with a forced fault")
         else:
-            if req.hunt_max is not None or req.force_retry or req.stress != "none":
-                raise ValueError("hunt, force_retry and stress need live mode")
+            if req.hunt_max is not None or req.force_retry or req.stress != "none" or req.agent:
+                raise ValueError("hunt, force_retry, stress and the agent need live mode")
             if req.scenario is None:
                 raise ValueError("fake mode needs a scenario")
             small, large = "small", "large"
@@ -432,7 +468,9 @@ class RunHub:
             kwargs={
                 "investigator": investigator,
                 "stress": req.stress,
-                "recall": self._recall_for(req.mode),
+                # The agent searches through its own tool; a fixed recall step would add incidents it did not choose.
+                "recall": None if req.agent else self._recall_for(req.mode),
+                "agent": req.agent,
             },
             daemon=True,
         ).start()
@@ -484,6 +522,7 @@ class RunHub:
         investigator: Investigator | None = None,
         stress: Stress = "none",
         recall: Recall | None = None,
+        agent: bool = False,
     ) -> None:
         """The run thread. Always ends with exactly one terminal event.
 
@@ -524,6 +563,7 @@ class RunHub:
                 investigator,
                 stress,
                 recall,
+                agent,
             )
 
         try:
@@ -550,6 +590,7 @@ class RunHub:
         investigator: Investigator | None = None,
         stress: Stress = "none",
         recall: Recall | None = None,
+        agent: bool = False,
     ) -> Literal["finished", "failed", "error"]:
         """One graph run. Returns how it ended, after emitting its event.
 
@@ -570,6 +611,7 @@ class RunHub:
             tools=investigator is not None,
             stress=stress,
             recall=recall is not None,
+            agent=agent,
         )
         try:
             graph = build_graph(
@@ -581,6 +623,7 @@ class RunHub:
                 investigator=investigator,
                 investigate_model=small if investigator is not None and mode == "live" else None,
                 recall=recall,
+                agent=agent,
             )
             result = graph.invoke({"question": question})
             emit(
@@ -795,6 +838,7 @@ def make_handler(hub: RunHub, page: Path, dev_root: Path | None = None) -> type[
                         "incidents": [{"id": i.id, "title": i.title, "text": i.text} for i in hub.incidents],
                         "scenarios": list(SCENARIOS),
                         "tools_available": hub.tools_available,
+                        "agent_available": hub.agent_available,
                         "live_available": hub.live_available,
                         "threshold": THRESHOLD,
                         "hunt_default": HUNT_DEFAULT,
@@ -994,6 +1038,7 @@ def main(argv: list[str] | None = None) -> None:
             recall=retrieval.recall(RECALL_K) if retrieval else None,
             live_eval=live_eval_suite,
             live_eval_v2=live_eval_v2_suite,
+            make_agent=build_agent if models else None,
         )
         dev = WORKSPACE if os.environ.get("FINDYFIXY_DEV") else None
         server = serve(hub, port=port, dev_root=dev)

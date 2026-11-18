@@ -122,7 +122,7 @@ def test_v1_cases_keep_their_record_and_v2_cases_carry_the_action_class(cases) -
     """A v1 record must not change shape; a v2 record adds the class step 3 scores against."""
     v1_case = to_case(load_golden(V1 / "golden.jsonl")[0])
     assert set(v1_case.meta) == {"source_id", "twin_id"}
-    assert to_case(cases[0]).meta["expected_action"] == cases[0].expected_action
+    assert to_case(cases[0]).meta["action_class"] == cases[0].expected_action
 
 
 @pytest.mark.parametrize("flag", ["--gate", "--write-baseline", "--baseline-from=r.json", "--ga", "--write"])
@@ -137,7 +137,9 @@ def test_a_v2_run_refuses_the_gate_and_the_baseline(capsys, flag: str) -> None:
 
 
 def test_ordinary_flags_are_not_mistaken_for_gate_flags() -> None:
-    assert not answers_v2.asks_for_v1_only(["--no-recall", "--workers", "2", "--show-case", "h07", "-"])
+    from findyfixy.evals.answers import GATE_FLAGS, asks_for
+
+    assert not asks_for(["--no-recall", "--workers", "2", "--show-case", "h07", "-"], GATE_FLAGS)
 
 
 def test_the_v1_gate_never_imports_v2_code() -> None:

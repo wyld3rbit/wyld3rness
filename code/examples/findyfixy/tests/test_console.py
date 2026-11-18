@@ -594,6 +594,102 @@ def test_live_use_tools_without_a_configured_tool_step_is_503(monkeypatch):
         srv.server_close()
 
 
+def live_agent_hub(
+    monkeypatch,
+    decision='{"severity": "sev1", "component": "auth", "next_action": "undo 2.15.0", '
+    '"confidence": 0.9, "action": "rollback", "rollback_version": "2.15.0"}',
+):
+    """A live hub whose agent is the real loop and tools over a scripted model, and whose decision `ask` is scripted."""
+    from langchain_core.messages import AIMessage
+
+    from findyfixy.console.fakes import as_chunk
+    import findyfixy.console.server as console
+    from findyfixy.tools.deploys import make_deploys_tool
+    from findyfixy.tools.investigate import build_investigator
+    from findyfixy.tools.memory import make_search_tool
+    from findyfixy.tools.services import make_services_tool
+
+    monkeypatch.setattr(console, "ollama_decision_ask", lambda m, p: decision)
+    searched: list[str] = []
+
+    def recall(question):
+        searched.append(question)
+        return []
+
+    def make_agent(model, recall):
+        replies = iter(
+            [
+                AIMessage(
+                    content="", tool_calls=[{"name": "search_incidents", "args": {"query": "auth logins"}, "id": "c1"}]
+                ),
+                AIMessage(content="nothing similar; auth 2.15.0 is recent"),
+            ]
+        )
+
+        class Model:
+            def invoke(self, messages):
+                return next(replies)
+
+            def stream(self, messages):
+                yield as_chunk(next(replies))
+
+        tools = [make_search_tool(recall), make_deploys_tool(), make_services_tool()]
+        return build_investigator(Model(), tools, max_turns=6, deadline_s=30.0)
+
+    hub = RunHub(live_models=("s", "l"), recall=recall, make_agent=make_agent, sleep=lambda s: None, fake_delay=0)
+    srv = serve(hub, port=0)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv, searched
+
+
+def test_a_live_agent_run_investigates_through_its_own_search_then_decides(monkeypatch):
+    """No fixed recall step: the agent searched with its own words, and the run ends with its decision."""
+    srv, searched = live_agent_hub(monkeypatch)
+    port = srv.server_address[1]
+    try:
+        assert post_run(port, {"mode": "live", "question": "auth logins failing", "agent": True})[0] == 202
+        events = stream(port)
+        assert [e["data"]["node"] for e in events if e["kind"] == "node_entered"] == ["investigate", "small"]
+        assert searched == ["auth logins"]
+        started = next(e for e in events if e["kind"] == "run_started")["data"]
+        assert started["agent"] is True and started["recall"] is False
+        triage = next(e for e in events if e["kind"] == "run_finished")["data"]["triage"]
+        assert (triage["action"], triage["rollback_version"]) == ("rollback", "2.15.0")
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+
+def test_the_agent_refuses_fake_mode_the_tool_step_stress_and_the_injected_retry(monkeypatch):
+    """Each combination is a clean 422 before anything runs."""
+    srv, _ = live_agent_hub(monkeypatch)
+    port = srv.server_address[1]
+    try:
+        assert post_run(port, {"mode": "fake", "scenario": "stay_small", "agent": True})[0] == 422
+        for extra in ({"use_tools": True}, {"stress": "vague_prompt"}, {"force_retry": True}):
+            body = {"mode": "live", "question": "q", "agent": True, **extra}
+            assert post_run(port, body)[0] == 422, extra
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+
+def test_an_agent_run_without_an_agent_builder_is_503(server):
+    """A hub with no models or database cannot build the agent."""
+    _, port = server
+    assert post_run(port, {"mode": "live", "question": "q", "agent": True})[0] == 503
+
+
+def test_config_says_whether_the_agent_is_available(monkeypatch):
+    """/config carries agent_available, which the page uses to show the Agent switch."""
+    srv, _ = live_agent_hub(monkeypatch)
+    try:
+        assert json.loads(call(srv.server_address[1], "GET", "/config")[1])["agent_available"] is True
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+
 def test_config_says_whether_the_tool_step_is_available(server, monkeypatch):
     _, port = server
     cfg = json.loads(call(port, "GET", "/config")[1])
@@ -920,7 +1016,7 @@ def test_a_full_v2_run_uses_the_hard_set_and_never_applies_the_gate(tmp_path):
     used = []
 
     def suite(name):
-        def run(n, *, emit, on_event, should_stop):
+        def run(n, *, emit, on_event, should_stop, agent=False):
             used.append(name)
             return EvalResult(
                 report={"aggregates": {"overall": {"n": n, "n_run_errors": 0, "scores": {}}}}, subset=False
@@ -946,6 +1042,42 @@ def test_a_full_v2_run_uses_the_hard_set_and_never_applies_the_gate(tmp_path):
     assert used == ["v2"]
     assert events[-1]["kind"] == "eval_finished"
     assert events[-1]["data"]["gate"] is None and events[-1]["data"]["subset"] is False
+
+
+def test_the_agent_eval_is_gated_and_a_fixed_path_eval_is_not(tmp_path):
+    """A live eval left unset runs the agent, gated; only an explicit agent false runs the fixed path, scores only."""
+    from findyfixy.console.eval_run import EvalResult, EvalSuite
+
+    asked = []
+
+    def run(n, *, emit, on_event, should_stop, agent=False):
+        asked.append(agent)
+        return EvalResult(report={"aggregates": {"overall": {"n": n, "n_run_errors": 0, "scores": {}}}}, subset=False)
+
+    hub = RunHub(
+        live_models=("s", "l"),
+        live_eval=EvalSuite(run=run, size=30),
+        baseline_path=tmp_path / "missing.json",  # a gated run would fail on this
+        sleep=no_wait,
+        fake_delay=0,
+    )
+    srv, port = _serve(hub)
+    try:
+        assert post_eval(port, {"mode": "fake", "cases": 2, "agent": True})[0] == 422
+        assert post_eval(port, {"mode": "live", "cases": 30})[0] == 202  # unset: the agent, like the CLI
+        gated = stream(port)
+        for _ in range(50):
+            if post_eval(port, {"mode": "live", "cases": 30, "agent": False})[0] == 202:
+                break
+            time.sleep(0.02)
+        fixed = stream(port)
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    assert asked == [True, False]
+    # The agent's full v1 run is gated: here the baseline is missing, so the run fails on it.
+    assert gated[-1]["kind"] == "eval_failed" and gated[-1]["data"]["error_type"] == "BaselineMissing"
+    assert fixed[-1]["kind"] == "eval_finished" and fixed[-1]["data"]["gate"] is None
 
 
 def test_a_live_eval_without_models_is_503(server):
@@ -1056,7 +1188,7 @@ def test_a_live_eval_hub_runs_the_injected_eval_and_streams_its_events():
 
     seen = []
 
-    def live(n, *, emit, on_event, should_stop):
+    def live(n, *, emit, on_event, should_stop, agent=False):
         """A live run that reports one harness and one app event."""
         seen.append((n, should_stop()))
         on_event("eval_started", n=n, cases=["g01"], system={})
@@ -1105,7 +1237,7 @@ def test_live_eval_cuts_the_session_to_n_cases_and_hands_the_graph_its_emitter(m
     controls = []
 
     @contextmanager
-    def open_session(negative_control, *, emit):
+    def open_session(negative_control, *, emit, agent=False):
         """A session of three cases whose graph reports to the run's `emit`."""
         controls.append(negative_control)
 
@@ -1138,7 +1270,7 @@ def test_live_eval_cuts_the_session_to_n_cases_and_hands_the_graph_its_emitter(m
         {
             "n": 2,
             "cases": ["g0", "g1"],
-            "system": {"small_model": "s", "large_model": "l", "threshold": 0.7, "recall_k": 3},
+            "system": {"system": "fixed", "small_model": "s", "large_model": "l", "threshold": 0.7, "recall_k": 3},
         },
     )
     assert result.report["provenance"]["judge_digest"] == "dig"

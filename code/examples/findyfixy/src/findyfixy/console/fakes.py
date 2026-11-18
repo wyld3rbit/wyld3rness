@@ -16,12 +16,12 @@ system under test describes itself as `data: FAKE`, so the page marks every scor
 from such a run as fake.
 """
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from itertools import cycle
 import json
 from typing import Any, Literal, TypeVar
 
-from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage
 from pydantic import BaseModel
 
 from findyfixy.console.eval_run import EvalResult, EvalSuite
@@ -130,6 +130,23 @@ class ScriptedToolModel:
             "type": "tool_call",
         }
         return AIMessage(content="", tool_calls=[call])
+
+    def stream(self, messages: list[BaseMessage], /) -> Iterator[AIMessageChunk]:
+        """The same reply as one chunk, for a loop with a deadline."""
+        yield as_chunk(self.invoke(messages))
+
+
+def as_chunk(reply: AIMessage) -> AIMessageChunk:
+    """A whole reply as one stream chunk, the way ChatOllama yields one. Pure.
+
+    Tool calls become tool call chunks with JSON arguments; joining the
+    chunks parses them back, so the loop sees the same calls either way.
+    """
+    calls = [
+        {"name": c["name"], "args": json.dumps(c["args"]), "id": c["id"], "index": i}
+        for i, c in enumerate(reply.tool_calls)
+    ]
+    return AIMessageChunk(content=reply.content, tool_call_chunks=calls, usage_metadata=reply.usage_metadata)  # type: ignore[arg-type]
 
 
 FAKE_QUESTION = "Fake run: replies are scripted, no model is called."
@@ -277,7 +294,9 @@ def fake_eval(sleep: Callable[[float], None], delay: float) -> EvalSuite:
     """
     cases = fake_cases()
 
-    def run(n: int, *, emit: Emit, on_event: EvalEmit, should_stop: Callable[[], bool]) -> EvalResult:
+    def run(
+        n: int, *, emit: Emit, on_event: EvalEmit, should_stop: Callable[[], bool], agent: bool = False
+    ) -> EvalResult:
         """Run the first `n` invented cases and return the report."""
         scenarios = cycle(FAKE_EVAL_SCENARIOS)
 

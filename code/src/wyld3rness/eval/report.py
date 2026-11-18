@@ -44,8 +44,12 @@ from wyld3rness.eval.stats import (
     ordered_score_names,
 )
 
-# Provenance keys that must match for a baseline to be comparable.
-COMPARABLE_KEYS: tuple[str, ...] = ("judge_digest", "prompt_versions", "golden_sha256")
+# Provenance keys that must match for a baseline to be comparable. `system` is
+# the app's name for which system its numbers describe (from `describe()`), so
+# a baseline frozen on one design is never used to gate another: FindyFixy's
+# agent is never gated against its earlier fixed path. An app that does not
+# set it compares None with None.
+COMPARABLE_KEYS: tuple[str, ...] = ("judge_digest", "prompt_versions", "golden_sha256", "system")
 # Provenance keys NOT copied into the baseline file. Every other key is, so the
 # app's own `describe()` keys (models, thresholds) reach the baseline without
 # the harness naming them. These are left out because they describe how one

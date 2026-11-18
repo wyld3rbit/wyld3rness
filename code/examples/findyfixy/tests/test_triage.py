@@ -22,7 +22,7 @@ import json
 
 import pytest
 
-from findyfixy.triage.record import Triage, TriageError, ask_validated, parse_triage
+from findyfixy.triage.record import Triage, TriageError, ask_validated
 
 GOOD = json.dumps(
     {
@@ -68,14 +68,14 @@ def test_valid_reply_is_parsed_with_one_call():
 )
 def test_invalid_replies_are_rejected(reply):
     with pytest.raises(Exception) as info:
-        parse_triage(reply)
+        Triage.model_validate_json(reply)
     assert info.type.__name__ == "ValidationError"
 
 
 def test_boundaries_are_inclusive():
     for c in (0, 1):
         reply = json.dumps({"severity": "sev1", "component": "x", "next_action": "y", "confidence": c})
-        assert parse_triage(reply).confidence == c
+        assert Triage.model_validate_json(reply).confidence == c
 
 
 def test_retry_prompt_carries_the_error_and_the_bad_reply():
@@ -155,7 +155,7 @@ def test_a_reply_is_still_a_string_to_everything_that_reads_it():
 
     r = Reply(GOOD, served_by="qwen2.5:7b")
     assert isinstance(r, str) and r == GOOD and len(r) == len(GOOD)
-    assert parse_triage(r).severity == "sev3"
+    assert Triage.model_validate_json(r).severity == "sev3"
     assert r[:5] == GOOD[:5] and r.served_by == "qwen2.5:7b"
 
 

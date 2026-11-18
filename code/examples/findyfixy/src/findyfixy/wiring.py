@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from findyfixy.paths import DataVersion
     from findyfixy.retrieval.ingest import Embedder
     from findyfixy.retrieval.retrieve import Rerank, Retriever, Stage
+    from findyfixy.tools.investigate import Investigator
     from findyfixy.triage.graph import Recall
     from wyld3rness.trace.tracing import Tracing
 
@@ -46,6 +47,40 @@ def connect() -> "Connection":
     conn = psycopg.connect(database_url(), autocommit=True)
     register_vector(conn)
     return conn
+
+
+def build_agent(model: str, recall: "Recall", version: "DataVersion" = "v1") -> "Investigator":
+    """The agent's investigation loop (Day 7): `model` with its three read-only tools and its budget.
+
+    The tools are incident search over `recall`, the deploy log of `version`,
+    and the service map. `recall` decides what search may see: the eval passes
+    one with the case's own incident held out, the console the plain one. The
+    deploy log follows the data version, so a v2 case sees the deploys its
+    rollback cases were written against. One builder for the eval and the
+    console, so the two cannot run different agents.
+
+    Every tool here only reads. Nothing the agent proposes is executed; the
+    policy checkpoint (step 3) is what will judge a proposal.
+    """
+    from langchain_ollama import ChatOllama
+
+    from findyfixy.llm import answer_options
+    from findyfixy.tools.deploys import deploys_path, make_deploys_tool
+    from findyfixy.tools.investigate import AGENT_DEADLINE_S, AGENT_MAX_TURNS, build_investigator
+    from findyfixy.tools.memory import make_search_tool
+    from findyfixy.tools.services import make_services_tool
+    from findyfixy.tools.submit import SUBMIT_TOOL, make_submit_tool
+
+    tools = [
+        make_search_tool(recall),
+        make_deploys_tool(deploys_path(version)),
+        make_services_tool(),
+        make_submit_tool(),
+    ]
+    llm = ChatOllama(model=model, **answer_options()).bind_tools(tools)
+    return build_investigator(
+        llm, tools, max_turns=AGENT_MAX_TURNS, deadline_s=AGENT_DEADLINE_S, finish_tool=SUBMIT_TOOL
+    )
 
 
 def build_retriever(

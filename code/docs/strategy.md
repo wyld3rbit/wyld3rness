@@ -51,7 +51,7 @@ A policy can be challenged, and the challenge has one path. An exception needs t
 
 The gaps in the diagnosis close in this order, each recorded in the decision record of the phase that builds it:
 
-1. **Harder data and a computed escalation signal.** A versioned corpus and golden set with no-precedent alerts, conflicting signals, cascades and noisy alert text, with the current set frozen for regression. Escalation moves to a signal the system computes. Closes the third gap and applies policy 1.
+1. **Harder data and an agent that investigates.** A versioned corpus and golden set with no-precedent alerts, conflicting signals, cascades and noisy alert text, with the current set frozen for regression. The agent gathers its own evidence with read-only tools inside a turn and time budget and proposes a decision from a closed set; running out of budget hands the incident to a person, in code. A computed escalation signal was measured first and missed its bar. Closes the third gap and applies policy 1.
 2. **A trust boundary.** A policy checkpoint between a proposed action and any system, and short-lived scoped credentials per tool call. Closes the first gap.
 3. **One path to every model.** All model clients move behind a gateway that enforces budget, routing and pins. Closes the second gap.
 4. **Operation.** The service, human approval for destructive actions, and scheduled evaluation in operation.

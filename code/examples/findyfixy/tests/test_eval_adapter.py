@@ -299,7 +299,13 @@ def test_twin_recall_rate_leaves_out_run_errors() -> None:
 
 def test_describe_names_the_settings_that_shape_an_answer() -> None:
     """Models, threshold and recall depth go into provenance."""
-    assert adapter().describe() == {"small_model": "s", "large_model": "l", "threshold": 0.7, "recall_k": 3}
+    assert adapter().describe() == {
+        "system": "fixed",
+        "small_model": "s",
+        "large_model": "l",
+        "threshold": 0.7,
+        "recall_k": 3,
+    }
 
 
 def test_to_case_carries_the_ids_in_meta_and_the_severity_as_a_label() -> None:
@@ -424,6 +430,47 @@ def test_an_unset_model_name_exits_2_through_the_real_live_session(tmp_path: Pat
     assert entry([], tmp_path) == 2
     assert "error: set the environment variable SMALL_MODEL" in capsys.readouterr().err
     assert not (tmp_path / "r").exists()  # no report for a run that never started
+
+
+class FakeRetrieval:
+    """The shared retrieval's two members the session touches before case 1."""
+
+    def __init__(self) -> None:
+        """A fixed ranking and the test embedder."""
+        self.candidates = ranked()
+        self.embed = embed
+
+
+def open_warmed(monkeypatch, small: str, large: str) -> tuple[list[str], list[str]]:
+    """Open the real live session offline. Returns the models warmed, and those warmed when it yielded."""
+    from findyfixy import llm, settings
+
+    for module in (eval_answers, settings):
+        monkeypatch.setattr(module, "load_env", lambda: None)  # a local .env must not change the models
+    monkeypatch.setattr(settings, "read_tracing", lambda *a: None)  # tracing off
+    monkeypatch.setenv("SMALL_MODEL", small)
+    monkeypatch.setenv("LARGE_MODEL", large)
+    warmed: list[str] = []
+    monkeypatch.setattr(llm, "warm_model", warmed.append)
+    retrieval = FakeRetrieval()
+    with eval_answers.open_live_session(False, retrieval=retrieval, goldens=[golden("g1", "S")]):
+        at_yield = list(warmed)
+    return warmed, at_yield
+
+
+def test_the_live_session_warms_each_model_before_the_first_case(monkeypatch) -> None:
+    """Both models load before the session is handed over, the small one last.
+
+    So a load never uses up case 1's deadline.
+    """
+    warmed, at_yield = open_warmed(monkeypatch, small="s", large="l")
+    assert at_yield == ["l", "s"] and warmed == at_yield
+
+
+def test_one_model_is_warmed_once(monkeypatch) -> None:
+    """With small == large, one model, one load."""
+    warmed, _ = open_warmed(monkeypatch, small="m", large="m")
+    assert warmed == ["m"]
 
 
 STALE = "the database is stale: run make ingest (3 chunk(s) to write, 0 to delete)"

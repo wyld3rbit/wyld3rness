@@ -25,6 +25,19 @@ What the judge sees
     incident, formatted and capped by `format_prior`, the same function the
     prompt uses. The judge never sees more than the model saw.
 
+Agent mode (Day 7)
+    With `agent=True` the graph investigates with tools and returns a
+    `Decision`. Three things change, and only in agent mode:
+    - A v2 case also expects an `action` label: its action class mapped to the
+      agent's action (`ACTION_FOR`), so the harness scores `action_match` per
+      group like any label. v1 cases have no action class and no such label.
+    - `contexts` are the tool results the agent read, one line per call
+      (`format_call`, the same text its decision prompt quoted), because those
+      are what it saw. Incident search runs through the same holdout recall,
+      and `recalled_ids` collects every incident any search returned.
+    - The record keeps the decision (action, rollback version), the tool calls
+      and whether the loop stopped on its budget.
+
 Thread safety
     `answer` keeps its per-case state (the recall sink) local, so several
     workers can call it at once. The injected `candidates` must be thread-safe;
@@ -37,8 +50,9 @@ from collections.abc import Callable, Mapping, Sequence
 from typing import TYPE_CHECKING, Any, Protocol
 
 from findyfixy.evals.golden import GoldenCase
+from findyfixy.tools.investigate import AGENT_DEADLINE_S, AGENT_MAX_TURNS, format_args, format_call
 from findyfixy.triage.graph import THRESHOLD, Recall
-from findyfixy.triage.record import RECALL_K, Prior, Triage, format_prior
+from findyfixy.triage.record import RECALL_K, Action, Decision, Prior, Triage, format_prior
 from wyld3rness.eval.case import Case
 from wyld3rness.eval.sut import Answer
 
@@ -52,6 +66,14 @@ Candidates = Callable[[str, int], Sequence[Prior]]
 # The one label FindyFixy is scored on. Its record keys are `severity`,
 # `severity_match` and `expected_severity`, as in every saved report.
 SEVERITY = "severity"
+
+# The second label, agent mode only (Day 7): which action the agent proposed.
+ACTION = "action"
+
+# A v2 case's action class (golden_v2.py) as the action the agent should take:
+# a read changes nothing, a reversible step is handing the incident to a person,
+# the destructive one is undoing the deploy.
+ACTION_FOR: Mapping[str, Action] = {"read": "read", "reversible": "page_human", "destructive": "rollback"}
 
 
 class Invokable(Protocol):
@@ -69,24 +91,29 @@ class Invokable(Protocol):
 # ---- Golden rows into harness cases -----------------------------------------
 
 
-def to_case(golden: GoldenCase) -> Case:
+def to_case(golden: GoldenCase, *, agent: bool = False) -> Case:
     """One golden row as a harness case. The ids the adapter needs travel in `meta`.
 
     `source_id` and `twin_id` are copied into the record, so a saved report
     shows which incident was held out and which twin could be recalled.
+    With `agent`, a case with an action class also expects the matching action.
     """
+    expected: dict[str, str] = {SEVERITY: golden.expected_severity}
+    expected_action = getattr(golden, "expected_action", None)
+    if agent and expected_action is not None:
+        expected[ACTION] = ACTION_FOR[expected_action]
     return Case(
         id=golden.id,
         group=golden.group,
         question=golden.question,
         reference=golden.reference,
-        expected={SEVERITY: golden.expected_severity},
+        expected=expected,
         meta=_meta(golden),
     )
 
 
 def _meta(golden: GoldenCase) -> dict[str, Any]:
-    """The ids the adapter needs, plus a v2 case's expected action class when it has one.
+    """The ids the adapter needs, plus a v2 case's action class when it has one.
 
     v1 cases carry exactly the two ids they always did, so a v1 record is
     unchanged byte for byte.
@@ -94,7 +121,9 @@ def _meta(golden: GoldenCase) -> dict[str, Any]:
     meta: dict[str, Any] = {"source_id": golden.source_id, "twin_id": golden.twin_id}
     expected_action = getattr(golden, "expected_action", None)
     if expected_action is not None:
-        meta["expected_action"] = expected_action
+        # Named action_class, not expected_action: in agent mode the `action`
+        # label owns the record keys action, expected_action and action_match.
+        meta["action_class"] = expected_action
     return meta
 
 
@@ -110,20 +139,26 @@ def holdout(candidates: Sequence[Prior], source_id: str, k: int) -> list[Prior]:
     return [p for p in candidates if p.incident_id != source_id][:k]
 
 
-def make_holdout_recall(candidates: Candidates, source_id: str, k: int, sink: list[Prior]) -> Recall:
+def make_holdout_recall(
+    candidates: Candidates, source_id: str, k: int, sink: list[Prior], *, accumulate: bool = False
+) -> Recall:
     """Build the recall step for one case, bound to that case's source id.
 
     Every call asks for `k + 1` candidates and filters. The kept priors are
     also written to `sink`, so the adapter knows what the model saw. Clearing
     the sink first means a graph that calls recall twice reports the last call,
-    which is the one whose prompt the model answered.
+    which is the one whose prompt the model answered. With `accumulate` (the
+    agent, which may search several times and read every result) the sink
+    keeps every incident returned, each once, in first-seen order.
     """
 
     def recall(question: str) -> list[Prior]:
         """Recall minus the source incident."""
         kept = holdout(candidates(question, k + 1), source_id, k)
-        sink.clear()
-        sink.extend(kept)
+        if not accumulate:
+            sink.clear()
+        seen = {p.incident_id for p in sink}
+        sink.extend(p for p in kept if p.incident_id not in seen)
         return kept
 
     return recall
@@ -174,6 +209,7 @@ class FindyFixy:
         k: int = RECALL_K,
         threshold: float = THRESHOLD,
         run_tracer: RunTracer | None = None,
+        agent: bool = False,
     ) -> None:
         """Hold the wiring. Nothing runs until `answer`.
 
@@ -181,7 +217,11 @@ class FindyFixy:
         each case's graph run; it nests under the harness's case span. The
         graph's events must reach it through the emitter `make_graph` binds
         (`RunTracer.wrap`).
+
+        `agent` says `make_graph` builds the agent (see the module docstring);
+        the adapter then records the agent's tool calls and decision.
         """
+        self._agent = agent
         self._run_tracer = run_tracer
         self._make_graph = make_graph
         self._candidates = candidates
@@ -192,12 +232,18 @@ class FindyFixy:
 
     def describe(self) -> dict[str, Any]:
         """The settings that shape an answer, for the report's provenance."""
-        return {
+        settings: dict[str, Any] = {
+            # Which design ran. The harness gate compares it with the
+            # baseline's, so the agent is never gated against the fixed path.
+            "system": "agent" if self._agent else "fixed",
             "small_model": self._small_model,
             "large_model": self._large_model,
             "threshold": self._threshold,
             "recall_k": self._k,
         }
+        if self._agent:
+            settings |= {"agent_max_turns": AGENT_MAX_TURNS, "agent_deadline_s": AGENT_DEADLINE_S}
+        return settings
 
     def answer(self, case: Case) -> Answer:
         """Run the graph on one case with its source incident held out of recall.
@@ -216,38 +262,53 @@ class FindyFixy:
         """`answer`, ending the run trace (when there is one) with the triage or the error."""
         seen: list[Prior] = []
         twin_id = case.meta["twin_id"]
-        recall = make_holdout_recall(self._candidates, case.meta["source_id"], self._k, seen)
+        recall = make_holdout_recall(self._candidates, case.meta["source_id"], self._k, seen, accumulate=self._agent)
         try:
             state = self._make_graph(recall).invoke({"question": case.question})
             triage = state.get("triage")
             if triage is None:
                 raise ValueError("graph returned no triage")
         except Exception as err:
-            meta = {
+            failed: dict[str, Any] = {
                 "recalled_ids": [p.incident_id for p in seen],
                 "twin_recalled": False,
                 "model_used": None,
                 "confidence": None,
             }
+            if self._agent:
+                failed |= {"tool_calls": [], "stopped": None, "rollback_version": None}
             if spans is not None:
                 spans.finish_run(error=f"{type(err).__name__}: {err}")
-            return Answer.failed(f"{type(err).__name__}: {err}", meta)
+            return Answer.failed(f"{type(err).__name__}: {err}", failed)
         if spans is not None:
             spans.finish_run(output=triage.model_dump(), model_used=state.get("model_used"))
         recalled = [p.incident_id for p in seen]
+        meta: dict[str, Any] = {
+            "recalled_ids": recalled,
+            "twin_recalled": twin_id is not None and twin_id in recalled,
+            "model_used": state.get("model_used"),
+            # The model's self-reported confidence, the number the router escalates on.
+            # Recorded so a report can show it beside the score (Day 7, step 2).
+            "confidence": triage.confidence,
+        }
+        labels = {SEVERITY: triage.severity}
+        contexts = render_contexts(seen)
+        if self._agent:
+            calls = state.get("calls", [])
+            contexts = [format_call(c) for c in calls]
+            meta |= {
+                "tool_calls": [f"{c.name}({format_args(c.args)})" for c in calls],
+                "stopped": state.get("stopped"),
+                "rollback_version": triage.rollback_version if isinstance(triage, Decision) else None,
+            }
+            if isinstance(triage, Decision):
+                labels[ACTION] = triage.action
         return Answer(
             text=render_answer(triage),
-            contexts=render_contexts(seen),
+            contexts=contexts,
             action=triage.next_action,
-            labels={SEVERITY: triage.severity},
-            meta={
-                "recalled_ids": recalled,
-                "twin_recalled": twin_id is not None and twin_id in recalled,
-                "model_used": state.get("model_used"),
-                # The model's self-reported confidence, the number the router escalates on.
-                # Recorded so a report can show it beside the score (Day 7, step 2).
-                "confidence": triage.confidence,
-            },
+            labels=labels,
+            meta=meta,
         )
 
     def summarise(self, records: Sequence[Mapping[str, Any]]) -> dict[str, Any]:

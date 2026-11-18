@@ -78,9 +78,6 @@ def source_path(version: DataVersion) -> Path:
     return data_dir(version) / "incidents.jsonl"
 
 
-# v1, the frozen corpus every earlier run used.
-SOURCE_PATH = source_path("v1")
-
 Section = Literal["summary", "timeline", "root_cause", "remediation"]
 SECTIONS: tuple[Section, ...] = get_args(Section)
 
