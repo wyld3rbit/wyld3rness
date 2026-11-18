@@ -6,10 +6,12 @@ Beside the package: `code/examples/findyfixy/tests/` (its tests), `code/examples
 
 The package is `code/examples/findyfixy/src/findyfixy/`. Dependencies point inward: only entry points and `code/examples/findyfixy/src/findyfixy/observability/tracing.py` import the composition root `code/examples/findyfixy/src/findyfixy/wiring.py` or `code/examples/findyfixy/src/findyfixy/settings.py`, and `code/examples/findyfixy/tests/test_architecture.py` enforces it.
 
-**Router and triage**
-- `code/examples/findyfixy/src/findyfixy/triage/graph.py`: the small-model-first router graph.
-- `code/examples/findyfixy/src/findyfixy/triage/record.py`: the triage record and validate-retry for model output.
-- `code/examples/findyfixy/src/findyfixy/tools/investigate.py` and `code/examples/findyfixy/src/findyfixy/tools/deploys.py`: the tool-calling loop and the deploy-history tool.
+**Router, agent and triage**
+- `code/examples/findyfixy/src/findyfixy/triage/graph.py`: the small-model-first router graph, and its agent mode: investigate with tools, then decide, with a hand-over to a human when the loop runs out of turns or time.
+- `code/examples/findyfixy/src/findyfixy/triage/record.py`: the triage record, the agent's decision (an action from a closed set) and validate-retry for model output.
+- `code/examples/findyfixy/src/findyfixy/tools/investigate.py`: the tool-calling loop with its turn cap and deadline.
+- `code/examples/findyfixy/src/findyfixy/tools/deploys.py`, `code/examples/findyfixy/src/findyfixy/tools/services.py` and `code/examples/findyfixy/src/findyfixy/tools/memory.py`: the agent's read-only tools: the deploy log, the service map and incident search.
+- `code/examples/findyfixy/src/findyfixy/tools/submit.py`: `submit_decision`, how the agent finishes: its arguments are the validated decision, and it executes nothing.
 - `code/examples/findyfixy/src/findyfixy/events.py`: the run events the graph reports.
 - `code/examples/findyfixy/src/findyfixy/observability/adapter.py`: those events as OpenTelemetry spans, through the harness's `SpanTree`. The console turns it on when tracing is configured (`open_tracing` in `code/examples/findyfixy/src/findyfixy/observability/tracing.py`); `RunTracer` does the same for eval cases, which share one emitter across threads. `traced_sink` gives the console's event log a `run_traced` event per run, with the link to its trace.
 - `code/examples/findyfixy/src/findyfixy/llm.py`: the one place that calls the answering model.
@@ -22,7 +24,8 @@ The package is `code/examples/findyfixy/src/findyfixy/`. Dependencies point inwa
 
 **Evaluation**
 - `code/examples/findyfixy/src/findyfixy/evals/golden.py`: the golden set, built from the corpus.
-- `code/examples/findyfixy/src/findyfixy/evals/adapter.py`: FindyFixy as a system under test for the harness in `code/src/wyld3rness/`: holdout recall, the severity label and the twin data.
+- `code/examples/findyfixy/src/findyfixy/evals/golden_v2.py` and `code/examples/findyfixy/src/findyfixy/evals/answers_v2.py`: the v2 hard cases and their eval command (scores only).
+- `code/examples/findyfixy/src/findyfixy/evals/adapter.py`: FindyFixy as a system under test for the harness in `code/src/wyld3rness/`: holdout recall, the severity label, the twin data, and in agent mode the action label and the tool results the judge sees.
 - `code/examples/findyfixy/src/findyfixy/evals/answers.py`: the answer evaluation's entry point. It builds the live adapter and hands it to the harness command line. It also declares what the CI gate attests: the entry module whose imports make up the eval path, the data directory, the baseline, the lock file and the compose file, and the database check that stops a gate run on a stale ingest.
 - `code/examples/findyfixy/src/findyfixy/evals/queries.py` and `code/examples/findyfixy/src/findyfixy/evals/retrieval.py`: the labelled queries and the retrieval evaluation.
 

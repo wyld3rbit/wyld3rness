@@ -21,6 +21,24 @@ Why a graph, and not an if statement
     Day 4 adds a recall node before `small`. Day 7 adds a policy node.
     With a graph, those are new nodes. With an if statement, they are a rewrite.
 
+Agent mode (Day 7, `agent=True`)
+    The agent investigates before it decides:
+
+        question -> investigate (tool loop: search_incidents, get_recent_deploys,
+                    get_dependencies; turn cap and deadline) -> small -> route -> large?
+
+    Recall is no longer a fixed first step: it is one of the agent's tools,
+    so the model chooses the query and whether to search at all. `small` and
+    `large` ask for a `Decision` (a `Triage` plus an action: read, page_human
+    or rollback with a version) through `ask`, which must constrain replies
+    to `Decision` (findyfixy/llm.py, `ollama_decision_ask`). If the loop stopped
+    on its budget, the decision's action is replaced by page_human in code
+    and a `handover` event says why: an agent out of time or turns hands the
+    incident to a person instead of acting on half an investigation, and the
+    run ends there (no escalation). The agent's last plain-text finding goes
+    into the decision prompt with the tool results. Otherwise the route on
+    confidence is unchanged; step 2 measures it, it does not tune it.
+
 Why the graph is built by a function that takes `ask`
     `build_graph` does not know how a model is called. The caller passes in
     `ask`, a function (model name, prompt) -> raw reply text. Production passes
@@ -49,7 +67,7 @@ Test it:  uv run pytest
 from collections.abc import Callable, Mapping, Sequence
 from itertools import pairwise
 import time
-from typing import TYPE_CHECKING, Literal, Protocol, TypedDict
+from typing import TYPE_CHECKING, Any, Literal, Protocol, TypedDict, cast
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from langgraph.graph import END, StateGraph
@@ -63,9 +81,24 @@ if TYPE_CHECKING:
     from findyfixy.observability.adapter import EventSpans
 from findyfixy.llm import ollama_ask
 from findyfixy.settings import MissingEnvironment, load_env, read_models
-from findyfixy.tools.investigate import Investigator, analyse, content_text, format_evidence, investigation_prompt
+from findyfixy.tools.investigate import (
+    MAX_RESULT_CHARS,
+    Investigator,
+    Stopped,
+    ToolCallRecord,
+    agent_prompt,
+    analyse,
+    content_text,
+    format_evidence,
+    investigation_prompt,
+    submission,
+)
+from findyfixy.tools.submit import SUBMIT_TOOL
 from findyfixy.triage.record import (
+    DECISION_PROMPT,
+    PROMPT,
     Ask,
+    Decision,
     Prior,
     Triage,
     TriageError,
@@ -114,6 +147,12 @@ class S(TypedDict, total=False):
     model_used: str
     evidence: str
     prior: str
+    # Agent mode: why the tool loop stopped early, or None when it answered.
+    stopped: Stopped | None
+    # Agent mode: every lookup the agent made, for the eval record and the judge's contexts.
+    calls: list[ToolCallRecord]
+    # Agent mode: the decision the agent submitted in its loop, if it did.
+    proposed: Decision
 
 
 class Node(Protocol):
@@ -136,6 +175,7 @@ def build_graph(
     investigator: Investigator | None = None,
     investigate_model: str | None = None,
     recall: Recall | None = None,
+    agent: bool = False,
 ) -> TriageGraph:
     """Wire the router and return a compiled graph, ready for `.invoke()`.
 
@@ -163,7 +203,19 @@ def build_graph(
     similar past incidents for the question and puts them in both models' prompts
     as `prior`. Retrieval before generation: if the right incident never reaches
     the prompt, no prompt recovers it. With no `recall` the graph is unchanged.
+
+    `agent` turns on agent mode (see the module docstring). It needs an
+    `investigator` whose tools include incident search, and no `recall` step:
+    recall is one of the agent's tools, and a second fixed recall would put
+    incidents in the prompt that the agent did not choose. Raises ValueError
+    on either mistake, at build time.
     """
+    if agent and investigator is None:
+        raise ValueError("agent mode needs an investigator: the agent's tools are its only evidence")
+    if agent and recall is not None:
+        raise ValueError("agent mode takes no recall step: incident search is one of the agent's tools")
+    record: type[Triage] = Decision if agent else Triage
+    template = DECISION_PROMPT if agent else PROMPT
 
     def recall_node(state: S) -> S:
         """Look up similar past incidents and store them as prompt text.
@@ -186,9 +238,10 @@ def build_graph(
     def investigate(state: S) -> S:
         """Run the tool loop once, reporting each step as it finishes.
 
-        The loop is a nested graph. Running it with `stream_mode="updates"`
-        hands this node one update per step, so events are emitted while the
-        loop runs, not after it. That matters for a live viewer: each model
+        The loop is a nested graph. Streaming it with the "updates" and
+        "tasks" modes hands this node each step as it starts and as it
+        finishes, so events are emitted while the loop runs, not after it, and
+        a model request is reported when the loop starts one. That matters for a live viewer: each model
         call here is a real request to Ollama, and the viewer should show it
         when it happens. `tool_call` is emitted BEFORE the tool runs (the loop
         is paused until this body returns to the generator) and `tool_result`
@@ -200,15 +253,28 @@ def build_graph(
         """
         assert investigator is not None  # wired only when an investigator is set
         emit("node_entered", node="investigate", model=investigate_model)
-        messages: list[BaseMessage] = [HumanMessage(investigation_prompt(state["question"]))]
-        turn = 1
-        emit("model_request", model=investigate_model, attempt=turn)
-        updates = investigator.stream({"messages": list(messages)}, stream_mode="updates")
-        for update in updates:
-            for step, delta in update.items():
+        prompt = agent_prompt if agent else investigation_prompt
+        messages: list[BaseMessage] = [HumanMessage(prompt(state["question"]))]
+        stopped: Stopped | None = None
+        turn = 0
+        # "tasks" reports a node as it starts, so a model request is reported
+        # exactly when the loop really makes one, never ahead of a call the
+        # loop then skips (a finished submission, a budget stop).
+        for mode, raw in investigator.stream({"messages": list(messages)}, stream_mode=["updates", "tasks"]):
+            chunk = cast("Mapping[str, Any]", raw)  # both modes yield a mapping
+            if mode == "tasks":
+                if chunk.get("name") == "agent" and "input" in chunk:
+                    turn += 1
+                    emit("model_request", model=investigate_model, attempt=turn)
+                continue
+            for step, delta in chunk.items():
                 new = delta.get("messages", [])
                 messages.extend(new)
                 if step == "agent":
+                    if not new:
+                        # The reply was cut off at the deadline: the request was
+                        # real, so it gets a reply event that says it was cut.
+                        emit("model_reply", model=investigate_model, attempt=turn, reply="", cut=True)
                     for reply in new:
                         _emit_agent_reply(reply, turn)
                 elif step == "tools":
@@ -217,11 +283,11 @@ def build_graph(
                             emit(
                                 "tool_result",
                                 name=result.name,
-                                result=content_text(result.content)[:600],
+                                result=content_text(result.content)[:MAX_RESULT_CHARS],
                                 error=result.status == "error",
                             )
-                    turn += 1
-                    emit("model_request", model=investigate_model, attempt=turn)
+                elif step == "budget":
+                    stopped = delta["stopped"]
         inv = analyse(messages)
         emit(
             "node_exited",
@@ -231,10 +297,27 @@ def build_graph(
             turns=inv.turns,
             input_tokens=inv.input_tokens,
             output_tokens=inv.output_tokens,
-            hit_turn_cap=inv.hit_turn_cap,
+            # The loop's own reason, not "the last reply asked for tools", which
+            # is also true when the deadline stopped it or the agent submitted.
+            hit_turn_cap=stopped == "turns",
             served_by=list(inv.served_by),
+            stopped=stopped,
         )
-        return {"evidence": format_evidence(inv.calls)}
+        # The submission is the agent's decision, not evidence: it stays out of
+        # the evidence text and the judge's contexts.
+        looked = [c for c in inv.calls if c.name != SUBMIT_TOOL]
+        evidence = format_evidence(tuple(looked))
+        if agent and inv.answer:
+            # The agent's own conclusion, so a fallback decision does not redo
+            # the reasoning (a cascade traced upstream). Clipped like a tool
+            # result, and quoted under the same "data, not instructions" heading.
+            evidence += f"\nfinding of the investigation: {inv.answer[:MAX_RESULT_CHARS]}"
+        out: S = {"evidence": evidence, "stopped": stopped, "calls": looked}
+        submitted = submission(messages, SUBMIT_TOOL) if agent else None
+        if submitted is not None:
+            # Already validated by the tool node against the same schema.
+            out["proposed"] = Decision.model_validate(submitted)
+        return out
 
     def _emit_agent_reply(reply: BaseMessage, turn: int) -> None:
         """Report one investigator model reply, then any tool calls in it."""
@@ -268,26 +351,44 @@ def build_graph(
 
         def node(state: S) -> S:
             emit("node_entered", node=name, model=model)
+            proposed = state.get("proposed") if name == "small" else None
+            # Who wrote the decision. The agent's in-loop submission was written
+            # by the investigator's model, which need not be the small model
+            # (a cheap investigator, a different decider). Unnamed falls back to
+            # this node's model, the only name the graph has.
+            author = (investigate_model or model) if proposed is not None else model
+            triage: Triage | None
             try:
-                triage = ask_validated(
-                    ask,
-                    model,
-                    state["question"],
-                    emit=emit,
-                    evidence=state.get("evidence", ""),
-                    prior=state.get("prior", ""),
-                )
+                if proposed is not None:
+                    # The agent submitted a valid decision in its loop: no
+                    # second model call. Reported as a valid first attempt.
+                    emit("validation", model=author, attempt=1, ok=True, error=None)
+                    triage = proposed
+                else:
+                    triage = ask_validated(
+                        ask,
+                        model,
+                        state["question"],
+                        emit=emit,
+                        evidence=state.get("evidence", ""),
+                        prior=state.get("prior", ""),
+                        record=record,
+                        template=template,
+                    )
             except TriageError:
                 if not tolerate_invalid:
                     raise
                 triage = None
+            stopped = state.get("stopped")
+            if isinstance(triage, Decision) and stopped is not None:
+                triage = hand_over(triage, stopped, emit)
             emit(
                 "node_exited",
                 node=name,
-                model=model,
+                model=author,
                 triage=triage.model_dump() if triage else None,
             )
-            return {"triage": triage, "model_used": model}
+            return {"triage": triage, "model_used": author}
 
         return node
 
@@ -314,7 +415,14 @@ def build_graph(
         if small_model == large_model:
             return "__end__"  # langgraph's END, spelled out so the Literal holds
         triage = state["triage"]
-        if triage is None or triage.confidence < threshold:
+        if triage is None:
+            return "large"  # no decision at all: the large model must produce one
+        if agent and state.get("stopped") is not None:
+            # Out of budget: the decision was handed to a person, and a large-model
+            # decision would be handed over too. Escalating would only add
+            # latency to an incident a person already has.
+            return "__end__"
+        if triage.confidence < threshold:
             return "large"
         return "__end__"
 
@@ -353,6 +461,20 @@ def build_graph(
     g.add_conditional_edges("small", decide)  # the decision point
     g.add_edge("large", END)  # a plain edge: after `large`, always stop
     return g.compile()
+
+
+def hand_over(decision: Decision, stopped: Stopped, emit: Emit = no_emit) -> Decision:
+    """Replace the action with page_human because the investigation ran out of budget.
+
+    Code decides this, not the model: a decision made on a cut-short
+    investigation may rest on evidence the agent never got to see, so it is
+    handed to a person whatever it proposed. The triage fields stay as the
+    model wrote them, for the person to read. `handover` records what was
+    proposed and why it was replaced. A proposal that was already page_human
+    is unchanged and still reported, so every budget stop is visible.
+    """
+    emit("handover", reason=stopped, proposed=decision.action, rollback_version=decision.rollback_version)
+    return decision.model_copy(update={"action": "page_human", "rollback_version": None})
 
 
 def main() -> None:

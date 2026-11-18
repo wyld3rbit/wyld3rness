@@ -13,7 +13,7 @@ from typing import Any
 
 from langchain_ollama import ChatOllama
 
-from findyfixy.triage.record import Reply, Triage
+from findyfixy.triage.record import Decision, Reply, Triage
 
 # How the answering model is called, defined once for every place that builds it
 # (`ollama_ask`, the stress variant, the investigator).
@@ -48,6 +48,25 @@ def answer_options() -> dict[str, Any]:
     }
 
 
+def warm_model(model: str) -> None:
+    """Load `model` into Ollama's memory, so the next timed call does not pay for it.
+
+    Why: Ollama loads weights on a model's first request. With the agent's
+    wall-clock deadline (Day 7), that load counted against the first case's
+    budget, so case 1 could be handed to a person for a reason that has nothing
+    to do with the model's answer. In production the model is already loaded;
+    only a fresh eval process starts cold.
+
+    One request, capped at one generated token, with the same options as every
+    answering call. Ollama keeps the model loaded for its keep-alive window
+    (5 minutes by default), which every gap between cases is far inside.
+
+    Fails like `ollama_ask`: a stopped server, a model that is not pulled, or a
+    stall past the timeout raises, and the run stops before any case starts.
+    """
+    ChatOllama(model=model, num_predict=1, **answer_options()).invoke("ok")
+
+
 def ollama_ask(model: str, prompt: str) -> str:
     """The real `ask`: call one Ollama model and return its raw reply text.
 
@@ -67,7 +86,21 @@ def ollama_ask(model: str, prompt: str) -> str:
     Fails when: Ollama is not running (connection error), the model is not
     pulled (404), or the server stalls past the timeout. Nothing here retries.
     """
-    llm = ChatOllama(model=model, format=Triage.model_json_schema(), **answer_options())
+    return _ask(model, prompt, Triage)
+
+
+def ollama_decision_ask(model: str, prompt: str) -> str:
+    """The agent's decision call (Day 7): the same as `ollama_ask`, constrained to `Decision`.
+
+    A separate `ask`, not a flag on `ollama_ask`, so the fixed path's call
+    stays byte for byte what it was, and the graph keeps one seam shape.
+    """
+    return _ask(model, prompt, Decision)
+
+
+def _ask(model: str, prompt: str, record: type[Triage]) -> Reply:
+    """One greedy call, its reply constrained to `record`'s JSON Schema."""
+    llm = ChatOllama(model=model, format=record.model_json_schema(), **answer_options())
     return reply_from(llm.invoke(prompt))
 
 

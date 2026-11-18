@@ -57,6 +57,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import ExitStack, contextmanager
+from functools import partial
 from pathlib import Path
 import sys
 from types import MappingProxyType
@@ -106,12 +107,43 @@ ATTEST_SOURCE_ROOTS: tuple[str, ...] = ("src", "examples/findyfixy/src")
 ATTEST_EXTRA: tuple[str, ...] = (
     # the golden set, the corpus `make ingest` loads (and its twin pairs), the deploy tool's data
     "examples/findyfixy/data/v1/",
+    "examples/findyfixy/data/services.json",  # the agent's service map (Day 7), shared by every data version
     "examples/findyfixy/evals/baseline.json",  # what the gate compared against
     "uv.lock",  # library versions change answers (tokenizers, rerankers, clients)
     "examples/findyfixy/docker-compose.yml",  # pins the Postgres and pgvector image the retrieval runs on
 )
 PROG = "findyfixy-eval"
 NO_RECALL_HELP = "negative control: run without the recall step. Never saved as a baseline."
+# Day 7: the agent (investigate with tools, then decide) is the system under
+# test. `--fixed` runs the earlier fixed path (recall, one model call, route)
+# for comparison only.
+FIXED_FLAG = "--fixed"
+# The flags that belong to the gate. The gate's baseline and attestation are
+# made on the agent, so a fixed-path run (and a v2 run) is scores only.
+GATE_FLAGS = ("--gate", "--write-baseline", "--baseline-from")
+
+
+def asks_for(args: Sequence[str], flags: Sequence[str]) -> bool:
+    """True when an argument is, or abbreviates, one of `flags`. Pure.
+
+    argparse accepts any unambiguous prefix (`--ga` for `--gate`), so an exact
+    match would let an abbreviation through. `--flag=value` counts too.
+    """
+    for arg in args:
+        name = arg.split("=", 1)[0]
+        if name.startswith("--") and len(name) > 2 and any(flag.startswith(name) for flag in flags):
+            return True
+    return False
+
+
+def take_fixed_flag(args: list[str]) -> tuple[bool, list[str]]:
+    """Split `--fixed` off the arguments (the harness's parser does not know it). Pure.
+
+    Exact match only: `--fixed` is this app's flag, parsed here, so no prefix rule applies.
+    """
+    return FIXED_FLAG in args, [a for a in args if a != FIXED_FLAG]
+
+
 # How FindyFixy marked a control run before the harness had `negative_control`:
 # reports written before 2026-11-09 carry `recall_enabled: False` instead. The
 # harness refuses such a report as a baseline and keeps the key out of one, which
@@ -147,6 +179,7 @@ def open_live_session(
     tracing: Tracing | None = None,
     version: DataVersion = "v1",
     goldens: Sequence[GoldenCase] | None = None,
+    agent: bool = True,
 ) -> Iterator[Session]:
     """Open the real database, retriever and embedder, and yield the live adapter.
 
@@ -154,7 +187,7 @@ def open_live_session(
     qwen2.5:7b). Everything heavy is imported here, so importing this module
     stays cheap. The retriever is warmed once before the harness stamps the
     time, so model loading does not land in case 1's latency. The Ollama models
-    still load on first use, so case 1 may be slower.
+    are warmed the same way, so a load never uses up case 1's agent deadline.
 
     `negative_control` builds the graph without the recall step (`--no-recall`).
     Scores must fall and the gate must fail. The harness records the flag in
@@ -183,9 +216,17 @@ def open_live_session(
     never imports v2 code, so the attestation never covers v2. A shared
     `retrieval` must already read `version`: open_v2_session passes the v2
     sibling of the console's.
+
+    `agent` (the default since Day 7) runs the agent; False runs the earlier
+    fixed path, for comparison. The agent: the small model
+    investigates with incident search (through the same holdout recall),
+    the deploy log of `version` and the service map, then decides
+    (findyfixy/wiring.py, `build_agent`). The negative control still removes
+    recall: in agent mode that means search returns nothing.
     """
-    from findyfixy.llm import ollama_ask
+    from findyfixy.llm import ollama_ask, ollama_decision_ask, warm_model
     from findyfixy.triage.graph import build_graph
+    from findyfixy.wiring import build_agent
 
     if version != "v1":
         # v1's freshness check runs as the attestation's precondition. A v2 run
@@ -216,9 +257,27 @@ def open_live_session(
         scores = LangfuseScores(tracing.config) if tracing is not None else None
         shared = SharedRetrieval(stage=stage_spans(tracing), version=version) if retrieval is None else retrieval
         shared.candidates(goldens[0].question, 1)  # warm-up, not measured
+        # Each distinct model once, the large one first: every case starts on the
+        # small model, so it must be the one resident when case 1 starts, even
+        # if the machine cannot hold both. Holding both is not guaranteed: if
+        # they do not fit together, each escalation still pays for a reload
+        # inside the run, which is why a model comparison sets both to one name.
+        for name in dict.fromkeys((large, small)):
+            warm_model(name)
 
         def make_graph(recall: Recall) -> Invokable:
             """The production graph with recall bound to one case, or none for the control."""
+            if agent:
+                search = (lambda question: []) if negative_control else recall
+                return build_graph(
+                    ollama_decision_ask,
+                    small_model=small,
+                    large_model=large,
+                    emit=emit,
+                    investigator=build_agent(small, search, version),
+                    investigate_model=small,
+                    agent=True,
+                )
             return build_graph(
                 ollama_ask,
                 small_model=small,
@@ -233,10 +292,11 @@ def open_live_session(
             small_model=small,
             large_model=large,
             run_tracer=run_tracer,
+            agent=agent,
         )
         yield Session(
             sut=sut,
-            cases=[to_case(g) for g in goldens],
+            cases=[to_case(g, agent=agent) for g in goldens],
             judge_model=models.judge,
             embed=shared.embed,
             tracing=tracing,
@@ -258,6 +318,7 @@ def main(
     argv: Sequence[str] | None = None,
     *,
     open_session: SessionFactory = open_live_session,
+    open_fixed_session: SessionFactory | None = None,
     reports_dir: Path = REPORTS,
     baseline_path: Path = BASELINE_PATH,
     attestation_path: Path = ATTESTATION_PATH,
@@ -269,11 +330,26 @@ def main(
     fake adapter and a temp directory. The attestation is fingerprinted over
     the real tree (`WORKSPACE`) either way; only where it is written moves.
     `database_check` is the attestation's precondition; tests pass a fake.
+
+    The agent is the system under test. `--fixed` runs the earlier fixed path
+    on v1 (scores only): the gate, the baseline and the attestation are made
+    on the agent, so they are refused with it. A saved fixed-path report frozen
+    as the baseline is caught by the gate itself: provenance `system` differs. `open_fixed_session` is the
+    fixed path's session factory, injected in tests; the default is the live
+    session with `agent` off.
     """
+    fixed, args = take_fixed_flag(list(argv) if argv is not None else sys.argv[1:])
+    if fixed and asks_for(args, GATE_FLAGS):
+        print(f"{PROG}: the gate and the baseline cover the agent; run --fixed without them", file=sys.stderr)
+        return 2
     return cli.main(
-        argv,
+        args,
         prog=PROG,
-        run=cli.live_runner(open_session, golden_path=GOLDEN_PATH, repo_dir=ROOT),
+        run=cli.live_runner(
+            (open_fixed_session or partial(open_live_session, agent=False)) if fixed else open_session,
+            golden_path=GOLDEN_PATH,
+            repo_dir=ROOT,
+        ),
         reports_dir=reports_dir,
         baseline_path=baseline_path,
         display_root=ROOT,

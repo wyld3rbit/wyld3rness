@@ -208,6 +208,9 @@
           <option value="v2">v2, hard cases (scores only)</option>
         </select>
       </div>
+      <div class="field" id="agent-field" hidden>
+        <label class="check" title="Day 7: the agent investigates with tools (incident search, the deploy log, the service map) within 6 turns and 25 seconds, stating a hypothesis before each lookup, and submits its decision: read, page a human, or roll back to a named version. Out of budget, it hands the incident to a human. Nothing it proposes is executed. The agent is the system under test and the gate's baseline; untick it to run the earlier fixed path for comparison (scores only)."><input type="checkbox" id="agent" checked> Agent: investigate, then decide</label>
+      </div>
       <div class="field" id="cases-field" hidden>
         <label for="cases">Cases, first N of <span id="cases-size">the set</span></label>
         <input type="number" id="cases" min="1" value="2" title="The gate applies only when every case runs: the baseline is defined on the full set.">
@@ -298,7 +301,7 @@
         <text class="s" x="65" y="274">incident report</text>
       </g>
       <g class="node" id="n_inv" data-status="built" data-code="graph:investigate">
-        <title>In: The question.&#10;Out: Evidence text from tool calls. May be empty.&#10;Logic: A tool-calling model decides whether to call get_recent_deploys. The loop has a turn cap. Every run pays for these model requests, even when no tool is called.</title>
+        <title>In: The question.&#10;Out: Evidence text from tool calls. May be empty.&#10;Logic: A tool-calling model decides whether to call get_recent_deploys. The loop has a turn cap. Every run pays for these model requests, even when no tool is called.&#10;Agent mode (Day 7, the system under test): the model investigates with three read-only tools (incident search, the deploy log, the service map) within 6 turns and 25 seconds, and finishes by submitting its decision as a tool call (a separate decision call is the fallback). Out of budget, the decision is handed to a human in code.</title>
         <rect x="142" y="228" width="130" height="64" rx="8"/>
         <text class="t" x="207" y="254">Investigate</text>
         <text class="s" x="207" y="271">tool-calling model</text>
@@ -346,7 +349,7 @@
         <text class="badge" x="65" y="119" id="b_recall"> </text>
       </g>
       <g class="node" id="n_tool" data-status="built" data-code="findyfixy/tools/deploys.py">
-        <title>In: Service name and a number of hours.&#10;Out: JSON of that service's deploys in the window, newest first.&#10;Logic: Arguments are validated again inside the tool, so a direct call is as safe as one from a model.</title>
+        <title>In: The tool the model asked for and its arguments.&#10;Out: get_recent_deploys: that service's deploys in the window, newest first. Agent mode adds search_incidents (similar past incidents, through the same recall), get_dependencies (what a service depends on, and what depends on it) and submit_decision (the decision record as the call's arguments; it ends the loop and executes nothing). Out of turns or time, the decision's action becomes page_human.&#10;Logic: Arguments are validated again inside each tool, so a direct call is as safe as one from a model. Every tool only reads.</title>
         <rect x="142" y="62" width="130" height="64" rx="8"/>
         <text class="t" x="207" y="86">Deploy tool</text>
         <text class="s" x="207" y="103">get_recent_deploys</text>
@@ -444,7 +447,7 @@ let hunting = false;          // true once the stream shows a hunt_started
 let iteration = [];           // events of the hunt's current run, for the slow replay
 // Cases per eval set, by mode, and the default count. Filled from /config; the
 // server reads each size from its set and checks every request against it.
-const evalCfg = { sizes: { live: null, live_v2: null, fake: null }, fallback: 2 };
+const evalCfg = { sizes: { live: null, live_v2: null, fake: null }, fallback: 2, agent: false, tools: true };
 // How many cases the chosen set has: live v1, live v2 (the hard cases) or the fake set.
 function evalSize() {
   if ($("mode").value !== "live") return evalCfg.sizes.fake;
@@ -535,6 +538,8 @@ function labelsText(d) {
   }).join("; ") || "no labels";
 }
 function evalVerdict(d) {
+  // Only a run started here as a live fixed-path run (evalAgent false) is scores only; a replay leaves it unset.
+  if (view.evalAgent === false && view.evalData !== "v2") return { cls: "warn", badge: "scores only", text: "scores only: the baseline is the agent's, so a fixed-path run never applies the gate" };
   if (view.evalData === "v2") return { cls: "warn", badge: "scores only", text: "scores only: the v2 hard cases have no baseline, so a v2 run never applies the gate, full or partial" };
   if (d.subset) return { cls: "warn", badge: "subset, no gate", text: `subset, gate not applied (${d.summary.n} case${d.summary.n === 1 ? "" : "s"} ran; the baseline is defined on the full set)` };
   if (d.gate.length === 0) return { cls: "ok", badge: "gate PASS", text: "PASS: the gate found no problem against evals/baseline.json" };
@@ -552,15 +557,16 @@ const DESCRIBE = {
     tool_call: (d) => `${d.name}(${Object.entries(d.args).map(([k, v]) => k + "=" + v).join(", ")})`,
     tool_result: (d) => d.error ? `ERROR ${clip(d.result, 80)}` : clip(d.result, 90),
     model_request: (d) => `${d.model ?? "tool model"}, attempt ${d.attempt}`,
-    model_reply: (d) => `${d.model ?? "tool model"}, attempt ${d.attempt}, ${d.reply.length} chars, ${servedText(d)}${d.input_tokens != null ? `, ${d.input_tokens} in / ${d.output_tokens} out tokens` : ""}`,
+    model_reply: (d) => d.cut ? `${d.model ?? "tool model"}, attempt ${d.attempt}, cut off at the deadline` : `${d.model ?? "tool model"}, attempt ${d.attempt}, ${d.reply.length} chars, ${servedText(d)}${d.input_tokens != null ? `, ${d.input_tokens} in / ${d.output_tokens} out tokens` : ""}`,
     validation: (d) => d.ok ? `attempt ${d.attempt} valid` : `attempt ${d.attempt} INVALID`,
     fault_injected: (d) => `INJECTED: ${d.model} reply replaced, ${d.field} = ${d.value}`,
     retry: (d) => `re-asking ${d.model}, attempt ${d.attempt}`,
     node_exited: (d) => {
       if (d.node === "recall") return d.incidents.length ? `${d.incidents.length} similar incident(s): ${d.incidents.join(", ")}` : "no similar incidents";
-      if (d.node === "investigate") return `${d.calls} tool call(s), ${d.turns} turn(s), ${tokensText(d)}${d.hit_turn_cap ? ", HIT TURN CAP" : ""}`;
+      if (d.node === "investigate") return `${d.calls} tool call(s), ${d.turns} turn(s), ${tokensText(d)}${d.stopped ? ", STOPPED: out of " + (d.stopped === "deadline" ? "time" : "turns") : d.hit_turn_cap ? ", HIT TURN CAP" : ""}`;
       return d.triage ? `${d.node} produced a record` : `${d.node} produced no valid record`;
     },
+    handover: (d) => `out of ${d.reason === "deadline" ? "time" : "turns"}: proposed ${d.proposed}${d.rollback_version ? " " + d.rollback_version : ""}, handed to a human instead`,
     route: (d) => `confidence ${d.confidence === null ? "none" : d.confidence} vs ${d.threshold} -> ${d.target === "__end__" ? "done" : d.target}${d.threshold > 1 ? " (forced)" : ""}`,
     run_finished: (d) => `final: ${d.model_used} model`,
     run_failed: (d) => `${d.error_type}`,
@@ -860,6 +866,7 @@ async function animate(ev) {
     case "model_reply":
       view.served[view.node] = d.served_by;
       mark(view.node, "active");
+      if (d.cut) { mark(view.node, "warn"); setBadge(view.node, `cut off at the deadline, attempt ${d.attempt}`); break; }
       if (d.mismatch) { view.hasMismatch = true; mark(view.node, "bad"); setBadge(view.node, "MODEL MISMATCH"); break; }
       if ($("b_" + view.node).textContent === "reply INJECTED") break;
       setBadge(view.node, `replied, attempt ${d.attempt}`);
@@ -891,9 +898,14 @@ async function animate(ev) {
       }
       if (d.node === "investigate") {
         view.toolStep = d;
-        mark("inv", d.hit_turn_cap ? "bad" : "ok");
+        mark("inv", d.hit_turn_cap || d.stopped ? "bad" : "ok");
         setBadge("inv", d.calls ? `${d.calls} call${d.calls === 1 ? "" : "s"}, ${d.turns} turns` : "no lookup");
       }
+      break;
+    case "handover":
+      // The decision's action was replaced in code: the loop ran out of budget.
+      mark(view.node, "warn");
+      setBadge(view.node, "handed to a human");
       break;
     case "route": {
       if (view.node === "small") await travel("e_val_route");
@@ -915,11 +927,12 @@ async function animate(ev) {
         ["Severity", d.triage.severity, "sev"],
         ["Component", d.triage.component, ""],
         ["Next action", d.triage.next_action, ""],
+        ...(d.triage.action ? [["Action", d.triage.action + (d.triage.rollback_version ? " " + d.triage.rollback_version : "") + " (proposed, not executed)", d.triage.action === "rollback" ? "bad" : ""]] : []),
         ["Confidence", String(d.triage.confidence), ""],
         ["Served by", servedSummary(), view.hasMismatch ? "bad" : ""],
         ...(view.stress !== "none" ? [["Stress", view.stress.replaceAll("_", " "), "bad"]] : []),
         ...(view.recall ? [["Recalled", view.recall.length ? view.recall.join(", ") : "nothing similar", ""]] : []),
-        ...(view.toolStep ? [["Tool step", `${view.toolStep.calls} call(s), ${view.toolStep.turns} turn(s), ${tokensText(view.toolStep)}`, ""]] : []),
+        ...(view.toolStep ? [["Tool step", `${view.toolStep.calls} call(s), ${view.toolStep.turns} turn(s), ${tokensText(view.toolStep)}${view.toolStep.stopped ? ", stopped: out of " + (view.toolStep.stopped === "deadline" ? "time" : "turns") : ""}`, view.toolStep.stopped ? "bad" : ""]] : []),
       ]);
       break;
     }
@@ -1020,7 +1033,11 @@ async function startRun() {
     const n = Math.round(Number($("cases").value));
     const size = evalSize() ?? n;
     if (mode === "live") body.data = $("data").value;
+    // Always sent live: the server treats an unset flag as the agent.
+    if (mode === "live") body.agent = agentOn();
     view.evalData = body.data || "v1";
+    // A fake run has its own scripted system and keeps the gate; only a live fixed-path run is scores only.
+    view.evalAgent = mode === "fake" || Boolean(body.agent);
     body.cases = Number.isFinite(n) && n >= 1 ? Math.min(size, n) : evalCfg.fallback;
     $("cases").value = body.cases;
   } else if (mode === "fake") {
@@ -1029,8 +1046,12 @@ async function startRun() {
     body.question = $("custom").value.trim() || $("question").value;
     body.force_escalation = $("force").checked;
     body.force_retry = $("retry").checked;
-    body.use_tools = $("usetools").checked;
-    body.stress = $("stress").value;
+    body.agent = agentOn();
+    // The agent has its own tools and asks for a decision, so the Day 2 tool
+    // step, stress and the injected retry do not apply (the server refuses them).
+    body.use_tools = !body.agent && $("usetools").checked;
+    body.stress = body.agent ? "none" : $("stress").value;
+    if (body.agent) body.force_retry = false;
     if ($("hunt").checked) body.hunt_max = Math.max(1, Math.min(50, Number($("huntmax").value) || 20));
   }
   say("");
@@ -1096,6 +1117,13 @@ function showPreview() {
 
 // Triage runs choose a question (live) or a scenario (fake). Eval runs choose
 // only how many golden cases to run; live or fake still applies.
+// The agent is on only when its option is shown (live, and the server has the
+// agent) and ticked. A hidden checkbox keeps its default tick, so reading the
+// tick alone would ask for an agent the server cannot run.
+function agentOn() {
+  return !$("agent-field").hidden && $("agent").checked;
+}
+
 function syncMode() {
   const live = $("mode").value === "live";
   const evalRun = $("kind").value === "eval";
@@ -1105,6 +1133,9 @@ function syncMode() {
   const size = evalSize();
   if (size) { $("cases").max = size; $("cases-size").textContent = String(size); }
   $("fake-field").hidden = live || evalRun;
+  $("agent-field").hidden = !live || !evalCfg.agent;
+  const agent = agentOn();
+  for (const id of ["usetools", "stress", "retry"]) $(id).disabled = agent || (id === "usetools" && !evalCfg.tools);
   for (const id of ["qset-field", "question-field", "live-extra"]) $(id).hidden = !live || evalRun;
 }
 
@@ -1112,6 +1143,7 @@ async function init() {
   $("mode").addEventListener("change", syncMode);
   $("data").addEventListener("change", syncMode);
   $("kind").addEventListener("change", syncMode);
+  $("agent").addEventListener("change", syncMode);
   $("run").addEventListener("click", startRun);
   // The server says whether anything will stop; the message repeats its answer.
   $("stop").addEventListener("click", async () => {
@@ -1137,6 +1169,9 @@ async function init() {
   syncMode();
   try {
     const cfg = await (await fetch("/config")).json();
+    evalCfg.agent = Boolean(cfg.agent_available);
+    evalCfg.tools = Boolean(cfg.tools_available);
+    syncMode();
     if (!cfg.tools_available) {
       $("usetools").checked = false;
       $("usetools").disabled = true;

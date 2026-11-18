@@ -36,9 +36,9 @@ Cost and failure modes (read before trusting this at scale)
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Literal, get_args
+from typing import Literal, Self, get_args
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from findyfixy.events import Emit, no_emit
 
@@ -67,6 +67,48 @@ class Triage(BaseModel):
         le=1,
         description="How sure you are the triage is correct, from 0 to 1.",
     )
+
+
+# What the agent may propose, a closed set (Day 7). Each maps to an action class
+# the policy will judge (lesson step 3): `read` is looking (logs, metrics,
+# deploys) and changes nothing; `page_human` hands the incident to a person, a
+# reversible step; `rollback` undoes a deploy, the destructive one. A closed set
+# means the agent can never propose an action the code does not know.
+Action = Literal["read", "page_human", "rollback"]
+
+# A version as the deploy log writes it. The pattern keeps free text (an
+# injected command, a flag like `--all`) out of the one field that names what
+# to undo.
+VERSION_PATTERN = r"^\d+\.\d+\.\d+$"
+
+
+class Decision(Triage):
+    """The agent's decision after it investigated: the triage, plus what to do (Day 7).
+
+    A subclass, so everything that reads a `Triage` (the router, the judge's
+    rendering, the console) reads a `Decision` unchanged. The fixed path keeps
+    asking for a plain `Triage`, so its prompt and its answers do not move.
+
+    The two new fields are a proposal, not an order. Nothing runs on them:
+    the policy checkpoint (step 3) judges each proposal against facts the model
+    cannot forge, such as the deploy log.
+    """
+
+    action: Action = Field(description="read, page_human or rollback")
+    rollback_version: str | None = Field(
+        default=None,
+        pattern=VERSION_PATTERN,
+        description="for rollback only: the version to roll back to, as the deploy log writes it",
+    )
+
+    @model_validator(mode="after")
+    def _version_only_with_rollback(self) -> Self:
+        """A rollback names its version; no other action carries one."""
+        if self.action == "rollback" and self.rollback_version is None:
+            raise ValueError("a rollback must name rollback_version")
+        if self.action != "rollback" and self.rollback_version is not None:
+            raise ValueError("rollback_version is only for action rollback")
+        return self
 
 
 class Reply(str):
@@ -116,6 +158,22 @@ CONFIDENCE_RULE = "confidence as a number from 0 to 1 (not a percentage)"
 PROMPT = (
     "You are an incident triage assistant. Read the report and reply with one "
     "JSON object: severity (sev1 to sev4), component, next_action, and " + CONFIDENCE_RULE + ".\n\nReport: {question}"
+)
+
+# The agent's final step (Day 7). The same reply shape as PROMPT plus the action
+# rule. Each action says when it fits, because a small model given three labels
+# and no rule picks the safest-sounding one: in the trial run, 4 of 5 cases
+# were handed to a human with "investigate" as the next step.
+DECISION_PROMPT = (
+    "You are an incident triage agent. You investigated the report with tools; "
+    "the results are below. Reply with one JSON object: severity (sev1 to sev4), "
+    "component (the service at fault, which may be upstream of the one that alerted), "
+    "next_action (one concrete first step), " + CONFIDENCE_RULE + ", and action:\n"
+    "- read: the next step is to look further (logs, metrics, a dashboard); nothing changes.\n"
+    "- page_human: a person must act now, or the evidence is not enough to decide.\n"
+    "- rollback: a deploy in the tool results, shortly before the problem began, most likely caused it. "
+    "Set rollback_version to the version to roll back to, the one deployed before it.\n"
+    "rollback_version is null for any other action.\n\nReport: {question}"
 )
 
 # Where the report ends in a built prompt: the first of these, or the end. The
@@ -220,23 +278,15 @@ class TriageError(Exception):
         self.last_error = last_error
 
 
-def parse_triage(reply: str) -> Triage:
-    """Turn raw model text into a `Triage`. Pure. Raises `ValidationError`.
-
-    `model_validate_json` handles both failures with one exception type:
-    text that is not JSON, and JSON that breaks a rule.
-    """
-    return Triage.model_validate_json(reply)
-
-
-def build_prompt(question: str, evidence: str = "", prior: str = "") -> str:
+def build_prompt(question: str, evidence: str = "", prior: str = "", template: str = PROMPT) -> str:
     """Wrap a report in the triage instructions. Pure.
 
     With no `evidence` and no `prior` the prompt is exactly what it was before
     tools and recall existed. Order: report, similar past incidents, tool
-    results. The most specific facts, the tool output, sit last.
+    results. The most specific facts, the tool output, sit last. `template` is
+    PROMPT on the fixed path and DECISION_PROMPT for the agent.
     """
-    prompt = PROMPT.format(question=question)
+    prompt = template.format(question=question)
     if prior:
         prompt += PRIOR_PROMPT.format(prior=prior)
     if evidence:
@@ -253,6 +303,8 @@ def ask_validated(
     emit: Emit = no_emit,
     evidence: str = "",
     prior: str = "",
+    record: type[Triage] = Triage,
+    template: str = PROMPT,
 ) -> Triage:
     """Ask `model`, validate, and retry with the error text up to `max_retries`.
 
@@ -266,8 +318,13 @@ def ask_validated(
 
     `emit` reports each request, reply and validation result (findyfixy/events.py).
     The default reports nothing, so existing callers are unchanged.
+
+    `record` and `template` pick what is asked for: a `Triage` with PROMPT (the
+    fixed path, unchanged), or a `Decision` with DECISION_PROMPT (the agent).
+    `ask` must constrain the reply to the same record's schema. The result
+    is an instance of `record` (a `Decision` is a `Triage`).
     """
-    prompt = build_prompt(question, evidence, prior)
+    prompt = build_prompt(question, evidence, prior, template)
     attempts = 0
     while True:
         attempts += 1
@@ -286,13 +343,13 @@ def ask_validated(
             output_tokens=getattr(reply, "output_tokens", None),
         )
         try:
-            triage = parse_triage(reply)
+            triage = record.model_validate_json(reply)
         except ValidationError as err:
             emit("validation", model=model, attempt=attempts, ok=False, error=str(err))
             if attempts > max_retries:
                 raise TriageError(model, attempts, err) from err
             prompt = RETRY_PROMPT.format(
-                prompt=build_prompt(question, evidence, prior),
+                prompt=build_prompt(question, evidence, prior, template),
                 reply=reply[:_MAX_ECHO_CHARS],
                 error=err,
             )

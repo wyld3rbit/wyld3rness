@@ -14,6 +14,9 @@
 
 # The data version `make eval` reads: v1 (frozen, the gate's set) or v2 (Day 7's hard cases).
 DATA ?= v1
+# FIXED=1 (or yes, true) makes `make eval` run the earlier fixed path instead of the agent, for
+# comparison. Scores only. Any other value runs the agent, the system under test.
+FIXED ?=
 
 # Memory for the Colima VM, in GB. 6 on most days, 8 on Langfuse days:
 #   make up COLIMA_MEMORY=8
@@ -132,6 +135,7 @@ eval-retrieval:
 # harness in wyld3rness/eval/. Needs make up and Ollama. Each run takes many
 # minutes. Reports land in code/examples/findyfixy/reports/ (git-ignored).
 #   eval          run and print the scores, no gate. DATA=v2 runs the hard set (default v1, the frozen set).
+#                 FIXED=1 runs the earlier fixed path instead of the agent, for comparison.
 #   eval-gate     the release gate: exit 1 if answers got worse vs examples/findyfixy/evals/baseline.json.
 #                 A pass of the full set on a clean tree also writes
 #                 examples/findyfixy/evals/attestation.json. Commit it: CI checks it. It does
@@ -139,7 +143,7 @@ eval-retrieval:
 #   eval-baseline freeze this run as the new baseline. Review the diff before committing.
 #   eval-negative the proof the gate works: run WITHOUT recall; it must fail
 eval:
-	$(RUN) $(if $(filter v2,$(DATA)),findyfixy-eval-v2,findyfixy-eval)
+	$(RUN) $(if $(filter v2,$(DATA)),findyfixy-eval-v2,findyfixy-eval) $(if $(filter 1 yes true,$(FIXED)),--fixed)
 
 eval-gate:
 	$(RUN) findyfixy-eval --gate
