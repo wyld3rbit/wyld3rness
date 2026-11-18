@@ -54,7 +54,7 @@ if TYPE_CHECKING:
     from wyld3rness.trace.command import CommandTrace, Step
 
 # Fixed so runs are comparable across the direct and MCP paths. The data
-# (data/deploys.json) holds two auth deploys near the boundary: 2.14.1 at 3h
+# (data/v1/deploys.json) holds two auth deploys near the boundary: 2.14.1 at 3h
 # and 2.14.0 at 30h. A correct answer names the first and not the second.
 TASK = (
     "Which deploys to the auth service happened in the last 24 hours? "

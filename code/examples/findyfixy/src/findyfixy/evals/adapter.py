@@ -81,8 +81,21 @@ def to_case(golden: GoldenCase) -> Case:
         question=golden.question,
         reference=golden.reference,
         expected={SEVERITY: golden.expected_severity},
-        meta={"source_id": golden.source_id, "twin_id": golden.twin_id},
+        meta=_meta(golden),
     )
+
+
+def _meta(golden: GoldenCase) -> dict[str, Any]:
+    """The ids the adapter needs, plus a v2 case's expected action class when it has one.
+
+    v1 cases carry exactly the two ids they always did, so a v1 record is
+    unchanged byte for byte.
+    """
+    meta: dict[str, Any] = {"source_id": golden.source_id, "twin_id": golden.twin_id}
+    expected_action = getattr(golden, "expected_action", None)
+    if expected_action is not None:
+        meta["expected_action"] = expected_action
+    return meta
 
 
 # ---- Holdout recall ---------------------------------------------------------
@@ -210,7 +223,12 @@ class FindyFixy:
             if triage is None:
                 raise ValueError("graph returned no triage")
         except Exception as err:
-            meta = {"recalled_ids": [p.incident_id for p in seen], "twin_recalled": False, "model_used": None}
+            meta = {
+                "recalled_ids": [p.incident_id for p in seen],
+                "twin_recalled": False,
+                "model_used": None,
+                "confidence": None,
+            }
             if spans is not None:
                 spans.finish_run(error=f"{type(err).__name__}: {err}")
             return Answer.failed(f"{type(err).__name__}: {err}", meta)
@@ -226,6 +244,9 @@ class FindyFixy:
                 "recalled_ids": recalled,
                 "twin_recalled": twin_id is not None and twin_id in recalled,
                 "model_used": state.get("model_used"),
+                # The model's self-reported confidence, the number the router escalates on.
+                # Recorded so a report can show it beside the score (Day 7, step 2).
+                "confidence": triage.confidence,
             },
         )
 

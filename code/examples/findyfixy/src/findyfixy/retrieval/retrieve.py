@@ -70,7 +70,8 @@ from typing import TYPE_CHECKING, get_args
 from pgvector import Vector
 from rank_bm25 import BM25Okapi
 
-from findyfixy.retrieval.ingest import Embedder
+from findyfixy.paths import DataVersion
+from findyfixy.retrieval.ingest import Embedder, table_for
 from findyfixy.retrieval.search import embed_query
 from findyfixy.triage.record import Prior, Severity
 
@@ -297,32 +298,34 @@ def _check(query: str, k: int) -> None:
 
 # -- the real seams -----------------------------------------------------------
 
-_PASSAGES_SQL = "SELECT id, incident_id, section, service, severity, body FROM chunks ORDER BY id"
+# `{table}` is one of ingest.TABLES, a constant per data version, never input.
+_PASSAGES_SQL = "SELECT id, incident_id, section, service, severity, body FROM {table} ORDER BY id"
 
 # `%s::text IS NULL OR service = %s` makes the filter optional in one query.
 _VECTOR_SQL = """
 SELECT id, embedding <=> %s AS distance
-FROM chunks
+FROM {table}
 WHERE (%s::text IS NULL OR service = %s)
 ORDER BY embedding <=> %s
 LIMIT %s
 """
 
 
-def load_passages(conn: Connection) -> list[Passage]:
-    """Read every chunk. The connection needs no vector support for this."""
-    return [Passage(*row) for row in conn.execute(_PASSAGES_SQL).fetchall()]
+def load_passages(conn: Connection, version: DataVersion = "v1") -> list[Passage]:
+    """Read every chunk of one version's table. The connection needs no vector support for this."""
+    return [Passage(*row) for row in conn.execute(_PASSAGES_SQL.format(table=table_for(version))).fetchall()]
 
 
-def postgres_vector_search(conn: Connection, embed: Embedder) -> VectorSearch:
-    """Build the real vector search: embed the query, then pgvector cosine.
+def postgres_vector_search(conn: Connection, embed: Embedder, version: DataVersion = "v1") -> VectorSearch:
+    """Build the real vector search over one version's table: embed the query, then pgvector cosine.
 
     The connection needs `register_vector` applied so a `Vector` can be sent.
     """
+    query_sql = _VECTOR_SQL.format(table=table_for(version))
 
     def search(query: str, limit: int, service: str | None) -> list[tuple[str, float]]:
         vector = Vector(embed_query(embed, query))
-        rows = conn.execute(_VECTOR_SQL, (vector, service, service, vector, limit))
+        rows = conn.execute(query_sql, (vector, service, service, vector, limit))
         return [(row[0], float(row[1])) for row in rows.fetchall()]
 
     return search

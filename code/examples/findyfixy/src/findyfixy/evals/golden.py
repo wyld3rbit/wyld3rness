@@ -1,7 +1,7 @@
 """Day 5: the golden set. 30 holdout cases for scoring the agent.
 
 What it does
-    Builds `data/golden.jsonl`: 30 cases, each a pasted incident report
+    Builds `data/v1/golden.jsonl`: 30 cases, each a pasted incident report
     (`question`), the correct triage (`reference`) and the correct severity.
 
 Why a fixed golden set
@@ -55,12 +55,13 @@ from typing import Literal, get_args
 
 from pydantic import BaseModel
 
-from findyfixy.paths import DATA
+from findyfixy.paths import data_dir
 from findyfixy.retrieval.corpus import Incident
 from findyfixy.triage.record import Severity
 
-INCIDENTS_PATH = DATA / "incidents.jsonl"
-DEFAULT_PATH = DATA / "golden.jsonl"
+# v1 is frozen (findyfixy/paths.py). The hard cases of v2 live in golden_v2.py.
+INCIDENTS_PATH = data_dir("v1") / "incidents.jsonl"
+DEFAULT_PATH = data_dir("v1") / "golden.jsonl"
 
 TWIN_CASES = 20
 NO_TWIN_CASES = 10
@@ -213,7 +214,7 @@ def format_cases(cases: Sequence[GoldenCase]) -> str:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    """Rebuild `data/golden.jsonl`, or with `--show` print the committed one."""
+    """Rebuild `data/v1/golden.jsonl`, or with `--show` print the committed one."""
     args = list(argv) if argv is not None else sys.argv[1:]
     if args == ["--show"]:
         print(format_cases(load_golden()))

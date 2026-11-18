@@ -201,6 +201,13 @@
           <option value="fake">Fake (scripted, no model)</option>
         </select>
       </div>
+      <div class="field" id="data-field" hidden>
+        <label for="data">Golden set</label>
+        <select id="data" title="v1 is frozen and is the gate's set. v2 holds 30 hard cases: no precedent, conflicting signals, cascades, noisy alerts, poisoned incidents and rollbacks. A v2 run shows scores only, never the gate.">
+          <option value="v1" selected>v1, frozen (the gate's set)</option>
+          <option value="v2">v2, hard cases (scores only)</option>
+        </select>
+      </div>
       <div class="field" id="cases-field" hidden>
         <label for="cases">Cases, first N of <span id="cases-size">the set</span></label>
         <input type="number" id="cases" min="1" value="2" title="The gate applies only when every case runs: the baseline is defined on the full set.">
@@ -437,7 +444,12 @@ let hunting = false;          // true once the stream shows a hunt_started
 let iteration = [];           // events of the hunt's current run, for the slow replay
 // Cases per eval set, by mode, and the default count. Filled from /config; the
 // server reads each size from its set and checks every request against it.
-const evalCfg = { sizes: { live: null, fake: null }, fallback: 2 };
+const evalCfg = { sizes: { live: null, live_v2: null, fake: null }, fallback: 2 };
+// How many cases the chosen set has: live v1, live v2 (the hard cases) or the fake set.
+function evalSize() {
+  if ($("mode").value !== "live") return evalCfg.sizes.fake;
+  return $("data").value === "v2" ? evalCfg.sizes.live_v2 : evalCfg.sizes.live;
+}
 
 // ---- small helpers -------------------------------------------------------
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -523,6 +535,7 @@ function labelsText(d) {
   }).join("; ") || "no labels";
 }
 function evalVerdict(d) {
+  if (view.evalData === "v2") return { cls: "warn", badge: "scores only", text: "scores only: the v2 hard cases have no baseline, so a v2 run never applies the gate, full or partial" };
   if (d.subset) return { cls: "warn", badge: "subset, no gate", text: `subset, gate not applied (${d.summary.n} case${d.summary.n === 1 ? "" : "s"} ran; the baseline is defined on the full set)` };
   if (d.gate.length === 0) return { cls: "ok", badge: "gate PASS", text: "PASS: the gate found no problem against evals/baseline.json" };
   return { cls: "bad", badge: "gate FAIL", text: `FAIL: ${d.gate.length} gate problem(s), listed under Result` };
@@ -1005,7 +1018,9 @@ async function startRun() {
     // The server checks the range again (1 to the set's size). This only keeps
     // the request sensible when the box holds something odd.
     const n = Math.round(Number($("cases").value));
-    const size = evalCfg.sizes[mode] ?? n;
+    const size = evalSize() ?? n;
+    if (mode === "live") body.data = $("data").value;
+    view.evalData = body.data || "v1";
     body.cases = Number.isFinite(n) && n >= 1 ? Math.min(size, n) : evalCfg.fallback;
     $("cases").value = body.cases;
   } else if (mode === "fake") {
@@ -1085,7 +1100,9 @@ function syncMode() {
   const live = $("mode").value === "live";
   const evalRun = $("kind").value === "eval";
   $("cases-field").hidden = !evalRun;
-  const size = evalCfg.sizes[$("mode").value];
+  $("data-field").hidden = !(evalRun && live);
+  $("data").querySelector('option[value="v2"]').disabled = !evalCfg.sizes.live_v2;
+  const size = evalSize();
   if (size) { $("cases").max = size; $("cases-size").textContent = String(size); }
   $("fake-field").hidden = live || evalRun;
   for (const id of ["qset-field", "question-field", "live-extra"]) $(id).hidden = !live || evalRun;
@@ -1093,6 +1110,7 @@ function syncMode() {
 
 async function init() {
   $("mode").addEventListener("change", syncMode);
+  $("data").addEventListener("change", syncMode);
   $("kind").addEventListener("change", syncMode);
   $("run").addEventListener("click", startRun);
   // The server says whether anything will stop; the message repeats its answer.

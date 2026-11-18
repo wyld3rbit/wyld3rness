@@ -888,6 +888,8 @@ def test_a_full_eval_without_a_baseline_ends_in_eval_failed(tmp_path):
         {"mode": "fake"},
         {"mode": "weird", "cases": 2},
         {"mode": "fake", "cases": 2, "scenario": "stay_small"},
+        {"mode": "fake", "cases": 2, "data": "v2"},
+        {"mode": "live", "cases": 2, "data": "v3"},
     ],
 )
 def test_bad_eval_requests_are_422(server, payload):
@@ -909,6 +911,41 @@ def test_the_live_limit_is_the_live_sets_own_size():
     finally:
         srv.shutdown()
         srv.server_close()
+
+
+def test_a_full_v2_run_uses_the_hard_set_and_never_applies_the_gate(tmp_path):
+    """data v2 runs the v2 suite; a full v2 run ends with gate None, and no baseline is read."""
+    from findyfixy.console.eval_run import EvalResult, EvalSuite
+
+    used = []
+
+    def suite(name):
+        def run(n, *, emit, on_event, should_stop):
+            used.append(name)
+            return EvalResult(
+                report={"aggregates": {"overall": {"n": n, "n_run_errors": 0, "scores": {}}}}, subset=False
+            )
+
+        return EvalSuite(run=run, size=30)
+
+    hub = RunHub(
+        live_models=("s", "l"),
+        live_eval=suite("v1"),
+        live_eval_v2=suite("v2"),
+        baseline_path=tmp_path / "missing.json",  # a gated run would fail on this
+        sleep=no_wait,
+        fake_delay=0,
+    )
+    srv, port = _serve(hub)
+    try:
+        assert post_eval(port, {"mode": "live", "cases": 30, "data": "v2"})[0] == 202
+        events = stream(port)
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    assert used == ["v2"]
+    assert events[-1]["kind"] == "eval_finished"
+    assert events[-1]["data"]["gate"] is None and events[-1]["data"]["subset"] is False
 
 
 def test_a_live_eval_without_models_is_503(server):
@@ -951,7 +988,7 @@ def test_config_reports_each_eval_sets_size(server):
     """The page reads the sizes from /config; live is None when not configured."""
     _, port = server
     cfg = json.loads(call(port, "GET", "/config")[1])
-    assert cfg["eval_sizes"] == {"live": None, "fake": FAKE_SIZE}
+    assert cfg["eval_sizes"] == {"live": None, "live_v2": None, "fake": FAKE_SIZE}
     assert cfg["eval_default"] == 2
 
 

@@ -18,11 +18,13 @@ Notable changes to wyld3rness and its example app. The format follows [Keep a Ch
 - **Incident memory.** Synthetic past incidents are chunked, embedded and stored in Postgres with pgvector by an ingestion job that is safe to re-run. ([ADR 0003](docs/adr/0003-incident-memory-in-postgres.md))
 - **Hybrid retrieval.** Keyword and vector search fused by reciprocal rank, then a cross-encoder reranker, returning incidents rather than chunks. ([ADR 0004](docs/adr/0004-hybrid-retrieval-with-reranker.md))
 - **Console.** A local page that runs a triage or an eval and shows each step on the live architecture diagram.
+- **Versioned data.** The corpus, golden set and deploy log live in `data/v1/` (frozen, the gate's set) and `data/v2/` (30 hard cases: no precedent, conflicting signals, cascades, noisy alerts, poisoned incidents with injected instructions, and destructive rollbacks). Each version has its own database table. `make eval DATA=v2` measures v2 through its own command, which the v1 attestation does not cover, and never runs the gate. The console's Eval run panel picks either set; one loaded embedder and reranker serve both. Each case record now carries the model's self-reported confidence.
 
 ### Tooling and security
 
 - Locked dependencies with a 7-day release cooldown, `make audit` for known vulnerabilities and unexpected startup hooks, and container images pinned by digest and scanned with Grype before first use.
 - A privacy scanner in the pre-commit and pre-push hooks blocks personal data and secrets in files and commit metadata.
+- The attestation is verified at push time and in CI. It used to be checked at commit time too, which blocked committing a change to attested code: the gate can only attest a committed tree.
 - Ruff and mypy in the hooks and in CI. CI runs with a read-only token and no secrets, with actions pinned by commit.
 - `make check` covers documentation drift, the repository tools' tests and the privacy scan.
 
@@ -31,7 +33,8 @@ Notable changes to wyld3rness and its example app. The format follows [Keep a Ch
 - Linux installs pull PyTorch's GPU libraries although nothing uses a GPU, which slows CI. CPU-only wheels are planned with the service image.
 - The model names come from an untracked `.env` file, so a model swap changes answers without failing CI. Only the judge is pinned, through the baseline.
 - The stale-database check catches a changed embedding model name, not a new revision of the same model.
-- The golden set is small and synthetic, and it has not yet exercised escalation.
+- The golden sets are small and synthetic. v1 has not exercised escalation; v2 is built to, and is not yet measured.
+- `make ingest` embeds v1's 800 chunks a second time for the v2 table, because each version is loaded on its own.
 
 ## History
 

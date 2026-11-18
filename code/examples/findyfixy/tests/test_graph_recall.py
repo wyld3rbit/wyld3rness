@@ -185,10 +185,10 @@ def test_every_real_incident_fits_under_the_cap_with_its_fix() -> None:
     """The longest line in the corpus must not lose its ending to the cap."""
     import json
 
-    from findyfixy.paths import DATA
+    from findyfixy.paths import data_dir
 
     longest = 0
-    for line in (DATA / "incidents.jsonl").read_text().splitlines():
+    for line in (data_dir("v1") / "incidents.jsonl").read_text().splitlines():
         r = json.loads(line)
         prior = Prior(r["id"], r["service"], r["severity"], r["summary"], r["root_cause"], r["remediation"])
         (text,) = format_prior([prior]).splitlines()

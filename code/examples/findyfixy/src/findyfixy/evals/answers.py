@@ -28,7 +28,7 @@ What the attestation covers
     modules are outside the closure, so changing them needs no new run.
 
     One input is not a file: the database. The run reads its passages from
-    Postgres, loaded by `make ingest` from `data/incidents.jsonl`. A table
+    Postgres, loaded by `make ingest` from `data/<version>/incidents.jsonl`. A table
     loaded from an older corpus would pass with today's file hashes, so
     `check_database` runs ingest's own diff before the run and again before
     the attestation is written. If a re-ingest would change anything, the
@@ -63,11 +63,11 @@ from types import MappingProxyType
 
 from findyfixy.evals.adapter import FindyFixy, Invokable, to_case
 from findyfixy.evals.golden import DEFAULT_PATH as GOLDEN_PATH
-from findyfixy.evals.golden import load_golden
+from findyfixy.evals.golden import GoldenCase, load_golden
 from findyfixy.events import Emit, no_emit
 from findyfixy.observability.adapter import RunTracer
 from findyfixy.observability.tracing import open_tracing
-from findyfixy.paths import EVALS, REPORTS, ROOT, WORKSPACE
+from findyfixy.paths import EVALS, REPORTS, ROOT, WORKSPACE, DataVersion
 from findyfixy.settings import MissingEnvironment, load_env, read_models
 from findyfixy.triage.graph import Recall
 from findyfixy.wiring import SharedRetrieval, stage_spans
@@ -89,18 +89,23 @@ ATTEST_ENTRY: tuple[str, ...] = ("findyfixy.evals.answers",)
 ATTEST_SOURCE_ROOTS: tuple[str, ...] = ("src", "examples/findyfixy/src")
 # What the eval path reads that no import shows, relative to the workspace root (code/).
 #
-# The whole data directory, not a hand-picked list: a file added there is
-# covered without anyone remembering it, at the cost of a rerun when an
-# unused file (the retrieval eval's queries) changes. A test fails when code
+# v1's whole data folder, not a hand-picked list: a file added there is
+# covered without anyone remembering it. A test fails when code
 # on the eval path builds a path from findyfixy/paths.py that falls outside this set.
 #
 # The residual gap: a path that is not built from those constants (an
 # environment variable, a string, a model downloaded by name into a cache) is
 # invisible to that test. The embedding and reranker weights are pinned by
 # name and revision in the code, which is fingerprinted, not by their bytes.
+#
+# v1 only. This command runs v1 alone; v2 runs go through answers_v2.py, which
+# imports this module and never the reverse. So v2's files and modules
+# (answers_v2.py, golden_v2.py, corpus_v2.py) stay out of the closure and the
+# set: editing a hard case cannot void the v1 attestation, because it cannot
+# change a v1 answer.
 ATTEST_EXTRA: tuple[str, ...] = (
     # the golden set, the corpus `make ingest` loads (and its twin pairs), the deploy tool's data
-    "examples/findyfixy/data/",
+    "examples/findyfixy/data/v1/",
     "examples/findyfixy/evals/baseline.json",  # what the gate compared against
     "uv.lock",  # library versions change answers (tokenizers, rerankers, clients)
     "examples/findyfixy/docker-compose.yml",  # pins the Postgres and pgvector image the retrieval runs on
@@ -114,11 +119,11 @@ NO_RECALL_HELP = "negative control: run without the recall step. Never saved as 
 LEGACY_CONTROL = MappingProxyType({"recall_enabled": False})
 
 
-def check_database() -> list[str]:
-    """Why the live database does not hold the current corpus, or nothing.
+def check_database(version: DataVersion = "v1") -> list[str]:
+    """Why the live database does not hold the current corpus of `version`, or nothing.
 
     One short read-only connection, no model loaded: ingest's own diff of
-    `data/incidents.jsonl` against the stored hashes and model names. A
+    `data/<version>/incidents.jsonl` against the stored hashes and model names. A
     database that cannot be reached is a reason too, with the fix.
     """
     import psycopg
@@ -128,7 +133,7 @@ def check_database() -> list[str]:
 
     try:
         with connect() as conn:
-            return database_staleness(conn)
+            return database_staleness(conn, version)
     except psycopg.Error as err:
         return [f"cannot check that the database is current ({type(err).__name__}): run make up, then make ingest"]
 
@@ -140,6 +145,8 @@ def open_live_session(
     emit: Emit = no_emit,
     retrieval: SharedRetrieval | None = None,
     tracing: Tracing | None = None,
+    version: DataVersion = "v1",
+    goldens: Sequence[GoldenCase] | None = None,
 ) -> Iterator[Session]:
     """Open the real database, retriever and embedder, and yield the live adapter.
 
@@ -169,17 +176,31 @@ def open_live_session(
     tracing is configured (`open_tracing`) and closes it at the end, which
     sends what is queued. With tracing, every case's graph run is a trace
     under the harness's case span, and the scores land on it.
+
+    `version` picks the table recall reads, and `goldens` the cases (v1's
+    golden set when None). Only answers_v2.open_v2_session passes anything
+    else (the v2 command line and the console both go through it); this module
+    never imports v2 code, so the attestation never covers v2. A shared
+    `retrieval` must already read `version`: open_v2_session passes the v2
+    sibling of the console's.
     """
     from findyfixy.llm import ollama_ask
     from findyfixy.triage.graph import build_graph
 
+    if version != "v1":
+        # v1's freshness check runs as the attestation's precondition. A v2 run
+        # writes no attestation, so its table is checked here, as the live run
+        # starts: a stale table would score answers against an old corpus.
+        stale = check_database(version)
+        if stale:
+            raise ConfigError("; ".join(stale))
     load_env()
     try:
         models = read_models()
     except MissingEnvironment as err:
         raise ConfigError(f"set the environment variable {err}") from err
     small, large = models.small, models.large
-    goldens = load_golden(GOLDEN_PATH)
+    goldens = list(goldens) if goldens is not None else load_golden(GOLDEN_PATH)
     owned = retrieval is None
     own_tracing = ExitStack()
     shared: SharedRetrieval | None = None
@@ -193,7 +214,7 @@ def open_live_session(
         # The score backend is chosen here, in the composition root; the
         # harness only sees the ScoreSink seam.
         scores = LangfuseScores(tracing.config) if tracing is not None else None
-        shared = SharedRetrieval(stage=stage_spans(tracing)) if retrieval is None else retrieval
+        shared = SharedRetrieval(stage=stage_spans(tracing), version=version) if retrieval is None else retrieval
         shared.candidates(goldens[0].question, 1)  # warm-up, not measured
 
         def make_graph(recall: Recall) -> Invokable:
