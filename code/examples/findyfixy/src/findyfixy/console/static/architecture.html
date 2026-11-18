@@ -349,7 +349,7 @@
         <text class="badge" x="65" y="119" id="b_recall"> </text>
       </g>
       <g class="node" id="n_tool" data-status="built" data-code="findyfixy/tools/deploys.py">
-        <title>In: The tool the model asked for and its arguments.&#10;Out: get_recent_deploys: that service's deploys in the window, newest first. Agent mode adds search_incidents (similar past incidents, through the same recall) and get_dependencies (what a service depends on, and what depends on it).&#10;Logic: Arguments are validated again inside each tool, so a direct call is as safe as one from a model. Every tool only reads.</title>
+        <title>In: The tool the model asked for and its arguments.&#10;Out: get_recent_deploys: that service's deploys in the window, newest first. Agent mode adds search_incidents (similar past incidents, through the same recall), get_dependencies (what a service depends on, and what depends on it) and submit_decision (the decision record as the call's arguments; it ends the loop and executes nothing). Out of turns or time, the decision's action becomes page_human.&#10;Logic: Arguments are validated again inside each tool, so a direct call is as safe as one from a model. Every tool only reads.</title>
         <rect x="142" y="62" width="130" height="64" rx="8"/>
         <text class="t" x="207" y="86">Deploy tool</text>
         <text class="s" x="207" y="103">get_recent_deploys</text>

@@ -36,6 +36,7 @@ Notable changes to wyld3rness and its example app. The format follows [Keep a Ch
 - The stale-database check catches a changed embedding model name, not a new revision of the same model.
 - The golden sets are small and synthetic: 30 cases each, so one run's per-group differences are within noise.
 - `make ingest` embeds v1's 800 chunks a second time for the v2 table, because each version is loaded on its own.
+- Action quality is judged against the incident's known fix, while the agent proposes the next operational step, so the agent's baseline scores it low and its floor is low. The judge's action rubric is to be rewritten for the agent's job, then the baseline refrozen.
 - The Day 2 tool step (`findyfixy-direct-run`, `findyfixy-mcp-run`) reports a turn-cap stop from the messages, not from the loop's own stop reason. The two agree on that loop, which has no deadline and no submit tool; the agent path uses the loop's reason.
 
 ## History

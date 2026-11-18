@@ -1,18 +1,20 @@
 {
   "floors": {
-    "action_quality": 0.8667,
-    "context_recall": 0.8778,
-    "faithfulness": 0.7356,
-    "response_relevancy": 0.6178,
+    "action_quality": 0.2667,
+    "context_recall": 0.7756,
+    "faithfulness": 0.4412,
+    "response_relevancy": 0.6278,
     "severity_match": 0.7167
   },
   "max_failure_rate": 0.15,
   "provenance": {
-    "git_sha": "9a4d12c",
+    "agent_deadline_s": 25.0,
+    "agent_max_turns": 6,
+    "git_sha": "7647e04",
     "golden_sha256": "2d005967149bbc1fc3e9572ba042a5edbac13e471f3b4ffc9cbbb4a7d1d22a1f",
     "judge_digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
     "judge_model": "qwen2.5:7b",
-    "large_model": "qwen3:4b-instruct",
+    "large_model": "qwen3:8b",
     "prompt_versions": {
       "action_quality": "5e7aabcd51d649502e5bbb3f79991c17bf00ae5f2788842e8d10abf7185e49b6",
       "context_recall": "b7c458e7e9abe416b6109a979f4764fee6ca03bb5aeb910ce81cd5b68ccef243",
@@ -20,38 +22,39 @@
       "response_relevancy": "14500d3685b529ec7175a4955df25392d1b99a9f01feabac2cc477a3f46e9362"
     },
     "recall_k": 3,
-    "small_model": "qwen3:4b-instruct",
+    "small_model": "qwen3:8b",
+    "system": "agent",
     "threshold": 0.7,
-    "timestamp_utc": "2026-10-27T04:27:44+00:00"
+    "timestamp_utc": "2026-11-18T06:30:32+00:00"
   },
   "scores": {
     "action_quality": {
       "ci": [
-        0.8166666666666667,
-        0.9833333333333333
+        0.2,
+        0.4666666666666667
       ],
-      "mean": 0.9166666666666666
+      "mean": 0.31666666666666665
     },
     "context_recall": {
       "ci": [
-        0.8555555555555556,
-        0.9833333333333333
+        0.7144444444444444,
+        0.9155555555555555
       ],
-      "mean": 0.9277777777777777
+      "mean": 0.8255555555555555
     },
     "faithfulness": {
       "ci": [
-        0.7022222222222222,
-        0.8688888888888889
+        0.38063492063492066,
+        0.6122222222222222
       ],
-      "mean": 0.7855555555555556
+      "mean": 0.4911904761904762
     },
     "response_relevancy": {
       "ci": [
-        0.6442724935937852,
-        0.6896826113555243
+        0.6536130257836935,
+        0.7022579697345803
       ],
-      "mean": 0.6677625016951377
+      "mean": 0.67783647913629
     },
     "severity_match": {
       "ci": [
