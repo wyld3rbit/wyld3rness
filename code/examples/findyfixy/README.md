@@ -11,6 +11,7 @@ The package is `code/examples/findyfixy/src/findyfixy/`. Dependencies point inwa
 - `code/examples/findyfixy/src/findyfixy/triage/record.py`: the triage record, the agent's decision (an action from a closed set) and validate-retry for model output.
 - `code/examples/findyfixy/src/findyfixy/tools/investigate.py`: the tool-calling loop with its turn cap and deadline.
 - `code/examples/findyfixy/src/findyfixy/tools/deploys.py`, `code/examples/findyfixy/src/findyfixy/tools/services.py` and `code/examples/findyfixy/src/findyfixy/tools/memory.py`: the agent's read-only tools: the deploy log, the service map and incident search.
+- `code/examples/findyfixy/src/findyfixy/tools/submit.py`: `submit_decision`, how the agent finishes: its arguments are the validated decision, and it executes nothing.
 - `code/examples/findyfixy/src/findyfixy/events.py`: the run events the graph reports.
 - `code/examples/findyfixy/src/findyfixy/observability/adapter.py`: those events as OpenTelemetry spans, through the harness's `SpanTree`. The console turns it on when tracing is configured (`open_tracing` in `code/examples/findyfixy/src/findyfixy/observability/tracing.py`); `RunTracer` does the same for eval cases, which share one emitter across threads. `traced_sink` gives the console's event log a `run_traced` event per run, with the link to its trace.
 - `code/examples/findyfixy/src/findyfixy/llm.py`: the one place that calls the answering model.

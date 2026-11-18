@@ -18,7 +18,7 @@ Details: [design](code/docs/design.md), [strategy](code/docs/strategy.md).
 
 ## Run it
 
-You need [uv](https://docs.astral.sh/uv/), Docker Compose with a runtime (Colima or Docker) and [Ollama](https://ollama.com/). Plan for 16 GB of memory and about 8.5 GB of model downloads.
+You need [uv](https://docs.astral.sh/uv/), Docker Compose with a runtime (Colima or Docker) and [Ollama](https://ollama.com/). Plan for 16 GB of memory and about 11 GB of model downloads.
 
 ```bash
 cp code/examples/findyfixy/.env.example code/examples/findyfixy/.env    # model names; edit if you use other models

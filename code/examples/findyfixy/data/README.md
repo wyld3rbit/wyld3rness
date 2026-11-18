@@ -16,6 +16,5 @@ v1 stays the regression check: a v1 gate run must match the last attested run ca
 Not versioned:
 
 - `code/examples/findyfixy/data/services.json` is the service map the agent's `get_dependencies` tool reads: for each of the eight services, the services whose failure can break it. It describes the system, not a data set, so every version shares it. A test checks that each v2 cascade's cause sits upstream of the service that alerted.
-
 - `code/examples/findyfixy/data/incidents.json` is a small hand-written bank of incident excerpts with answer keys, used by the Day 2 measurements.
 - `code/examples/findyfixy/data/retrieval_eval.jsonl` holds the labelled queries that score retrieval, written against corpus v1.
