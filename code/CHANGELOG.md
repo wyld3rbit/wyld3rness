@@ -11,6 +11,7 @@ Notable changes to wyld3rness and its example app. The format follows [Keep a Ch
 - **Attested CI gate.** A full, clean, passing run writes an attestation: the hash of every answer-affecting file, found from the eval's import closure plus declared data, lock and compose files. CI recomputes the hashes in its own job and fails a change no passing run covers. ([ADR 0006](docs/adr/0006-eval-gate-as-harness-component-attested-in-ci.md))
 - **Tracing.** Every run, eval case and command is an OpenTelemetry trace in a self-hosted Langfuse, with a span per step, eval scores on their case, and a cost on each model call from a committed reference price table. Export is batched on its own thread, so a slow or stopped backend does not slow a run. ([ADR 0007](docs/adr/0007-every-run-is-a-trace-in-a-self-hosted-backend.md))
 - **Action ledger.** Every action an app's agents propose passes a deterministic ledger before it may reach a system. An undeclared action is rejected, a destructive one is downgraded to the app's fallback unless its preconditions hold against the app's own facts, and an action that changes a system holds its blast radius, so two that could interfere never run together; at most one destructive action is in flight per incident. It reads a proposal's fields, never its prose, and executes nothing. Each verdict carries its reasons and proposer.
+- **Credential broker.** A token per tool call, scoped to one agent, one tool and one resource and expiring in five minutes (a JWT signed with HMAC-SHA256 through PyJWT). An agent gets tokens only for the tools it was granted, and a token for another agent, tool or resource, from another key or past its expiry is refused. The signing key is random per process and held in memory. Every tool FindyFixy's agent and the console's tool step are given is wrapped: the call is refused, and the tool never runs, without a valid token, and a tool given without a grant fails at startup. The Day 2 transport measurements (`findyfixy-direct-run`, `findyfixy-mcp-run`) call the deploy tool unwrapped.
 
 ### Example app: FindyFixy
 
@@ -34,6 +35,7 @@ Notable changes to wyld3rness and its example app. The format follows [Keep a Ch
 
 ### Known issues
 
+- The credential broker issues and verifies tokens in the same process today, so it proves the token contract rather than isolating processes; the check is built to move with a tool behind a service.
 - Linux installs pull PyTorch's GPU libraries although nothing uses a GPU, which slows CI. CPU-only wheels are planned with the service image.
 - The model names come from an untracked `.env` file, so a model swap changes answers without failing CI. Only the judge is pinned, through the baseline.
 - The stale-database check catches a changed embedding model name, not a new revision of the same model.

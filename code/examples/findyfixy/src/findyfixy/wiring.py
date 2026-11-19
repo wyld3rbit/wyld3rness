@@ -16,7 +16,7 @@ functions, so importing this module costs nothing.
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from functools import partial
+from functools import cache, partial
 import threading
 from typing import TYPE_CHECKING
 
@@ -36,6 +36,7 @@ if TYPE_CHECKING:
     from findyfixy.triage.graph import Recall
     from findyfixy.triage.record import AlertFacts, Decision
     from wyld3rness.action.ledger import Verdict
+    from wyld3rness.identity.broker import CredentialBroker
     from wyld3rness.trace.tracing import Tracing
 
 
@@ -135,6 +136,19 @@ def build_judge(version: "DataVersion", alert: "AlertFacts | None" = None) -> Ju
     return judge_factory(load_facts(version, alert), alert)()
 
 
+@cache
+def process_broker() -> "CredentialBroker":
+    """The credential broker for this process, built on first use with a random in-memory key.
+
+    One per process: every agent in it shares the key, and nothing is stored.
+    The grants are the app's (tools/guard.py).
+    """
+    from findyfixy.tools.guard import GRANTS
+    from wyld3rness.identity.broker import CredentialBroker
+
+    return CredentialBroker(GRANTS)
+
+
 def build_agent(
     model: str, recall: "Recall", version: "DataVersion" = "v1", alert: "AlertFacts | None" = None
 ) -> Agent:
@@ -148,23 +162,31 @@ def build_agent(
     once and shared with the judge. One builder for the eval and the console,
     so the two cannot run different agents.
 
-    Every tool here only reads. Nothing the agent proposes is executed; the
-    action ledger judges each proposal, and execution waits for approval.
+    Every tool here only reads, and each call carries a token the process's
+    credential broker issued for this agent, tool and resource, verified
+    before the tool reads (tools/guard.py). Nothing the agent proposes is
+    executed; the action ledger judges each proposal, and execution waits for
+    approval.
     """
     from langchain_ollama import ChatOllama
 
     from findyfixy.llm import answer_options
+    from findyfixy.tools.guard import AGENT, guard
     from findyfixy.tools.investigate import AGENT_DEADLINE_S, AGENT_MAX_TURNS, build_investigator
     from findyfixy.tools.memory import make_search_tool
     from findyfixy.tools.services import make_services_tool
     from findyfixy.tools.submit import SUBMIT_TOOL, make_submit_tool
 
     changes = load_facts(version, alert)
+    broker = process_broker()
     tools = [
-        make_search_tool(recall),
-        changes_tool(version, changes, alert),
-        make_services_tool(),
-        make_submit_tool(),
+        guard(tool, broker, AGENT)
+        for tool in (
+            make_search_tool(recall),
+            changes_tool(version, changes, alert),
+            make_services_tool(),
+            make_submit_tool(),
+        )
     ]
     llm = ChatOllama(model=model, **answer_options()).bind_tools(tools)
     investigator = build_investigator(

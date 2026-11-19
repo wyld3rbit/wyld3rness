@@ -40,6 +40,9 @@ from findyfixy.tools.deploys import Service
 DEFAULT_SERVICES_PATH = DATA / "services.json"
 
 
+SERVICES_TOOL = "get_dependencies"
+
+
 class DependenciesArgs(BaseModel):
     """The tool's argument contract. Also the schema the model sees."""
 
@@ -85,7 +88,7 @@ def make_services_tool(path: Path = DEFAULT_SERVICES_PATH) -> StructuredTool:
 
     return StructuredTool.from_function(
         func=run,
-        name="get_dependencies",
+        name=SERVICES_TOOL,
         description="List what one service depends on (upstream) and what depends on it (downstream).",
         args_schema=DependenciesArgs,
     )

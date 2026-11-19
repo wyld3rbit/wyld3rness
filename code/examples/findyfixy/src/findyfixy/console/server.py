@@ -108,10 +108,11 @@ from findyfixy.paths import DATA_VERSIONS, EVALS, PAGE, ROOT, WORKSPACE, DataVer
 from findyfixy.retrieval.incidents import DEFAULT_PATH, Incident, load_incidents
 from findyfixy.settings import load_env, optional_models
 from findyfixy.tools.deploys import make_deploys_tool
+from findyfixy.tools.guard import TOOL_STEP, guard
 from findyfixy.tools.investigate import Investigator, agent_prompt, build_investigator
 from findyfixy.triage.graph import QUESTIONS, THRESHOLD, Recall, build_graph
 from findyfixy.triage.record import RECALL_K, Ask, TriageError
-from findyfixy.wiring import Agent, SharedRetrieval, build_agent, stage_spans
+from findyfixy.wiring import Agent, SharedRetrieval, build_agent, process_broker, stage_spans
 from wyld3rness.trace.tracing import Tracing
 
 Mode = Literal["live", "fake"]
@@ -454,7 +455,7 @@ class RunHub:
             if req.scenario in TOOL_HOURS:
                 investigator = build_investigator(
                     ScriptedToolModel(TOOL_HOURS[req.scenario]),
-                    make_deploys_tool(),
+                    guard(make_deploys_tool(), process_broker(), TOOL_STEP),
                 )
 
         run_id = self._begin(_HUNT_TERMINAL if req.hunt_max else _RUN_TERMINAL, stoppable=bool(req.hunt_max))
@@ -1024,7 +1025,7 @@ def main(argv: list[str] | None = None) -> None:
     if models:
         from langchain_ollama import ChatOllama
 
-        tool = make_deploys_tool()
+        tool = guard(make_deploys_tool(), process_broker(), TOOL_STEP)
         investigator = build_investigator(ChatOllama(model=models.small, **answer_options()).bind_tools([tool]), tool)
     # One database connection, embedder and reranker for the whole process:
     # triage recall and the eval session share it, so a live eval loads no copy.

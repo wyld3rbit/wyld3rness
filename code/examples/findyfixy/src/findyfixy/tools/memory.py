@@ -48,6 +48,9 @@ class SearchArgs(BaseModel):
     query: str = Field(min_length=3, max_length=MAX_QUERY_CHARS, description="what to look for in past incidents")
 
 
+SEARCH_TOOL = "search_incidents"
+
+
 def make_search_tool(recall: Callable[[str], Sequence[Prior]]) -> StructuredTool:
     """Wrap `recall` as the `search_incidents` tool."""
 
@@ -62,7 +65,7 @@ def make_search_tool(recall: Callable[[str], Sequence[Prior]]) -> StructuredTool
 
     return StructuredTool.from_function(
         func=run,
-        name="search_incidents",
+        name=SEARCH_TOOL,
         description="Search past incident postmortems. Returns the closest ones with severity, cause and fix.",
         args_schema=SearchArgs,
     )
