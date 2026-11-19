@@ -1,4 +1,4 @@
-"""Nearest-chunk search over the ingested incidents (Day 3, step 4).
+"""Nearest-chunk search over the ingested incidents (Day 3).
 
 What: embeds a question and returns the closest chunks by cosine distance.
 

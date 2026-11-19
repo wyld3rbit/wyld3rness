@@ -25,7 +25,7 @@ from typing import Literal, get_args
 # The versioned data sets. v1 is frozen: its files never change, so a v1 gate
 # run stays comparable with every earlier attested run (the regression check).
 # v2 adds the hard cases (Day 7). v3 puts them on a real timeline with a change
-# log (Day 7, step 3). A new version gets a new folder; an existing folder is
+# log (Day 7). A new version gets a new folder; an existing folder is
 # never edited in place.
 DataVersion = Literal["v1", "v2", "v3"]
 DATA_VERSIONS: tuple[DataVersion, ...] = get_args(DataVersion)

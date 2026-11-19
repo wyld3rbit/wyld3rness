@@ -25,7 +25,7 @@ Design decisions and what changes at scale:
   model. The real one is built only in `main`, never at import time.
 - One table per data version (`TABLES`). v1 keeps the table it always had,
   `chunks`, so its rows, ids and SQL are exactly those of every earlier run,
-  and a v2 query can never return a v2-only incident to a v1 run. The cost is
+  and a v1 query can never return a v2-only incident. The cost is
   a copy of v1's 800 vectors in each later table (`chunks_v2`, `chunks_v3`). At scale you would keep one
   table with a version column (or a partition per version) instead of copies.
 - `twin_of` in the source file is the Day 4 answer key. This module never reads

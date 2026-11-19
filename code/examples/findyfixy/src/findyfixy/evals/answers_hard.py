@@ -15,8 +15,10 @@ The two hard sets
 Why a separate entry point
     The v1 gate's attestation fingerprints the import closure of answers.py.
     This module imports answers.py; answers.py never imports this one. So the
-    hard-set code and data stay outside the v1 attestation, and editing a hard
-    case cannot void it, which is right: a hard case cannot change a v1 answer.
+    hard sets' cases, data and builders stay outside the v1 attestation, and
+    editing a hard case cannot void it, which is right: a hard case cannot
+    change a v1 answer. The agent's tools are inside it, including the change
+    tool only v3 reads, because the v1 agent is built by the same code.
 
 Why no gate
     v1 is the regression check, with its baseline and attestation. A hard-set

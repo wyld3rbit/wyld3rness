@@ -224,7 +224,7 @@
         <label for="qset">Question set</label>
         <select id="qset">
           <option value="incidents">Realistic incidents</option>
-          <option value="lesson">Lesson questions</option>
+          <option value="fixed">Fixed questions</option>
         </select>
       </div>
       <div class="field grow" id="question-field" hidden>
@@ -302,7 +302,7 @@
         <text class="s" x="65" y="274">incident report</text>
       </g>
       <g class="node" id="n_inv" data-status="built" data-code="graph:investigate">
-        <title>In: The question.&#10;Out: Evidence text from tool calls. May be empty.&#10;Logic: A tool-calling model decides whether to call get_recent_deploys. The loop has a turn cap. Every run pays for these model requests, even when no tool is called.&#10;Agent mode (Day 7, the system under test): the model investigates with three read-only tools (incident search, the deploy log, the service map) within 6 turns and 25 seconds, and finishes by submitting its decision as a tool call (a separate decision call is the fallback). Out of budget, the decision is handed to a human in code.</title>
+        <title>In: The question.&#10;Out: Evidence text from tool calls. May be empty.&#10;Logic: A tool-calling model decides whether to call get_recent_deploys. The loop has a turn cap. Every run pays for these model requests, even when no tool is called.&#10;Agent mode (Day 7, the system under test): the model investigates with three read-only tools (incident search, the deploy log, or on data v3 the change log, and the service map) within 6 turns and 25 seconds, and finishes by submitting its decision as a tool call (a separate decision call is the fallback). Out of budget, the decision is handed to a human in code.</title>
         <rect x="142" y="228" width="130" height="64" rx="8"/>
         <text class="t" x="207" y="254">Investigate</text>
         <text class="s" x="207" y="271">tool-calling model</text>
@@ -359,7 +359,7 @@
 
       <!-- harness nodes: one edit per build day flips data-status to built -->
       <g class="node" id="n_eval" data-status="built" data-layer="harness" data-code="wyld3rness/eval/runner.py">
-        <title>In: An app's golden cases, through one interface (SystemUnderTest: describe, answer, summarise). FindyFixy plugs in with an adapter: 30 cases, each with a reference severity, cause and fix.&#10;Out: Scores per metric with confidence intervals, a saved report, and a pass or fail gate.&#10;Logic: The harness package (code/src/wyld3rness/eval) never imports the app. A judge model from a different family scores faithfulness, context recall, action quality and response relevancy; labels such as severity are matched exactly. The gate fails if a score drops below its frozen floor (baseline mean minus 0.05), regresses outside its 95% interval, or the judge failure rate passes 0.15. Moving it into the harness changed no score: the frozen baseline still reproduces byte for byte.&#10;Watch it: choose Eval run above. Each case goes into the app lane, the answer comes back, and the metrics are scored here. The console is a viewer: it writes no report and no baseline, and it applies the gate only when every golden case ran.</title>
+        <title>In: An app's golden cases, through one interface (SystemUnderTest: describe, answer, summarise). FindyFixy plugs in with an adapter: 30 cases, each with a reference severity, cause and fix.&#10;Out: Scores per metric with confidence intervals, a saved report, and a pass or fail gate.&#10;Logic: The harness package (code/src/wyld3rness/eval) never imports the app. A judge model from a different family scores faithfulness, context recall, action quality and response relevancy; labels such as severity are matched exactly. The gate fails if a score drops below its frozen floor (baseline mean minus 0.05), regresses outside its 95% interval, or the judge failure rate passes 0.15. Moving it into the harness changed no score: the baseline frozen before the move reproduced byte for byte after it.&#10;Watch it: choose Eval run above. Each case goes into the app lane, the answer comes back, and the metrics are scored here. The console is a viewer: it writes no report and no baseline, and it applies the gate only when every golden case ran.</title>
         <rect x="-44" y="-96" width="130" height="80" rx="8"/>
         <text class="t" x="21" y="-74">Eval gate</text>
         <text class="s" x="21" y="-58">harness, any app</text>
@@ -442,7 +442,7 @@ let source = null;
 let running = false;
 let lastRunExists = false;
 let queue = Promise.resolve();
-const banks = { lesson: [], incidents: [] };   // filled from /config
+const banks = { fixed: [], incidents: [] };   // filled from /config
 let reloadPending = false;    // dev mode: a reload is due once the current run ends
 let hunting = false;          // true once the stream shows a hunt_started
 let iteration = [];           // events of the hunt's current run, for the slow replay
@@ -1198,12 +1198,12 @@ async function init() {
       say($("stress").value === "none" ? "" : `Stress: ${cfg.stresses[$("stress").value]}`);
     });
     for (const s of cfg.scenarios) $("scenario").append(new Option(s.replaceAll("_", " "), s));
-    banks.lesson = cfg.questions.map((q) => ({ label: q, text: q }));
+    banks.fixed = cfg.questions.map((q) => ({ label: q, text: q }));
     banks.incidents = cfg.incidents.map((i) => ({ label: i.title, text: i.text }));
     $("qset").addEventListener("change", fillQuestions);
     $("question").addEventListener("change", showPreview);
     $("custom").addEventListener("input", showPreview);
-    if (!banks.incidents.length) $("qset").value = "lesson";
+    if (!banks.incidents.length) $("qset").value = "fixed";
     fillQuestions();
     if (!cfg.live_available) {
       // Live is the default, but it needs the model names in .env.

@@ -1,4 +1,4 @@
-"""Day 2, step 5: the MCP path, measured. Same task, same loop, other transport.
+"""Day 2: the MCP path, measured. Same task, same loop, other transport.
 
 What it does
     Runs the fixed deploy question through the same tool loop as

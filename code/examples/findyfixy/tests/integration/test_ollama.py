@@ -91,8 +91,8 @@ def test_forced_escalation_reaches_the_large_model(ollama, deadline):
     assert_valid_triage(state["triage"])
 
 
-def test_full_run_completes_on_the_lesson_questions(ollama, deadline):
-    """All five lesson questions finish, each answered by one of the two models.
+def test_full_run_completes_on_the_fixed_questions(ollama, deadline):
+    """All five fixed questions finish, each answered by one of the two models.
 
     We do not assert how many escalate. That depends on model self-grading,
     which is the weakest part of the design (see findyfixy/triage/graph.py). The test guards

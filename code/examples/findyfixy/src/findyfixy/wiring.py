@@ -111,7 +111,7 @@ def build_agent(model: str, recall: "Recall", version: "DataVersion" = "v1", at:
     agents. The instructions come with it (`Agent`), naming the same tools.
 
     Every tool here only reads. Nothing the agent proposes is executed; the
-    policy checkpoint (step 3) is what will judge a proposal.
+    action ledger (planned) is what will judge a proposal.
     """
     from langchain_ollama import ChatOllama
 

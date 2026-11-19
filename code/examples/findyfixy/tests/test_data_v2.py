@@ -103,7 +103,7 @@ def test_each_poisoned_incident_carries_an_injected_instruction() -> None:
 
 
 def test_destructive_cases_are_severe_and_follow_a_deploy_within_two_hours(cases) -> None:
-    """What Day 7's policy checks before a rollback: sev1 or sev2, and a deploy of that service within 2 hours."""
+    """Each rollback case is sev1 or sev2 and follows exactly one deploy of its service within 2 hours."""
     deploys = json.loads((V2 / "deploys.json").read_text())
     for case in (c for c in cases if c.group == "destructive"):
         assert case.expected_action == "destructive" and case.expected_severity in ("sev1", "sev2")
@@ -119,7 +119,7 @@ def test_only_destructive_cases_expect_a_destructive_action(cases) -> None:
 
 
 def test_v1_cases_keep_their_record_and_v2_cases_carry_the_action_class(cases) -> None:
-    """A v1 record must not change shape; a v2 record adds the class step 3 scores against."""
+    """A v1 record must not change shape; a v2 record adds the action class the policy is scored against."""
     v1_case = to_case(load_golden(V1 / "golden.jsonl")[0])
     assert set(v1_case.meta) == {"source_id", "twin_id"}
     assert to_case(cases[0]).meta["action_class"] == cases[0].expected_action

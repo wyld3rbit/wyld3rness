@@ -7,12 +7,12 @@ What it does
     agent can call. It replaces the deploy tool (tools/deploys.py) from data v3 on.
 
 Why a change log, not a deploy log
-    Most outages follow a change, but not only a deploy: config pushes cause
-    about as many as binary pushes. A deploy log cannot see a key rotation, so
+    Most outages follow a change, and not only a deploy: config pushes, flags
+    and key rotations break systems too. A deploy log cannot see a key rotation, so
     a rollback rule that reads it approves a rollback that cannot help. The
     poisoned case h23 is that shape: auth deployed, then a key rotation broke
     logins. With every change kind in one log, "the deploy is the only change
-    in the window" becomes a fact the policy can check (step 3).
+    in the window" becomes a fact the action ledger can check (planned).
 
 Why `now` is injected
     v1 and v2 stored "hours ago" against one shared moment, so every case saw
@@ -58,7 +58,7 @@ class Change(BaseModel):
     `ref` names what changed: the version for a deploy, the key, flag or
     config set otherwise. `rollback_safe` is set on deploys only: True when the
     previous version can run on the data this one wrote (no one-way schema or
-    format change). The policy (step 3) checks it before a rollback, so a
+    format change). The action ledger checks it before a rollback, so a
     deploy without it, or another kind with it, is refused at load time.
     """
 
@@ -98,7 +98,7 @@ def changes_before(changes: Sequence[Change], service: Service, now: datetime, h
 
     The window is [now - hours, now], both ends included: a deploy exactly two
     hours before the alert is "within two hours", as v2 counted it. A change
-    after `now` never counts. The policy (step 3) uses this same function, so the
+    after `now` never counts. The action ledger will use this same function, so the
     agent and the policy cannot read different windows.
     """
     start = now - timedelta(hours=hours)

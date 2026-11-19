@@ -1,4 +1,4 @@
-"""Day 4, step 3: score the three retrievers on the labelled queries.
+"""Day 4: score the three retrievers on the labelled queries.
 
 What it does
     Runs every query in `data/retrieval_eval.jsonl` through `vector`, `hybrid`

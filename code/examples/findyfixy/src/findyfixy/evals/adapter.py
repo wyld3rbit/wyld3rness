@@ -301,7 +301,7 @@ class FindyFixy:
             "twin_recalled": twin_id is not None and twin_id in recalled,
             "model_used": state.get("model_used"),
             # The model's self-reported confidence, the number the router escalates on.
-            # Recorded so a report can show it beside the score (Day 7, step 2).
+            # Recorded so a report can show it beside the score (Day 7).
             "confidence": triage.confidence,
         }
         labels = {SEVERITY: triage.severity}

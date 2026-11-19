@@ -1,4 +1,4 @@
-"""Synthetic incident corpus for the memory lessons (Day 3 onward).
+"""Synthetic incident corpus for incident memory (Day 3 onward).
 
 What: builds 200 invented postmortems across 8 services and writes them as
 JSON Lines. Every row carries `synthetic: true`. Nothing here comes from a real

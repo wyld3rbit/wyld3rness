@@ -2,7 +2,7 @@
 
 The example app the wyld3rness harness is tested on: an incident-triage agent. It is a uv workspace member with its own `code/examples/findyfixy/pyproject.toml`, which declares its libraries, its dependency on the harness and its commands (`findyfixy-console`, `findyfixy-eval` and the rest; the Makefile wraps the common ones).
 
-Beside the package: `code/examples/findyfixy/tests/` (its tests), `code/examples/findyfixy/data/` (the synthetic corpus, golden set and deploy history), `code/examples/findyfixy/evals/` (the frozen baseline and the attestation CI checks), `code/examples/findyfixy/config/prices.toml` (reference prices per token) and `code/examples/findyfixy/docker-compose.yml` (Postgres with pgvector). Settings go in `code/examples/findyfixy/.env`, copied from `code/examples/findyfixy/.env.example`.
+Beside the package: `code/examples/findyfixy/tests/` (its tests, [README](tests/README.md)), `code/examples/findyfixy/data/` (the versioned synthetic corpus, golden sets, deploy and change logs, [README](data/README.md)), `code/examples/findyfixy/evals/` (the frozen baseline and the attestation CI checks, [README](evals/README.md)), `code/examples/findyfixy/config/prices.toml` (reference prices per token) and `code/examples/findyfixy/docker-compose.yml` (Postgres with pgvector). Settings go in `code/examples/findyfixy/.env`, copied from `code/examples/findyfixy/.env.example`.
 
 The package is `code/examples/findyfixy/src/findyfixy/`. Dependencies point inward: only entry points and `code/examples/findyfixy/src/findyfixy/observability/tracing.py` import the composition root `code/examples/findyfixy/src/findyfixy/wiring.py` or `code/examples/findyfixy/src/findyfixy/settings.py`, and `code/examples/findyfixy/tests/test_architecture.py` enforces it.
 
@@ -14,10 +14,10 @@ The package is `code/examples/findyfixy/src/findyfixy/`. Dependencies point inwa
 - `code/examples/findyfixy/src/findyfixy/tools/submit.py`: `submit_decision`, how the agent finishes: its arguments are the validated decision, and it executes nothing.
 - `code/examples/findyfixy/src/findyfixy/events.py`: the run events the graph reports.
 - `code/examples/findyfixy/src/findyfixy/observability/adapter.py`: those events as OpenTelemetry spans, through the harness's `SpanTree`. The console turns it on when tracing is configured (`open_tracing` in `code/examples/findyfixy/src/findyfixy/observability/tracing.py`); `RunTracer` does the same for eval cases, which share one emitter across threads. `traced_sink` gives the console's event log a `run_traced` event per run, with the link to its trace.
-- `code/examples/findyfixy/src/findyfixy/llm.py`: the one place that calls the answering model.
+- `code/examples/findyfixy/src/findyfixy/llm.py`: how the answering model is called (its options, timeout and the validated decision call), shared by the triage graph, the agent's builder and the console.
 
 **Memory**
-- `code/examples/findyfixy/src/findyfixy/retrieval/corpus.py` and `code/examples/findyfixy/src/findyfixy/retrieval/ingest.py`: build and ingest the synthetic incident corpus.
+- `code/examples/findyfixy/src/findyfixy/retrieval/corpus.py`, `code/examples/findyfixy/src/findyfixy/retrieval/corpus_v2.py` and `code/examples/findyfixy/src/findyfixy/retrieval/ingest.py`: build the synthetic incident corpus (v1, then v2's poisoned and cascade additions) and ingest each data version into its own table.
 - `code/examples/findyfixy/src/findyfixy/retrieval/search.py` and `code/examples/findyfixy/src/findyfixy/retrieval/retrieve.py`: nearest-chunk search and the three retrievers.
 - `code/examples/findyfixy/src/findyfixy/retrieval/incidents.py`: the small hand-written incident bank.
 - `code/examples/findyfixy/src/findyfixy/model_cache.py`: loads the pinned embedder and reranker from the local cache, and downloads only when the cache does not hold them.

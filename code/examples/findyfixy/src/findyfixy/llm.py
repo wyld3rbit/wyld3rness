@@ -21,12 +21,12 @@ from findyfixy.triage.record import Decision, Reply, Triage
 # Temperature 0 is greedy decoding: the most likely token every time. The same
 # alert then gets the same triage, which an on-call tool needs for trust and
 # audit, and which makes a quality gate reproducible. Without it Ollama samples
-# at its own default, and the same eval scored 9, 11 and 16 of 30 on severity.
+# at its own default, and the same eval's severity score moved from run to run.
 # Floating-point differences between runs or machines can still change a token,
 # so this is "repeatable in practice", not a guarantee.
 #
 # Thinking is off. Some models (Qwen3 8B) reason at length before they answer,
-# which took 17.6 s against 6.9 s with it off on the same alert, and a triage
+# which took more than twice as long on the same alert, and a triage
 # tool should not make an on-call engineer wait for it. Models without a
 # thinking mode accept the setting and ignore it. Revisit it as an experiment
 # if accuracy matters more than latency.
@@ -34,7 +34,7 @@ from findyfixy.triage.record import Decision, Reply, Triage
 # The timeout stops a hung model server from hanging the graph. It applies to
 # each read from the server, not to the whole call, so a long answer that keeps
 # streaming is not cut off, but a stalled one is. 120 s covers a cold load of
-# the 7B model. A timeout raises, and the run fails loudly.
+# an 8B model. A timeout raises, and the run fails loudly.
 ANSWER_TEMPERATURE = 0
 ANSWER_TIMEOUT_S = 120.0
 

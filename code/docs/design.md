@@ -10,7 +10,7 @@ The answer this design gives: the agent never decides its own authority. Every r
 
 ## Two planes
 
-The **data plane** is the app. FindyFixy, the example app, takes an incident alert, recalls similar past incidents, calls models and tools, and proposes a triage record with a next action. The data plane is where the model's judgement is used.
+The **data plane** is the app. FindyFixy, the example app, takes an incident alert and investigates it with read-only tools: past incidents, what changed, and what each service depends on. In the target shape, specialists investigate in parallel, each answering one question, and a coordinator merges their findings and proposes a triage record with one next action. The data plane is where the models' judgement is used.
 
 The **control plane** is the harness. It sits on every path in and out of the data plane: requests, model calls, tool calls, proposed actions, releases. It never relies on the model behaving. Each of its checkpoints is deterministic code that holds the same way for every request.
 
@@ -22,15 +22,15 @@ Each checkpoint enforces one invariant. The invariants, the policy behind each a
 
 ## One request, end to end
 
-An engineer pastes an alert. The request carries the engineer's identity, which the broker uses for every later token. Recall reads past incidents from memory and marks them as untrusted data in the prompt. The model call goes through the gateway, which checks the budget, picks the model, and records tokens and cost.
+An engineer pastes an alert, or the alert arrives on its own. The coordinator starts the specialists in parallel: what changed in the service and what it depends on, whether this has happened before, and whether the service is the cause or a victim. Each specialist reads only through its own tools, and every tool call presents a token the broker issued to that agent for that one tool and resource, which expires in five minutes. Every model call goes through the gateway, which checks the agent's and the team's budget, picks the model for the role, and records tokens and cost. Retrieved text is marked as untrusted data in every prompt.
 
-The model proposes a triage record and an action. Schema validation rejects a malformed record, and the router escalates to the larger model when the record is still invalid or the model's own confidence is low. A computed signal from facts outside the answer was measured on Day 7 and missed its bar, and self-reported confidence does not catch dangerous answers, so the routing rule is revisited on Day 8. Policy then checks the proposed action against facts the model cannot forge: the action is on the allow-list, the severity comes from the validated record, the deploy it wants to roll back exists in the deploy log.
+The coordinator merges the findings and proposes a triage record and one action; schema validation rejects a malformed record. Every proposal, from the coordinator or any specialist, goes to the action ledger, which checks it against facts the model cannot forge: the action is one the app declared, the severity comes from the validated record, and a rollback is allowed only when the deploy is the only change to that service in the two hours before the alert, read from the change log, and is marked safe to roll back. Otherwise it becomes a page to a person, with the changes in that window listed. The ledger also holds a lock per blast radius (the service and everything that depends on it), so two actions that could interfere never run together, and it allows one destructive action in flight per incident.
 
-If the action is allowed, its class decides what happens next. A read action runs. A destructive action runs at the level the autonomy policy grants its class: it waits for a human at Level 2, and runs with a human on the loop only at Level 3. Every tool call presents a token the broker issued for that one tool, resource and minute. Every step lands in the trace, and eval scores attach to the same trace.
+If the action is allowed, its class decides what happens next. A read action runs. A destructive action runs at the level the autonomy policy grants its class: it waits for a human at Level 2, and runs with a human on the loop only at Level 3. Actions execute one at a time: the next one starts only after a check that the alert's signal recovered, and a failed check stops the run and pages. Every step lands in the trace, with the agent that took it, and eval scores attach to the same trace.
 
 ## Autonomy as policy
 
-The levels come from the series thesis. At Level 1 the agent advises and humans act. At Level 2 the agent acts after a human approves. At Level 3 the agent acts, and humans govern from on the loop, with the power to undo.
+There are three levels. At Level 1 the agent advises and humans act. At Level 2 the agent acts after a human approves. At Level 3 the agent acts, and humans govern from on the loop, with the power to undo.
 
 Autonomy is set per action class, not per agent:
 
@@ -48,8 +48,8 @@ The harness never imports the app. Each control is a port the app implements or 
 
 - `SystemUnderTest` (built): describe, answer, summarise. The eval gate runs the app through it.
 - The event adapter (built): the app reports its steps, and the harness turns them into spans.
-- The action port (Day 7): the app declares its actions, their classes and the facts policy checks.
-- The model port (Day 8): the app asks the gateway for a completion and never holds a model client.
+- The action port and ledger (Day 7): the app declares its actions, their classes and the facts policy checks; any of its agents proposes through it.
+- The model port (Day 8): each of the app's agents asks the gateway for a completion under its role's budget and never holds a model client.
 - The approval port (Day 9): the harness pauses a run and resumes it on an approval record.
 
 Dependencies point inward: the harness defines the ports, the app depends on them, and one composition root in the app wires the real implementations.
@@ -60,4 +60,4 @@ This design is the runtime harness: what ships around the app. The build harness
 
 ## What this design does not cover
 
-It is one machine, one engineer and synthetic data. Multi-tenant isolation, high availability, data retention and a real identity provider are named where they would change a decision, and are not built. The judge is a model too, so the eval gate measures agreement with a judge, which is itself checked by hand on sampled cases.
+It is one machine, one engineer and synthetic data. Multi-tenant isolation, high availability, data retention and a real identity provider are named where they would change a decision, and are not built. Specialists per infrastructure layer (Kubernetes, network, ML serving) fit the same ledger, broker and budgets, and need telemetry per layer first; they are left to the vision. The judge is a model too, so the eval gate measures agreement with a judge, which is itself checked by hand on sampled cases.

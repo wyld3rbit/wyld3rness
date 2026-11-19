@@ -1,4 +1,4 @@
-"""Day 2, step 5: the deploy tool, served over MCP.
+"""Day 2: the deploy tool, served over MCP.
 
 What it does
     A FastMCP server that exposes `get_recent_deploys` over stdio. It calls the

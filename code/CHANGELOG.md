@@ -24,7 +24,7 @@ Notable changes to wyld3rness and its example app. The format follows [Keep a Ch
 
 ### Tooling and security
 
-- Locked dependencies with a 7-day release cooldown, `make audit` for known vulnerabilities and unexpected startup hooks, and container images pinned by digest and scanned with Grype before first use.
+- Locked dependencies with a release cooldown (uv ignores anything published after a fixed date at least 7 days old, moved forward deliberately), `make audit` for known vulnerabilities and unexpected startup hooks, and container images pinned by digest and scanned with Grype before first use.
 - A privacy scanner in the pre-commit and pre-push hooks blocks personal data and secrets in files and commit metadata.
 - The attestation is verified at push time and in CI. It used to be checked at commit time too, which blocked committing a change to attested code: the gate can only attest a committed tree.
 - Ruff and mypy in the hooks and in CI. CI runs with a read-only token and no secrets, with actions pinned by commit.

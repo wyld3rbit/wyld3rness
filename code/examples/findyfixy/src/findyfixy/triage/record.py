@@ -70,7 +70,7 @@ class Triage(BaseModel):
 
 
 # What the agent may propose, a closed set (Day 7). Each maps to an action class
-# the policy will judge (lesson step 3): `read` is looking (logs, metrics,
+# the action ledger will judge (planned): `read` is looking (logs, metrics,
 # deploys) and changes nothing; `page_human` hands the incident to a person, a
 # reversible step; `rollback` undoes a deploy, the destructive one. A closed set
 # means the agent can never propose an action the code does not know.
@@ -90,7 +90,7 @@ class Decision(Triage):
     asking for a plain `Triage`, so its prompt and its answers do not move.
 
     The two new fields are a proposal, not an order. Nothing runs on them:
-    the policy checkpoint (step 3) judges each proposal against facts the model
+    the action ledger (planned) judges each proposal against facts the model
     cannot forge, such as the deploy log.
     """
 

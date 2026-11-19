@@ -9,7 +9,7 @@ What it does
     from OpenTelemetry is imported, so a command reads the same either way.
 
 Why one helper for every command
-    "Everything the project does is observable" (Day 6, step 5) means every
+    "Everything the project does is observable" (Day 6) means every
     entry point that touches a model, the database, a tool or the network
     makes a trace. Without one shape for it, each command would start a
     provider, name its spans and close the exporter its own way, and one of

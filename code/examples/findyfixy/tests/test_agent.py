@@ -1,4 +1,4 @@
-"""Tests for the agent (Day 7, step 2): investigate with tools, then decide.
+"""Tests for the agent (Day 7): investigate with tools, then decide.
 
 What these tests cover
     - The `Decision` record: a rollback must name a version, the version is a

@@ -220,7 +220,7 @@ class _Watch:
 def _rotate(question: str, banks: list[list[str]]) -> list[str]:
     """The questions a hunt cycles through, starting at `question`.
 
-    If `question` is in one of the banks (the lesson five, or the incident
+    If `question` is in one of the banks (the fixed five, or the incident
     bank), rotate that bank so the cycle starts there. Any other question
     (typed by the user) is the only one used.
     """
@@ -499,7 +499,7 @@ class RunHub:
             self._cond.notify_all()
 
     def _banks(self) -> list[list[str]]:
-        """The question banks a hunt can rotate: the lesson five, then incidents."""
+        """The question banks a hunt can rotate: the fixed five, then incidents."""
         return [QUESTIONS, [i.text for i in self.incidents]]
 
     def stop(self) -> bool:
