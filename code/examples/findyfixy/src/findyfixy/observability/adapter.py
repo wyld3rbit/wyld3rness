@@ -201,13 +201,23 @@ class EventSpans:
                     output=d.get("result"),
                     error="tool returned an error" if d.get("error") else None,
                 )
-        elif kind in ("validation", "retry", "fault_injected", "route", "handover"):
+        elif kind in ("validation", "retry", "fault_injected", "route", "handover", "policy"):
             tree.event(kind, {k: attribute_value(v) for k, v in d.items()})
             if kind == "route":
                 tree.set({"findyfixy.route": d.get("target")})
             if kind == "handover":
                 # Code replaced the agent's proposal: searchable on the span, not only in the event list.
                 tree.set({"findyfixy.handover": d.get("reason"), "findyfixy.handover.proposed": d.get("proposed")})
+            if kind == "policy":
+                # The action ledger's verdict: searchable, so "every downgraded rollback" is one filter.
+                tree.set(
+                    {
+                        "findyfixy.policy.outcome": d.get("outcome"),
+                        "findyfixy.policy.proposed": d.get("proposed"),
+                        "findyfixy.policy.action": d.get("action"),
+                        "findyfixy.policy.proposer": d.get("proposer"),
+                    }
+                )
         elif kind == "run_finished":
             self.finish_run(output=d.get("triage"), model_used=d.get("model_used"))
         elif kind == "run_failed":

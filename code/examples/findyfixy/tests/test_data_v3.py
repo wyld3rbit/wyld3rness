@@ -50,10 +50,10 @@ def test_the_committed_v3_files_are_what_the_builder_writes(tmp_path: Path) -> N
 
 
 def test_v3_is_v2_plus_a_clock(cases) -> None:
-    """Same corpus, same cases field for field; only `alert_at` is new, so a score difference comes from the clock."""
+    """Same corpus, same cases field for field; only the alert's facts (time, service) are new."""
     assert (V3 / "incidents.jsonl").read_bytes() == (V2 / "incidents.jsonl").read_bytes()
     for v2, v3 in zip(load_golden_v2(), cases, strict=True):
-        assert v3.model_dump(exclude={"alert_at"}) == v2.model_dump()
+        assert v3.model_dump(exclude={"alert_at", "alert_service"}) == v2.model_dump()
 
 
 def test_each_case_fires_on_its_own_day_at_the_time_its_alert_names(cases) -> None:
@@ -94,11 +94,12 @@ def test_no_other_case_has_a_change_in_its_two_hour_window(cases, changes) -> No
 def test_the_case_record_carries_the_alert_time_as_text(cases) -> None:
     """Meta is saved in the JSON report, so the time travels as ISO text and the adapter parses it back."""
     assert to_case(cases[25]).meta["alert_at"] == "2026-10-26T13:05:00+00:00"
+    assert to_case(cases[25]).meta["alert_service"] == "auth"
     assert "alert_at" not in to_case(load_golden_v2()[25]).meta
 
 
 def test_the_adapter_hands_each_case_its_own_alert_time() -> None:
-    """The graph for h26 gets h26's clock; a case without one gets None (v1, v2)."""
+    """The graph for h26 gets h26's alert (time and service); a case without one gets None (v1, v2)."""
     from findyfixy.evals.adapter import FindyFixy
     from findyfixy.triage.record import Triage
 
@@ -115,7 +116,7 @@ def test_the_adapter_hands_each_case_its_own_alert_time() -> None:
     sut = FindyFixy(make_graph=make_graph, candidates=lambda q, n: [], small_model="s", large_model="l")
     sut.answer(to_case(load_golden_v3()[25]))
     sut.answer(to_case(load_golden_v2()[25]))
-    assert [a.isoformat() if a else None for a in seen] == ["2026-10-26T13:05:00+00:00", None]
+    assert [(a.at.isoformat(), a.service) if a else None for a in seen] == [("2026-10-26T13:05:00+00:00", "auth"), None]
 
 
 def test_longer_windows_reach_earlier_history(cases, changes) -> None:
@@ -123,3 +124,9 @@ def test_longer_windows_reach_earlier_history(cases, changes) -> None:
     h26 = next(c for c in cases if c.id == "h26")
     kinds = [c.kind for c in window(h26, changes, hours=72)]
     assert "key_rotation" in kinds and len(window(h26, changes)) == 1
+
+
+def test_each_case_names_the_service_its_alert_fires_on(cases) -> None:
+    """h11's alert is on search, with billing and gateway rising too; a noisy case's service is in its pager text."""
+    by_id = {c.id: c.alert_service for c in cases}
+    assert by_id["h11"] == "search" and by_id["h16"] == "gateway" and by_id["h26"] == "auth"

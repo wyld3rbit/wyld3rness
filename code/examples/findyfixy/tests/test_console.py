@@ -608,7 +608,7 @@ def live_agent_hub(
     from findyfixy.tools.investigate import agent_prompt, build_investigator
     from findyfixy.tools.memory import make_search_tool
     from findyfixy.tools.services import make_services_tool
-    from findyfixy.wiring import Agent
+    from findyfixy.wiring import Agent, build_judge
 
     monkeypatch.setattr(console, "ollama_decision_ask", lambda m, p: decision)
     searched: list[str] = []
@@ -635,7 +635,9 @@ def live_agent_hub(
                 yield as_chunk(next(replies))
 
         tools = [make_search_tool(recall), make_deploys_tool(), make_services_tool()]
-        return Agent(build_investigator(Model(), tools, max_turns=6, deadline_s=30.0), agent_prompt)
+        return Agent(
+            build_investigator(Model(), tools, max_turns=6, deadline_s=30.0), agent_prompt, lambda: build_judge("v1")
+        )
 
     hub = RunHub(live_models=("s", "l"), recall=recall, make_agent=make_agent, sleep=lambda s: None, fake_delay=0)
     srv = serve(hub, port=0)
@@ -656,6 +658,9 @@ def test_a_live_agent_run_investigates_through_its_own_search_then_decides(monke
         assert started["agent"] is True and started["recall"] is False
         triage = next(e for e in events if e["kind"] == "run_finished")["data"]["triage"]
         assert (triage["action"], triage["rollback_version"]) == ("rollback", "2.15.0")
+        # The console's free-text runs have no change log, so the ledger fails closed on the rollback.
+        verdict = next(e for e in events if e["kind"] == "policy")["data"]
+        assert (verdict["outcome"], verdict["action"], verdict["proposed"]) == ("downgraded", "page_human", "rollback")
     finally:
         srv.shutdown()
         srv.server_close()

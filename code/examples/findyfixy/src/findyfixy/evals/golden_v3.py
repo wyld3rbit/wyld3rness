@@ -10,8 +10,9 @@ Why v3 exists
     every kind of change, not only deploys. v2 stays as it was.
 
 What changes from v2
-    - Each case carries `alert_at`, an absolute UTC time. Case hNN happens on
-      2026-10-NN at the time its alert names.
+    - Each case carries `alert_at`, an absolute UTC time (case hNN happens on
+      2026-10-NN at the time its alert names), and `alert_service`, the service
+      the alert fires on.
     - data/v3/changes.json replaces deploys.json. Every v2 deploy becomes a
       change at an absolute time: its v2 "hours ago" measured back from the
       rollback case of its own service (h26 to h30), so in its 2-hour window
@@ -55,7 +56,7 @@ from pydantic import AwareDatetime
 from findyfixy.evals.golden import read_incidents
 from findyfixy.evals.golden_v2 import HardCase, build_golden_v2, write_cases
 from findyfixy.paths import data_dir
-from findyfixy.retrieval.corpus import write_jsonl
+from findyfixy.retrieval.corpus import SERVICES, CorpusService, write_jsonl
 from findyfixy.retrieval.corpus_v2 import build_corpus_v2
 from findyfixy.tools.changes import Change
 
@@ -76,9 +77,15 @@ _CLOCK = re.compile(r"\b([01]\d|2[0-3]):([0-5]\d)\b")
 
 
 class TimedCase(HardCase):
-    """A v3 case: a v2 case plus the moment its alert fired. Tools look back from `alert_at`."""
+    """A v3 case: a v2 case plus what its alert states: when it fired and on which service.
+
+    Tools look back from `alert_at`; the action ledger bounds a rollback to
+    `alert_service` or a service it depends on. Both come from the alert, not
+    from any model.
+    """
 
     alert_at: AwareDatetime
+    alert_service: CorpusService
 
 
 def alert_time(case: HardCase) -> datetime:
@@ -95,9 +102,22 @@ def alert_time(case: HardCase) -> datetime:
     return datetime(_YEAR, _MONTH, day, int(match[1]), int(match[2]), tzinfo=UTC)
 
 
+def alert_service(case: HardCase) -> CorpusService:
+    """The service the case's alert fires on. Pure.
+
+    Every case names one service, except h11, whose alert is on search with
+    billing and gateway "rising too": the alert's own service is the first
+    one it names. Raises if a case names none.
+    """
+    named = sorted((case.question.index(s), s) for s in SERVICES if s in case.question)
+    if not named:
+        raise ValueError(f"{case.id} names no service")
+    return named[0][1]
+
+
 def build_golden_v3(v2: Sequence[HardCase]) -> list[TimedCase]:
-    """The v2 cases, each with its alert time. Pure."""
-    return [TimedCase(**case.model_dump(), alert_at=alert_time(case)) for case in v2]
+    """The v2 cases, each with its alert time and service. Pure."""
+    return [TimedCase(**case.model_dump(), alert_at=alert_time(case), alert_service=alert_service(case)) for case in v2]
 
 
 def _h23_changes(alert: datetime) -> list[Change]:

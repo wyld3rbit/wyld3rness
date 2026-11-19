@@ -17,7 +17,6 @@ from such a run as fake.
 """
 
 from collections.abc import Callable, Iterator, Sequence
-from datetime import datetime
 from itertools import cycle
 import json
 from typing import Any, Literal, TypeVar
@@ -30,7 +29,7 @@ from findyfixy.evals.adapter import FindyFixy, Invokable
 from findyfixy.events import Emit
 from findyfixy.tools.deploys import DEPLOYS_TOOL
 from findyfixy.triage.graph import Recall, build_graph
-from findyfixy.triage.record import Ask, Prior
+from findyfixy.triage.record import AlertFacts, Ask, Prior
 from wyld3rness.eval.case import Case
 from wyld3rness.eval.events import EvalEmit
 from wyld3rness.eval.metrics import ActionRating, Claims, Questions, Verdict
@@ -302,7 +301,7 @@ def fake_eval(sleep: Callable[[float], None], delay: float) -> EvalSuite:
         """Run the first `n` invented cases and return the report."""
         scenarios = cycle(FAKE_EVAL_SCENARIOS)
 
-        def make_graph(recall: Recall, at: datetime | None) -> Invokable:
+        def make_graph(recall: Recall, alert: AlertFacts | None) -> Invokable:
             """A graph for one case, playing the next scripted scenario. Invented cases have no clock."""
             return build_graph(
                 fake_ask(next(scenarios), sleep, delay),

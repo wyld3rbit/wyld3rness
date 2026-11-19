@@ -80,6 +80,7 @@ from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
 from findyfixy.events import Emit, no_emit
+from wyld3rness.action.ledger import Verdict  # at runtime: LangGraph reads the state's type hints
 
 if TYPE_CHECKING:
     from contextlib import AbstractContextManager
@@ -161,6 +162,8 @@ class S(TypedDict, total=False):
     calls: list[ToolCallRecord]
     # Agent mode: the decision the agent submitted in its loop, if it did.
     proposed: Decision
+    # Agent mode with a policy step: the action ledger's verdict on the decision.
+    verdict: Verdict
 
 
 class Node(Protocol):
@@ -185,6 +188,7 @@ def build_graph(
     recall: Recall | None = None,
     agent: bool = False,
     agent_instructions: Callable[[str], str] = agent_prompt,
+    judge: Callable[[Decision], Verdict] | None = None,
 ) -> TriageGraph:
     """Wire the router and return a compiled graph, ready for `.invoke()`.
 
@@ -222,7 +226,16 @@ def build_graph(
     `agent_instructions` wraps the question in the agent's instructions. It
     must name the tools the investigator really has; `wiring.agent_instructions`
     builds the one that matches a data version's change tool.
+
+    `judge` (agent mode only) adds the policy step: after the decision, from
+    either model, it sends the decision to the incident's action ledger
+    (findyfixy/policy.py, `make_judge`) and stores the verdict. The decision
+    itself is left as the model wrote it, so the answer and its scores do not
+    move; the verdict says what may proceed. Without `judge` the graph ends at
+    the decision, as before.
     """
+    if judge is not None and not agent:
+        raise ValueError("the policy step judges an agent's decision: it needs agent mode")
     if agent and investigator is None:
         raise ValueError("agent mode needs an investigator: the agent's tools are its only evidence")
     if agent and recall is not None:
@@ -471,9 +484,48 @@ def build_graph(
     g.set_entry_point(chain[0])  # without optional steps, the cheap model
     for here, there in pairwise(chain):
         g.add_edge(here, there)
-    g.add_conditional_edges("small", decide)  # the decision point
-    g.add_edge("large", END)  # a plain edge: after `large`, always stop
+    if judge is None:
+        g.add_conditional_edges("small", decide)  # the decision point
+        g.add_edge("large", END)  # a plain edge: after `large`, always stop
+    else:
+        # Every decision, from either model, passes the policy step before the run ends.
+        g.add_node("policy", make_policy(judge, emit))
+        g.add_conditional_edges("small", decide, {"large": "large", "__end__": "policy"})
+        g.add_edge("large", "policy")
+        g.add_edge("policy", END)
     return g.compile()
+
+
+def make_policy(judge: Callable[[Decision], Verdict], emit: Emit) -> Node:
+    """The policy step: the decision goes to the action ledger, and the verdict is stored and reported.
+
+    The `policy` event carries the outcome, the action proposed and the one
+    that may proceed, the proposer and every reason and fact, so a trace shows
+    why an action was allowed, downgraded, rejected or queued.
+    """
+
+    def policy(state: S) -> S:
+        """Judge the decision. No decision (one model, an invalid record) means nothing to judge and no verdict."""
+        decision = state["triage"]
+        if decision is None:
+            return {}
+        if not isinstance(decision, Decision):
+            raise TypeError("the policy step needs the agent's Decision")
+        verdict = judge(decision)
+        emit(
+            "policy",
+            outcome=verdict.outcome,
+            proposed=decision.action,
+            action=verdict.action,
+            proposer=verdict.proposal.proposer,
+            target=verdict.proposal.target,
+            reasons=list(verdict.reasons),
+            facts=list(verdict.facts),
+            seq=verdict.seq,
+        )
+        return {"verdict": verdict}
+
+    return policy
 
 
 def hand_over(decision: Decision, stopped: Stopped, emit: Emit = no_emit) -> Decision:

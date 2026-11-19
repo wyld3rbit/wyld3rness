@@ -12,7 +12,7 @@ Why a change log, not a deploy log
     a rollback rule that reads it approves a rollback that cannot help. The
     poisoned case h23 is that shape: auth deployed, then a key rotation broke
     logins. With every change kind in one log, "the deploy is the only change
-    in the window" becomes a fact the action ledger can check (planned).
+    in the window" becomes a fact the action ledger checks (findyfixy/policy.py).
 
 Why `now` is injected
     v1 and v2 stored "hours ago" against one shared moment, so every case saw
@@ -98,12 +98,17 @@ def changes_before(changes: Sequence[Change], service: Service, now: datetime, h
 
     The window is [now - hours, now], both ends included: a deploy exactly two
     hours before the alert is "within two hours", as v2 counted it. A change
-    after `now` never counts. The action ledger will use this same function, so the
+    after `now` never counts. The action ledger uses this same function, so the
     agent and the policy cannot read different windows.
     """
     start = now - timedelta(hours=hours)
     hits = [c for c in changes if c.service == service and start <= c.at <= now]
     return sorted(hits, key=lambda c: c.at, reverse=True)
+
+
+def minutes_before(change: Change, now: datetime) -> int:
+    """How many whole minutes before `now` the change happened. The one measure the agent and the ledger share."""
+    return int((now - change.at).total_seconds() // 60)
 
 
 class ChangesArgs(BaseModel):
@@ -124,18 +129,18 @@ def get_recent_changes(service: str, hours: int, *, changes: Sequence[Change], n
     shown = []
     for change in changes_before(changes, args.service, now, args.hours):
         record = change.model_dump(mode="json", exclude={"at", "service"}, exclude_none=True)
-        record["minutes_ago"] = int((now - change.at).total_seconds() // 60)
+        record["minutes_ago"] = minutes_before(change, now)
         shown.append(record)
     return json.dumps(shown)
 
 
-def make_changes_tool(path: Path, now: datetime) -> StructuredTool:
-    """Wrap `get_recent_changes` as a tool, bound to one log and one alert time.
+def make_changes_tool(changes: Sequence[Change], now: datetime) -> StructuredTool:
+    """Wrap `get_recent_changes` as a tool, bound to one loaded log and one alert time.
 
-    The log is read and validated once, here: a malformed file fails when the
-    agent is built, not halfway through a case, and no tool call pays for it.
+    The caller loads the log once (`load_changes`) and hands the same list to
+    the action ledger, so the agent and the ledger read the same facts, and a
+    malformed file fails when the agent is built, not halfway through a case.
     """
-    changes = load_changes(path)
 
     def run(service: str, hours: int) -> str:
         """The tool body: this service's recent changes, as of the alert."""

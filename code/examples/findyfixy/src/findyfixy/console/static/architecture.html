@@ -570,6 +570,7 @@ const DESCRIBE = {
       return d.triage ? `${d.node} produced a record` : `${d.node} produced no valid record`;
     },
     handover: (d) => `out of ${d.reason === "deadline" ? "time" : "turns"}: proposed ${d.proposed}${d.rollback_version ? " " + d.rollback_version : ""}, handed to a human instead`,
+    policy: (d) => `action ledger: ${d.proposed} by ${d.proposer} ${d.outcome.toUpperCase()}${d.action !== d.proposed ? ", becomes " + d.action : ""}: ${d.reasons.join("; ")}${d.facts.length ? " | changes in the window: " + d.facts.join("; ") : ""}`,
     route: (d) => `confidence ${d.confidence === null ? "none" : d.confidence} vs ${d.threshold} -> ${d.target === "__end__" ? "done" : d.target}${d.threshold > 1 ? " (forced)" : ""}`,
     run_finished: (d) => `final: ${d.model_used} model`,
     run_failed: (d) => `${d.error_type}`,
@@ -666,7 +667,7 @@ function showResult(rows) {
 // ---- animation: one async step per event ---------------------------------
 // `view` tracks which node is "current", so a validation event knows whether
 // to light the Validate box (small model) or just flag the large node.
-const view = { recall: null, node: null, forced: false, tools: false, toolStep: null, served: {}, hasMismatch: false, live: false, replaying: false, stress: "none",
+const view = { recall: null, node: null, forced: false, tools: false, toolStep: null, verdict: null, served: {}, hasMismatch: false, live: false, replaying: false, stress: "none",
                evalRun: { n: 0, index: 0, id: "", fake: false, latest: {} } };
 
 
@@ -814,6 +815,7 @@ async function animate(ev) {
       view.forced = d.forced;
       view.tools = d.tools;
       view.toolStep = null;
+      view.verdict = null;
       view.served = {};
       view.hasMismatch = false;
       view.live = d.mode === "live";
@@ -905,6 +907,10 @@ async function animate(ev) {
         setBadge("inv", d.calls ? `${d.calls} call${d.calls === 1 ? "" : "s"}, ${d.turns} turns` : "no lookup");
       }
       break;
+    case "policy":
+      // The action ledger's verdict: shown on the result card beside the proposal.
+      view.verdict = d;
+      break;
     case "handover":
       // The decision's action was replaced in code: the loop ran out of budget.
       mark(view.node, "warn");
@@ -931,6 +937,7 @@ async function animate(ev) {
         ["Component", d.triage.component, ""],
         ["Next action", d.triage.next_action, ""],
         ...(d.triage.action ? [["Action", d.triage.action + (d.triage.rollback_version ? " " + d.triage.rollback_version : "") + " (proposed, not executed)", d.triage.action === "rollback" ? "bad" : ""]] : []),
+        ...(view.verdict ? [["Action ledger", view.verdict.outcome + (view.verdict.action !== view.verdict.proposed ? ", becomes " + view.verdict.action : "") + ": " + view.verdict.reasons.join("; "), view.verdict.outcome === "allowed" ? "" : "bad"]] : []),
         ["Confidence", String(d.triage.confidence), ""],
         ["Served by", servedSummary(), view.hasMismatch ? "bad" : ""],
         ...(view.stress !== "none" ? [["Stress", view.stress.replaceAll("_", " "), "bad"]] : []),

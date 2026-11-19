@@ -268,8 +268,8 @@ class RunHub:
         `tracing`, when set, turns every run into a trace (findyfixy/observability/adapter.py).
         None leaves the run exactly as it was.
 
-        `make_agent(model, recall)` builds the agent's loop and its
-        instructions for a live agent run (findyfixy/wiring.py, `build_agent`);
+        `make_agent(model, recall)` builds the agent's loop, its
+        instructions and the judge of its decision for a live agent run (findyfixy/wiring.py, `build_agent`);
         None turns agent runs off.
         """
         self._make_agent = make_agent
@@ -411,8 +411,8 @@ class RunHub:
         Validation of the combination happens here, before the thread, so a
         bad request is a clean HTTP error and not a failed run.
         """
-        # The agent's instructions; replaced by the built agent's own on an agent run.
-        instructions: Callable[[str], str] = agent_prompt
+        # The agent's loop, instructions and judge, on an agent run only.
+        built: Agent | None = None
         if req.mode == "live":
             if self._live_models is None:
                 raise NotConfigured("SMALL_MODEL and LARGE_MODEL are not set")
@@ -434,7 +434,7 @@ class RunHub:
                     )
                 ask = ollama_decision_ask
                 built = self._make_agent(small, self._recall)
-                investigator, instructions = built.investigator, built.instructions
+                investigator = built.investigator
             elif req.use_tools:
                 if self._investigator is None:
                     raise NotConfigured("the tool step is not configured")
@@ -474,7 +474,7 @@ class RunHub:
             ),
             kwargs={
                 "investigator": investigator,
-                "agent_instructions": instructions,
+                "built_agent": built,
                 "stress": req.stress,
                 # The agent searches through its own tool; a fixed recall step would add incidents it did not choose.
                 "recall": None if req.agent else self._recall_for(req.mode),
@@ -528,7 +528,7 @@ class RunHub:
         force_retry: bool,
         *,
         investigator: Investigator | None = None,
-        agent_instructions: Callable[[str], str] = agent_prompt,
+        built_agent: Agent | None = None,
         stress: Stress = "none",
         recall: Recall | None = None,
         agent: bool = False,
@@ -573,7 +573,7 @@ class RunHub:
                 stress,
                 recall,
                 agent,
-                agent_instructions,
+                built_agent,
             )
 
         try:
@@ -601,7 +601,7 @@ class RunHub:
         stress: Stress = "none",
         recall: Recall | None = None,
         agent: bool = False,
-        agent_instructions: Callable[[str], str] = agent_prompt,
+        built_agent: Agent | None = None,
     ) -> Literal["finished", "failed", "error"]:
         """One graph run. Returns how it ended, after emitting its event.
 
@@ -635,7 +635,8 @@ class RunHub:
                 investigate_model=small if investigator is not None and mode == "live" else None,
                 recall=recall,
                 agent=agent,
-                agent_instructions=agent_instructions,
+                agent_instructions=built_agent.instructions if built_agent else agent_prompt,
+                judge=built_agent.new_judge() if built_agent else None,  # a fresh ledger per run
             )
             result = graph.invoke({"question": question})
             emit(

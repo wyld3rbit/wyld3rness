@@ -57,7 +57,6 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import ExitStack, contextmanager
-from datetime import datetime
 from functools import partial
 from pathlib import Path
 import sys
@@ -72,6 +71,7 @@ from findyfixy.observability.tracing import open_tracing
 from findyfixy.paths import EVALS, REPORTS, ROOT, WORKSPACE, DataVersion
 from findyfixy.settings import MissingEnvironment, load_env, read_models
 from findyfixy.triage.graph import Recall
+from findyfixy.triage.record import AlertFacts
 from findyfixy.wiring import SharedRetrieval, stage_spans
 from wyld3rness.eval import cli
 from wyld3rness.eval.attest import Inputs
@@ -266,15 +266,16 @@ def open_live_session(
         for name in dict.fromkeys((large, small)):
             warm_model(name)
 
-        def make_graph(recall: Recall, at: datetime | None) -> Invokable:
+        def make_graph(recall: Recall, alert: AlertFacts | None) -> Invokable:
             """The production graph with recall bound to one case, or none for the control.
 
-            `at` is the case's alert time, which a change-log version's tool looks
-            back from (wiring.changes_tool); None for versions without a clock.
+            `alert` is what the case's alert states: a change-log version's tool
+            looks back from its time, and the ledger bounds a rollback to its
+            service (findyfixy/policy.py). None for versions without it.
             """
             if agent:
                 search = (lambda question: []) if negative_control else recall
-                built = build_agent(small, search, version, at)
+                built = build_agent(small, search, version, alert)
                 return build_graph(
                     ollama_decision_ask,
                     small_model=small,
@@ -284,6 +285,7 @@ def open_live_session(
                     investigate_model=small,
                     agent=True,
                     agent_instructions=built.instructions,
+                    judge=built.new_judge(),
                 )
             return build_graph(
                 ollama_ask,
