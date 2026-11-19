@@ -34,6 +34,7 @@ Notable changes to wyld3rness and its example app. The format follows [Keep a Ch
 - The attestation is verified at push time and in CI. It used to be checked at commit time too, which blocked committing a change to attested code: the gate can only attest a committed tree.
 - Ruff and mypy in the hooks and in CI. CI runs with a read-only token and no secrets, with actions pinned by commit.
 - `make check` covers documentation drift, the repository tools' tests and the privacy scan.
+- The local Langfuse's ClickHouse no longer keeps its own profiler and internal logs (`code/infra/langfuse/clickhouse-logs.xml`); the query and part logs expire after a day. Left on, they used about 15 GB and kept the machine busy with nothing running.
 
 ### Known issues
 
