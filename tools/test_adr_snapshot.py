@@ -24,7 +24,7 @@ def test_the_latest_phase_matches_the_live_page() -> None:
 
 
 def test_flipping_a_node_on_the_page_without_a_new_phase_is_caught() -> None:
-    old = '<g class="node" data-status="planned" data-layer="harness" data-code="none">\n        <title>Planned for Day 7.'
+    old = '<g class="node" data-status="planned" data-layer="harness" data-code="none">\n        <title>Planned for Day 8.'
     flipped = PAGE.replace(old, old.replace('"planned"', '"built"'))
     assert flipped != PAGE
     assert snap.built_in_phase(max(snap.PHASES)) != snap.built_on_page(flipped)
@@ -71,15 +71,12 @@ def test_phase_five_draws_both_lanes_and_the_loop_between_them() -> None:
     assert "data-code" not in svg and "<title>" not in svg and "tool step off" not in svg
 
 
-def test_a_node_built_later_is_drawn_planned_with_its_day(monkeypatch) -> None:
-    # Pretend Policy was built on Day 7: the Day 6 picture must still show it planned.
-    monkeypatch.setitem(snap.FIRST_BUILT, "Policy", 7)
-    page = PAGE.replace('data-status="planned" data-layer="harness" data-code="none">\n        <title>Planned for Day 7.',
-                        'data-status="built" data-layer="harness" data-code="none">\n        <title>Planned for Day 7.')
-    svg = snap.snapshot(6, page)
-    block = svg.split(">Policy<")[0].rsplit("<g ", 1)[1]
+def test_a_node_built_later_is_drawn_planned_with_its_day() -> None:
+    """The action ledger was built on Day 7: a Day 6 picture drawn from today's page shows it planned, labelled Day 7."""
+    svg = snap.snapshot(6, PAGE)
+    block = svg.split(">Action ledger<")[0].rsplit("<g ", 1)[1]
     assert 'data-status="planned"' in block
-    assert ">Day 7<" in svg.split(">Policy<")[1].split("</g>")[0]
+    assert ">Day 7<" in svg.split(">Action ledger<")[1].split("</g>")[0]
 
 
 def test_every_drawn_snapshot_is_well_formed() -> None:

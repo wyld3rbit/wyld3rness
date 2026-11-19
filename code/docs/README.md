@@ -4,6 +4,6 @@ The interactive architecture page lives with the console that serves it, `code/e
 
 `code/docs/strategy.md` is the engineering strategy drawn from the decision records, and `code/docs/design.md` is the target shape its transitions move toward.
 
-`code/docs/adr/` holds one architecture decision record per phase, each with a diagram, keyed by ADR number. The diagrams for ADRs 0001 to 0006 are frozen files checked by hash; from ADR 0007 on, `make adr-snapshot` draws them from the architecture page.
+`code/docs/adr/` holds one architecture decision record per phase, each with a diagram, keyed by ADR number. The diagrams for ADRs 0001 to 0007 are frozen files checked by hash; from ADR 0008 on, `make adr-snapshot` draws them from the architecture page.
 
 `code/docs/demo.gif` and `code/docs/space-needle.png` are the images used by the top-level README.

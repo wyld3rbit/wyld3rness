@@ -368,33 +368,39 @@
       </g>
       <g class="node" data-status="built" data-layer="harness" data-code="wyld3rness/eval/attest.py">
         <title>In: A make eval-gate command that passes as a whole: the full golden set, a clean tree, a known judge digest, and a database that matches the corpus (a stale ingest stops the run). Never a subset or the negative control.&#10;Out: examples/findyfixy/evals/attestation.json, committed with the change: the SHA-256 of every answer-affecting file, the report hash, the verdict, the models, the judge digest and the git SHA.&#10;Logic: The answer-affecting files are computed, not listed: the import closure of the eval entry point, read from the source, plus the data directory, the lock file and the compose file the app declares. A console change is outside it, so it needs no rerun. CI rehashes them first, in its own job, with plain python3, imports none of them, and fails a pull request whose files differ from the attested ones, naming each changed, added or removed file.&#10;Trust: A process control, not a security control. CI trusts the local run: whoever can push can also edit the attestation. It stops an honest change from merging without a passing run; review stops a dishonest one. At scale a GPU runner replaces it with a real run.</title>
-        <rect x="124" y="-96" width="130" height="64" rx="8"/>
-        <text class="t" x="189" y="-70">CI gate</text>
-        <text class="s" x="189" y="-52">local run, attested</text>
+        <rect x="104" y="-96" width="120" height="64" rx="8"/>
+        <text class="t" x="164" y="-70">CI gate</text>
+        <text class="s" x="164" y="-52">local run, attested</text>
       </g>
       <g class="node" data-status="built" data-layer="harness" data-code="wyld3rness/trace/spans.py">
         <title>In: An app's run events (FindyFixy: findyfixy/observability/adapter.py), the eval runner's cases and judge calls, and every command.&#10;Out: One OpenTelemetry trace per run, eval case and command, sent to a local Langfuse: a span per step with inputs, outputs and errors, and on model calls the model and its input and output tokens. Eval scores sit on their case's trace. Each model call carries a cost, priced by Langfuse from a committed reference price table (examples/findyfixy/config/prices.toml, make obs-prices). Every trace carries a user, and a hunt's or an eval run's traces share a session.&#10;Logic: Spans follow the OpenTelemetry GenAI conventions, so any OTLP backend reads them. The exporter sends in batches on its own thread: a slow or stopped backend never slows a run, and a full queue drops spans rather than block. Tracing changes no answer and no score: the gate's runs with it on were identical case by case.&#10;Watch it: with Langfuse running (make obs-up), each run in the event log gets a run_traced line with a link to its trace.</title>
-        <rect x="292" y="-96" width="130" height="64" rx="8"/>
-        <text class="t" x="357" y="-70">Tracing</text>
-        <text class="s" x="357" y="-52">harness, Langfuse</text>
+        <rect x="238" y="-96" width="120" height="64" rx="8"/>
+        <text class="t" x="298" y="-70">Tracing</text>
+        <text class="s" x="298" y="-52">harness, Langfuse</text>
       </g>
-      <g class="node" data-status="planned" data-layer="harness" data-code="none">
-        <title>Planned for Day 7. Not built, no behavior yet.</title>
-        <rect x="460" y="-96" width="130" height="64" rx="8"/>
-        <text class="t" x="525" y="-70">Policy</text>
-        <text class="s" x="525" y="-52">Day 7, guardrails</text>
+      <g class="node" data-status="built" data-layer="harness" data-code="wyld3rness/action/ledger.py">
+        <title>In: Every action an agent proposes: the incident, the proposer, the action, its target and its fields.&#10;Out: A verdict: allowed, downgraded to paging a person, rejected (undeclared) or queued, with its reasons, the facts and an order number.&#10;Logic: The harness decides in code; FindyFixy supplies the facts through its port (findyfixy/policy.py). A rollback passes only if its target is the alerting service or one it depends on, the deploy is the only change to it in the 2 hours before the alert and is safe to roll back, and the version is the one before it. An action that changes a system holds its blast radius; one destructive action in flight per incident. Nothing executes yet.</title>
+        <rect x="372" y="-96" width="120" height="64" rx="8"/>
+        <text class="t" x="432" y="-70">Action ledger</text>
+        <text class="s" x="432" y="-52">harness, every proposal</text>
+      </g>
+      <g class="node" data-status="built" data-layer="harness" data-code="wyld3rness/identity/broker.py">
+        <title>In: An agent, a tool and the resource a call reads.&#10;Out: A JWT for that one call (HMAC-SHA256), expiring in 5 minutes, or a refusal.&#10;Logic: Tokens only for granted tools; a token for another agent, tool or resource, from another key or expired is refused. FindyFixy's guard (findyfixy/tools/guard.py) issues and verifies one around every agent tool. In one process this proves the contract, not isolation.</title>
+        <rect x="506" y="-96" width="120" height="64" rx="8"/>
+        <text class="t" x="566" y="-70">Credentials</text>
+        <text class="s" x="566" y="-52">harness, per call</text>
       </g>
       <g class="node" data-status="planned" data-layer="harness" data-code="none">
         <title>Planned for Day 8. Not built, no behavior yet.</title>
-        <rect x="628" y="-96" width="130" height="64" rx="8"/>
-        <text class="t" x="693" y="-70">Gateway</text>
-        <text class="s" x="693" y="-52">Day 8, routing</text>
+        <rect x="640" y="-96" width="120" height="64" rx="8"/>
+        <text class="t" x="700" y="-70">Gateway</text>
+        <text class="s" x="700" y="-52">Day 8, budgets</text>
       </g>
       <g class="node" data-status="planned" data-layer="harness" data-code="none">
         <title>Planned for Day 9. Not built, no behavior yet.</title>
-        <rect x="796" y="-96" width="130" height="64" rx="8"/>
-        <text class="t" x="861" y="-70">Human review</text>
-        <text class="s" x="861" y="-52">Day 9, approval</text>
+        <rect x="774" y="-96" width="120" height="64" rx="8"/>
+        <text class="t" x="834" y="-70">Human review</text>
+        <text class="s" x="834" y="-52">Day 9, approval</text>
       </g>
 
       <circle id="dot" r="7" cx="0" cy="0"/>

@@ -6,7 +6,7 @@ A record has a decision, a diagnosis, guiding policies, coherent actions, a buil
 
 Records are append-only. A later phase adds a record and never edits an earlier one. Records 0001 to 0005 were written on 2026-10-29, after their phases closed, from the day notes, the changelog and the decision log. From Day 6 each record is written in the commit that closes its phase. One correction was made across records on 2026-11-18: each record's header line now names its closing commit and points its run data at its own Evidence section, instead of at working notes that are not published. No decision, diagnosis or number changed.
 
-Day 5 was rebuilt after ADR 0005 was accepted, so ADR 0006 records the rebuilt phase and 0005 keeps its own text and picture. Diagrams are keyed by ADR number. The diagrams for ADRs 0001 to 0006 are frozen files checked by hash: 0001 to 0004 were drawn from the page's earlier one-lane layout, 0005 shows the eval gate as first built inside the app, and 0006 was frozen when Day 6 relabelled the Tracing box it shows as planned. From ADR 0007 on, `make adr-snapshot` draws each diagram from the live architecture page. A test fails if a frozen file changes, or if the page and the latest phase disagree.
+Day 5 was rebuilt after ADR 0005 was accepted, so ADR 0006 records the rebuilt phase and 0005 keeps its own text and picture. Diagrams are keyed by ADR number. The diagrams for ADRs 0001 to 0007 are frozen files checked by hash: 0001 to 0004 were drawn from the page's earlier one-lane layout, 0005 shows the eval gate as first built inside the app, 0006 was frozen when Day 6 relabelled the Tracing box it shows as planned, and 0007 when Day 7 laid the harness lane out for seven boxes. From ADR 0008 on, `make adr-snapshot` draws each diagram from the live architecture page. A test fails if a frozen file changes, or if the page and the latest phase disagree.
 
 | ADR | Phase | Decision | Code at close |
 |---|---|---|---|
@@ -17,3 +17,4 @@ Day 5 was rebuilt after ADR 0005 was accepted, so ADR 0006 records the rebuilt p
 | [0005](0005-gate-releases-on-measured-answer-quality.md) | Day 5 | Gate releases on measured answer quality | `1e7f27a` |
 | [0006](0006-eval-gate-as-harness-component-attested-in-ci.md) | Day 5, rebuilt | The eval gate is a harness component, attested in CI | `6f9e3ee` |
 | [0007](0007-every-run-is-a-trace-in-a-self-hosted-backend.md) | Day 6 | Every run is an OpenTelemetry trace in a self-hosted backend | `d2cb636` |
+| [0008](0008-a-deterministic-trust-boundary-between-agents-and-systems.md) | Day 7 | A deterministic trust boundary between agents and systems | the commit that adds it |
