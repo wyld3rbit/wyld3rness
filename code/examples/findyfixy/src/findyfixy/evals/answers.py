@@ -225,9 +225,9 @@ def open_live_session(
     (findyfixy/wiring.py, `build_agent`). The negative control still removes
     recall: in agent mode that means search returns nothing.
     """
-    from findyfixy.llm import ollama_ask, ollama_decision_ask, warm_model
+    from findyfixy.llm import ollama_ask, warm_model
     from findyfixy.triage.graph import build_graph
-    from findyfixy.wiring import build_agent
+    from findyfixy.wiring import build_agent_graph
 
     if version != "v1":
         # v1's freshness check runs as the attestation's precondition. A hard-set run
@@ -275,18 +275,7 @@ def open_live_session(
             """
             if agent:
                 search = (lambda question: []) if negative_control else recall
-                built = build_agent(small, search, version, alert)
-                return build_graph(
-                    ollama_decision_ask,
-                    small_model=small,
-                    large_model=large,
-                    emit=emit,
-                    investigator=built.investigator,
-                    investigate_model=small,
-                    agent=True,
-                    agent_instructions=built.instructions,
-                    judge=built.new_judge(),
-                )
+                return build_agent_graph(small, large, search, version, alert, emit)
             return build_graph(
                 ollama_ask,
                 small_model=small,

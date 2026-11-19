@@ -28,12 +28,13 @@ if TYPE_CHECKING:
     from langchain_core.tools import BaseTool
     from psycopg import Connection
 
+    from findyfixy.events import Emit
     from findyfixy.paths import DataVersion
     from findyfixy.retrieval.ingest import Embedder
     from findyfixy.retrieval.retrieve import Rerank, Retriever, Stage
     from findyfixy.tools.changes import Change
     from findyfixy.tools.investigate import Investigator
-    from findyfixy.triage.graph import Recall
+    from findyfixy.triage.graph import Recall, TriageGraph
     from findyfixy.triage.record import AlertFacts, Decision
     from wyld3rness.action.ledger import Verdict
     from wyld3rness.identity.broker import CredentialBroker
@@ -193,6 +194,37 @@ def build_agent(
         llm, tools, max_turns=AGENT_MAX_TURNS, deadline_s=AGENT_DEADLINE_S, finish_tool=SUBMIT_TOOL
     )
     return Agent(investigator, agent_instructions(version), judge_factory(changes, alert))
+
+
+def build_agent_graph(
+    small: str,
+    large: str,
+    recall: "Recall",
+    version: "DataVersion" = "v1",
+    alert: "AlertFacts | None" = None,
+    emit: "Emit | None" = None,
+) -> "TriageGraph":
+    """The production agent graph for one incident: the agent, its decision call and its policy step.
+
+    The one place the eval and `make attacks` build it, so the two always
+    measure the same agent. A fresh ledger per call (`new_judge`).
+    """
+    from findyfixy.events import no_emit
+    from findyfixy.llm import ollama_decision_ask
+    from findyfixy.triage.graph import build_graph
+
+    built = build_agent(small, recall, version, alert)
+    return build_graph(
+        ollama_decision_ask,
+        small_model=small,
+        large_model=large,
+        emit=emit or no_emit,
+        investigator=built.investigator,
+        investigate_model=small,
+        agent=True,
+        agent_instructions=built.instructions,
+        judge=built.new_judge(),
+    )
 
 
 def build_retriever(

@@ -10,7 +10,7 @@
 #      findyfixy.pth), each a single line naming its src/ folder.
 # On any finding, stop and read it. Do not upgrade or remove to make it pass.
 
-.PHONY: audit hooks scan up down setup ingest console triage test test-harness lint eval-retrieval eval eval-gate eval-baseline eval-freeze eval-compare eval-negative case golden data-v2 data-v3 verify-attestation obs-secrets obs-up obs-down obs-prices
+.PHONY: audit hooks scan up down setup ingest console triage test test-harness lint eval-retrieval eval eval-gate eval-baseline eval-freeze eval-compare eval-negative case golden data-v2 data-v3 attacks verify-attestation obs-secrets obs-up obs-down obs-prices
 
 # The data version `make eval` reads: v1 (frozen, the gate's set), v2 (Day 7's hard cases) or v3 (the hard cases on a timeline, with a change log).
 DATA ?= v1
@@ -161,6 +161,13 @@ eval-negative:
 # import path. The workflow runs the same command from the training root.
 verify-attestation:
 	python3 -I src/wyld3rness/eval/attest.py verify --root . --attestation examples/findyfixy/evals/attestation.json
+
+# attacks: the live half of the injection suite. The real agent reads the 20 attacks in
+# data/v3/attacks.jsonl; the action ledger judges what it proposes. Needs make up,
+# Ollama and make ingest. Exit 1 if anything the attacker wanted got through.
+# The CI half (every proposer fully fooled) runs in make test.
+attacks:
+	$(RUN) findyfixy-attacks
 
 # data-v2: rebuild data/v2 (corpus, golden set, deploy log) from v1 plus the
 # hand-written additions in findyfixy/evals/golden_v2.py. A test pins the files.

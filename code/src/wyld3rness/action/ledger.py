@@ -174,6 +174,11 @@ class ActionLedger:
             self._on_verdict(verdict)
         return verdict
 
+    def action_class(self, action: str) -> ActionClass | None:
+        """The class the app declared for `action`, or None if it never declared it."""
+        spec = self._port.spec(action)
+        return spec.action_class if spec is not None else None
+
     def release(self, proposal: Proposal) -> None:
         """Free what an allowed action holds, once it has run and been checked. A no-op for one that holds nothing."""
         with self._lock:

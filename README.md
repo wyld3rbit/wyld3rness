@@ -37,6 +37,7 @@ Then, in the page, pick Triage run or Eval run and press Run. Fake mode needs no
 make triage           # triage five fixed questions in the terminal
 make eval             # score FindyFixy on 30 golden cases through the harness (live models, minutes)
 make case ID=g07      # one case end to end: the alert, the answer, every judge decision
+make attacks          # the injection suite live: the real agent on 20 attacks, what the ledger let through
 make test             # the harness and FindyFixy tests (make test-harness: the harness alone)
 make obs-secrets      # once: secrets for the local Langfuse stack
 make obs-up           # then open http://127.0.0.1:3000 to see every run as a trace

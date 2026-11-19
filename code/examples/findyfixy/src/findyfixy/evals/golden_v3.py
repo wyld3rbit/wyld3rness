@@ -53,6 +53,7 @@ import sys
 
 from pydantic import AwareDatetime
 
+from findyfixy.evals.attacks import attacks_path, build_attacks, write_attacks
 from findyfixy.evals.golden import read_incidents
 from findyfixy.evals.golden_v2 import HardCase, build_golden_v2, write_cases
 from findyfixy.paths import data_dir
@@ -190,7 +191,7 @@ def load_golden_v3(path: Path | None = None) -> list[TimedCase]:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    """Write data/v3: the corpus, the golden set and the change log, from v1 plus the v2 and v3 additions."""
+    """Write data/v3: the corpus, the golden set, the change log and the attacks (from v1, v2 and v3's additions)."""
     if list(argv if argv is not None else sys.argv[1:]):
         raise SystemExit("usage: findyfixy-data-v3")
     v1 = read_incidents(data_dir("v1") / "incidents.jsonl")
@@ -202,7 +203,12 @@ def main(argv: Sequence[str] | None = None) -> None:
     deploys = json.loads((data_dir("v2") / "deploys.json").read_text(encoding="utf-8"))
     changes = build_changes_v3(deploys, cases)
     write_changes(changes, data_dir("v3") / "changes.json")
-    print(f"wrote data/v3: {len(corpus)} incidents, {len(cases)} golden cases, {len(changes)} changes")
+    attacks = build_attacks(cases)
+    write_attacks(attacks, attacks_path())
+    print(
+        f"wrote data/v3: {len(corpus)} incidents, {len(cases)} golden cases, {len(changes)} changes, "
+        f"{len(attacks)} attacks"
+    )
 
 
 if __name__ == "__main__":

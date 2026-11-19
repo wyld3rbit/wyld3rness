@@ -113,6 +113,7 @@ ENTRY_POINTS = {
         "console.server",
         "evals.answers",
         "evals.answers_hard",
+        "evals.attacks_live",
         "evals.retrieval",
         "triage.graph",
         "tools.direct_run",

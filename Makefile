@@ -7,7 +7,7 @@
 # its own, so the real commands stay readable in one place each.
 
 .DEFAULT_GOAL := help
-.PHONY: help adr-snapshot setup up down console triage test test-harness lint eval-retrieval eval eval-gate eval-baseline eval-freeze eval-compare eval-negative obs-secrets obs-up obs-down obs-prices case golden data-v2 data-v3 ingest audit verify-attestation check
+.PHONY: help adr-snapshot setup up down console triage test test-harness lint eval-retrieval eval eval-gate eval-baseline eval-freeze eval-compare eval-negative obs-secrets obs-up obs-down obs-prices case golden data-v2 data-v3 attacks ingest audit verify-attestation check
 
 help:
 	@echo "First time:       make setup"
@@ -16,6 +16,7 @@ help:
 	@echo "Measure / test:   make test   make test-harness   make lint   make eval-retrieval"
 	@echo "Answer quality:   make eval   make eval-gate   make eval-baseline   make eval-negative   (make eval DATA=v2 or DATA=v3: a hard set; FIXED=1: the earlier fixed path)"
 	@echo "CI gate:          make verify-attestation   (the attestation eval-gate writes on a pass)"
+	@echo "Injection suite:  make attacks   (live: the real agent on 20 attacks; the fooled-model half runs in make test)"
 	@echo "See test cases:   make golden   make case ID=g07   make data-v2   make data-v3   (rebuild data/v2, data/v3)"
 	@echo "Freeze baseline:  make eval-freeze REPORT=examples/findyfixy/reports/eval-<timestamp>.json"
 	@echo "Compare runs:     make eval-compare REPORT=examples/findyfixy/reports/eval-<timestamp>.json"
@@ -24,7 +25,7 @@ help:
 	@echo "Before a commit:  make check   make audit"
 
 # Product targets: see code/Makefile for what each one runs.
-setup up down console triage test test-harness lint eval-retrieval eval eval-gate eval-baseline eval-negative golden data-v2 data-v3 ingest audit verify-attestation:
+setup up down console triage test test-harness lint eval-retrieval eval eval-gate eval-baseline eval-negative golden data-v2 data-v3 attacks ingest audit verify-attestation:
 	$(MAKE) -C code $@
 
 # Targets that take a value are forwarded explicitly, because the pattern rule

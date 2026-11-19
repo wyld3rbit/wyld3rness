@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from findyfixy.evals.adapter import to_case
+from findyfixy.evals.attacks import build_attacks, write_attacks
 from findyfixy.evals.golden import read_incidents
 from findyfixy.evals.golden_v2 import build_golden_v2, load_golden_v2, write_cases
 from findyfixy.evals.golden_v3 import alert_time, build_changes_v3, build_golden_v3, load_golden_v3, write_changes
@@ -45,7 +46,8 @@ def test_the_committed_v3_files_are_what_the_builder_writes(tmp_path: Path) -> N
     write_jsonl(build_corpus_v2(v1), tmp_path / "incidents.jsonl")
     write_cases(built, tmp_path / "golden.jsonl")
     write_changes(build_changes_v3(json.loads((V2 / "deploys.json").read_text()), built), tmp_path / "changes.json")
-    for name in ("incidents.jsonl", "golden.jsonl", "changes.json"):
+    write_attacks(build_attacks(built), tmp_path / "attacks.jsonl")
+    for name in ("incidents.jsonl", "golden.jsonl", "changes.json", "attacks.jsonl"):
         assert (tmp_path / name).read_bytes() == (V3 / name).read_bytes(), f"data/v3/{name} is stale: make data-v3"
 
 
