@@ -67,7 +67,8 @@ TWIN_CASES = 20
 NO_TWIN_CASES = 10
 # Fixed so the no_twin pick never changes. Change it and the file changes.
 SEED = 5
-# The triage prompt caps input at 3500 characters. Stay clear of the cap.
+# The incident bank caps an excerpt at 3500 characters (retrieval/incidents.py).
+# A golden question stays well under it.
 MAX_QUESTION_CHARS = 3000
 
 # One definition of severity for the whole app (findyfixy.triage.record). Redefining it here

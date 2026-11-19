@@ -15,6 +15,8 @@ functions, so importing this module costs nothing.
 """
 
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
+from functools import cache, partial
 import threading
 from typing import TYPE_CHECKING
 
@@ -23,13 +25,19 @@ from findyfixy.triage.record import RECALL_K, Prior
 if TYPE_CHECKING:
     from contextlib import AbstractContextManager
 
+    from langchain_core.tools import BaseTool
     from psycopg import Connection
 
+    from findyfixy.events import Emit
     from findyfixy.paths import DataVersion
     from findyfixy.retrieval.ingest import Embedder
     from findyfixy.retrieval.retrieve import Rerank, Retriever, Stage
+    from findyfixy.tools.changes import Change
     from findyfixy.tools.investigate import Investigator
-    from findyfixy.triage.graph import Recall
+    from findyfixy.triage.graph import Recall, TriageGraph
+    from findyfixy.triage.record import AlertFacts, Decision
+    from wyld3rness.action.ledger import Verdict
+    from wyld3rness.identity.broker import CredentialBroker
     from wyld3rness.trace.tracing import Tracing
 
 
@@ -49,37 +57,173 @@ def connect() -> "Connection":
     return conn
 
 
-def build_agent(model: str, recall: "Recall", version: "DataVersion" = "v1") -> "Investigator":
+# Data versions whose cases carry what their alert states (time and service)
+# and a change log (tools/changes.py). Earlier versions have a deploy log
+# against one shared moment and no alert facts.
+CHANGE_LOG_VERSIONS: frozenset["DataVersion"] = frozenset({"v3"})
+
+
+def load_facts(version: "DataVersion", alert: "AlertFacts | None") -> "list[Change] | None":
+    """The change log a version's agent and ledger share, loaded once; None for a version without one.
+
+    A change-log version needs the alert's facts, because its log is absolute:
+    without the alert's time nothing can be called recent. Raises ValueError
+    when they are missing, or given to a version that cannot use them.
+    """
+    from findyfixy.tools.changes import changes_path, load_changes
+
+    if version in CHANGE_LOG_VERSIONS:
+        if alert is None:
+            raise ValueError(f"data {version} looks back from each case's alert: pass its AlertFacts")
+        return load_changes(changes_path(version))
+    if alert is not None:
+        raise ValueError(f"data {version} has a deploy log with no clock: the alert facts would be ignored")
+    return None
+
+
+def changes_tool(version: "DataVersion", changes: "list[Change] | None", alert: "AlertFacts | None") -> "BaseTool":
+    """The tool that lists what changed: the version's deploy log, or the loaded change log as of the alert."""
+    from findyfixy.tools.changes import make_changes_tool
+    from findyfixy.tools.deploys import deploys_path, make_deploys_tool
+
+    if changes is not None and alert is not None:
+        return make_changes_tool(changes, alert.at)
+    return make_deploys_tool(deploys_path(version))
+
+
+def agent_instructions(version: "DataVersion") -> Callable[[str], str]:
+    """The agent's instructions, naming the change tool `build_agent` gives it for `version`."""
+    from findyfixy.tools.changes import CHANGES_TOOL
+    from findyfixy.tools.deploys import DEPLOYS_TOOL
+    from findyfixy.tools.investigate import agent_prompt
+
+    return partial(agent_prompt, changes_tool=CHANGES_TOOL if version in CHANGE_LOG_VERSIONS else DEPLOYS_TOOL)
+
+
+Judge = Callable[["Decision"], "Verdict"]
+
+
+@dataclass(frozen=True)
+class Agent:
+    """The agent's loop, the instructions that name its tools, and how to judge its decision. Built together.
+
+    The graph's investigate step sends `instructions(question)` to the loop.
+    Each graph build calls `new_judge()` for its policy step: a fresh action
+    ledger per incident, so one run's held rollback never queues another's.
+    Kept in one object because they must agree: instructions naming a tool the
+    loop does not have send the model calling a tool that fails, and a judge
+    reading other facts than the agent's tools would decide on evidence the
+    agent never saw.
+    """
+
+    investigator: "Investigator"
+    instructions: Callable[[str], str]
+    new_judge: Callable[[], Judge]
+
+
+def judge_factory(changes: "list[Change] | None", alert: "AlertFacts | None") -> Callable[[], Judge]:
+    """Build a fresh judge (one action ledger) per incident, over the same loaded facts the agent's tool reads.
+
+    With no change log (v1, v2) every rollback fails closed.
+    """
+    from findyfixy.policy import FindyFixyActions, make_judge
+
+    incident = f"{alert.service} alert at {alert.at.isoformat()}" if alert is not None else "incident"
+    return lambda: make_judge(incident, FindyFixyActions(changes, alert))
+
+
+def build_judge(version: "DataVersion", alert: "AlertFacts | None" = None) -> Judge:
+    """One judge for one incident of `version`: what a caller without an agent (a test, a replay) uses."""
+    return judge_factory(load_facts(version, alert), alert)()
+
+
+@cache
+def process_broker() -> "CredentialBroker":
+    """The credential broker for this process, built on first use with a random in-memory key.
+
+    One per process: every agent in it shares the key, and nothing is stored.
+    The grants are the app's (tools/guard.py).
+    """
+    from findyfixy.tools.guard import GRANTS
+    from wyld3rness.identity.broker import CredentialBroker
+
+    return CredentialBroker(GRANTS)
+
+
+def build_agent(
+    model: str, recall: "Recall", version: "DataVersion" = "v1", alert: "AlertFacts | None" = None
+) -> Agent:
     """The agent's investigation loop (Day 7): `model` with its three read-only tools and its budget.
 
-    The tools are incident search over `recall`, the deploy log of `version`,
-    and the service map. `recall` decides what search may see: the eval passes
-    one with the case's own incident held out, the console the plain one. The
-    deploy log follows the data version, so a v2 case sees the deploys its
-    rollback cases were written against. One builder for the eval and the
-    console, so the two cannot run different agents.
+    The tools are incident search over `recall`, what changed in a service
+    (`changes_tool`), and the service map. `recall` decides what search may
+    see: the eval passes one with the case's own incident held out, the console
+    the plain one. What changed follows the data version: v1 and v2 read their
+    deploy log, v3 its change log as of the case's alert. The log is loaded
+    once and shared with the judge. One builder for the eval and the console,
+    so the two cannot run different agents.
 
-    Every tool here only reads. Nothing the agent proposes is executed; the
-    policy checkpoint (step 3) is what will judge a proposal.
+    Every tool here only reads, and each call carries a token the process's
+    credential broker issued for this agent, tool and resource, verified
+    before the tool reads (tools/guard.py). Nothing the agent proposes is
+    executed; the action ledger judges each proposal, and execution waits for
+    approval.
     """
     from langchain_ollama import ChatOllama
 
     from findyfixy.llm import answer_options
-    from findyfixy.tools.deploys import deploys_path, make_deploys_tool
+    from findyfixy.tools.guard import AGENT, guard
     from findyfixy.tools.investigate import AGENT_DEADLINE_S, AGENT_MAX_TURNS, build_investigator
     from findyfixy.tools.memory import make_search_tool
     from findyfixy.tools.services import make_services_tool
     from findyfixy.tools.submit import SUBMIT_TOOL, make_submit_tool
 
+    changes = load_facts(version, alert)
+    broker = process_broker()
     tools = [
-        make_search_tool(recall),
-        make_deploys_tool(deploys_path(version)),
-        make_services_tool(),
-        make_submit_tool(),
+        guard(tool, broker, AGENT)
+        for tool in (
+            make_search_tool(recall),
+            changes_tool(version, changes, alert),
+            make_services_tool(),
+            make_submit_tool(),
+        )
     ]
     llm = ChatOllama(model=model, **answer_options()).bind_tools(tools)
-    return build_investigator(
+    investigator = build_investigator(
         llm, tools, max_turns=AGENT_MAX_TURNS, deadline_s=AGENT_DEADLINE_S, finish_tool=SUBMIT_TOOL
+    )
+    return Agent(investigator, agent_instructions(version), judge_factory(changes, alert))
+
+
+def build_agent_graph(
+    small: str,
+    large: str,
+    recall: "Recall",
+    version: "DataVersion" = "v1",
+    alert: "AlertFacts | None" = None,
+    emit: "Emit | None" = None,
+) -> "TriageGraph":
+    """The production agent graph for one incident: the agent, its decision call and its policy step.
+
+    The one place the eval and `make attacks` build it, so the two always
+    measure the same agent. A fresh ledger per call (`new_judge`).
+    """
+    from findyfixy.events import no_emit
+    from findyfixy.llm import ollama_decision_ask
+    from findyfixy.triage.graph import build_graph
+
+    built = build_agent(small, recall, version, alert)
+    return build_graph(
+        ollama_decision_ask,
+        small_model=small,
+        large_model=large,
+        emit=emit or no_emit,
+        investigator=built.investigator,
+        investigate_model=small,
+        agent=True,
+        agent_instructions=built.instructions,
+        judge=built.new_judge(),
     )
 
 

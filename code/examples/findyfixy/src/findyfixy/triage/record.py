@@ -36,6 +36,7 @@ Cost and failure modes (read before trusting this at scale)
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Literal, Self, get_args
 
 from pydantic import BaseModel, Field, ValidationError, model_validator
@@ -70,11 +71,26 @@ class Triage(BaseModel):
 
 
 # What the agent may propose, a closed set (Day 7). Each maps to an action class
-# the policy will judge (lesson step 3): `read` is looking (logs, metrics,
+# the action ledger judges (findyfixy/policy.py): `read` is looking (logs, metrics,
 # deploys) and changes nothing; `page_human` hands the incident to a person, a
 # reversible step; `rollback` undoes a deploy, the destructive one. A closed set
 # means the agent can never propose an action the code does not know.
 Action = Literal["read", "page_human", "rollback"]
+
+
+@dataclass(frozen=True)
+class AlertFacts:
+    """What the alerting system states about an incident, outside any model: when it fired and on which service.
+
+    The agent's change tool looks back from `at`, and the action ledger bounds
+    a rollback to `service` or a service it depends on. A model can be fooled
+    into naming another service; it cannot change these. Cases without them
+    (data v1, v2) carry None, and every rollback then fails closed.
+    """
+
+    at: datetime
+    service: str
+
 
 # A version as the deploy log writes it. The pattern keeps free text (an
 # injected command, a flag like `--all`) out of the one field that names what
@@ -90,8 +106,8 @@ class Decision(Triage):
     asking for a plain `Triage`, so its prompt and its answers do not move.
 
     The two new fields are a proposal, not an order. Nothing runs on them:
-    the policy checkpoint (step 3) judges each proposal against facts the model
-    cannot forge, such as the deploy log.
+    the action ledger (findyfixy/policy.py) judges each proposal against the
+    alert and the change log, which the model cannot write.
     """
 
     action: Action = Field(description="read, page_human or rollback")

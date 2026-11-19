@@ -6,7 +6,7 @@ A uv workspace: the wyld3rness harness at the root, and the example app it is te
 - `code/tests/` holds the harness's tests. `make test-harness` runs them with no app installed.
 - `code/examples/findyfixy/` is FindyFixy: its package, tests, synthetic data, baseline and attestation, price table and database compose file. `code/examples/findyfixy/README.md` maps it.
 - `code/infra/` holds the services the harness talks to, each with its own compose file: today the Langfuse trace backend (`make obs-up`). `code/infra/README.md` explains it.
-- `code/docs/` holds the decision records and the README images. `code/docs/README.md` lists them.
+- `code/docs/` holds the decision records and the README images. [`code/docs/README.md`](docs/README.md) lists them. The harness's own tests are described in [`code/tests/README.md`](tests/README.md).
 - `code/pyproject.toml` declares the harness, the workspace, and the settings for pytest, Ruff and mypy.
 - `code/Makefile` holds the commands. Run `make help` from the folder above to list them.
 - `code/CHANGELOG.md` lists notable changes by area and the known issues, and links the earlier build log.

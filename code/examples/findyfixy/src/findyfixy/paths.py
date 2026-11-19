@@ -24,9 +24,10 @@ from typing import Literal, get_args
 
 # The versioned data sets. v1 is frozen: its files never change, so a v1 gate
 # run stays comparable with every earlier attested run (the regression check).
-# v2 adds the hard cases (Day 7). A new version gets a new folder; an existing
-# folder is never edited in place.
-DataVersion = Literal["v1", "v2"]
+# v2 adds the hard cases (Day 7). v3 puts them on a real timeline with a change
+# log (Day 7). A new version gets a new folder; an existing folder is
+# never edited in place.
+DataVersion = Literal["v1", "v2", "v3"]
 DATA_VERSIONS: tuple[DataVersion, ...] = get_args(DataVersion)
 
 PACKAGE = Path(__file__).resolve().parent
@@ -42,7 +43,7 @@ LANGFUSE_ENV = WORKSPACE / "infra" / "langfuse" / ".env"  # the local trace back
 
 
 def data_dir(version: DataVersion) -> Path:
-    """The folder of one data version: its corpus, golden set and deploy log.
+    """The folder of one data version: its corpus, golden set and deploy or change log.
 
     Raises ValueError on an unknown version, so a typo in an environment
     variable stops the run instead of reading a folder that does not exist.

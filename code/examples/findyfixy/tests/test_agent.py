@@ -1,4 +1,4 @@
-"""Tests for the agent (Day 7, step 2): investigate with tools, then decide.
+"""Tests for the agent (Day 7): investigate with tools, then decide.
 
 What these tests cover
     - The `Decision` record: a rollback must name a version, the version is a
@@ -22,6 +22,7 @@ Why fakes
 """
 
 from collections.abc import Callable, Iterator
+from datetime import datetime
 import json
 from pathlib import Path
 from typing import Any
@@ -669,9 +670,10 @@ def test_an_agent_v2_case_passes_the_harness_record_check() -> None:
 class FakeAgentGraph:
     """Searches twice through the injected recall, then returns a canned decision with its tool calls."""
 
-    def __init__(self, recall: Callable[[str], list[Prior]]) -> None:
-        """Hold the recall the adapter bound to this case."""
+    def __init__(self, recall: Callable[[str], list[Prior]], at: datetime | None) -> None:
+        """Hold the recall the adapter bound to this case, and its alert time."""
         self.recall = recall
+        self.at = at
 
     def invoke(self, state: dict[str, Any]) -> dict[str, Any]:
         """Two searches, one decision."""

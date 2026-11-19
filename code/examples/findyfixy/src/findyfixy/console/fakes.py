@@ -27,8 +27,9 @@ from pydantic import BaseModel
 from findyfixy.console.eval_run import EvalResult, EvalSuite
 from findyfixy.evals.adapter import FindyFixy, Invokable
 from findyfixy.events import Emit
+from findyfixy.tools.deploys import DEPLOYS_TOOL
 from findyfixy.triage.graph import Recall, build_graph
-from findyfixy.triage.record import Ask, Prior
+from findyfixy.triage.record import AlertFacts, Ask, Prior
 from wyld3rness.eval.case import Case
 from wyld3rness.eval.events import EvalEmit
 from wyld3rness.eval.metrics import ActionRating, Claims, Questions, Verdict
@@ -124,7 +125,7 @@ class ScriptedToolModel:
             return AIMessage(content="done")
         self._asked = True
         call = {
-            "name": "get_recent_deploys",
+            "name": DEPLOYS_TOOL,
             "args": {"service": "auth", "hours": self._hours},
             "id": "fake-1",
             "type": "tool_call",
@@ -300,8 +301,8 @@ def fake_eval(sleep: Callable[[float], None], delay: float) -> EvalSuite:
         """Run the first `n` invented cases and return the report."""
         scenarios = cycle(FAKE_EVAL_SCENARIOS)
 
-        def make_graph(recall: Recall) -> Invokable:
-            """A graph for one case, playing the next scripted scenario."""
+        def make_graph(recall: Recall, alert: AlertFacts | None) -> Invokable:
+            """A graph for one case, playing the next scripted scenario. Invented cases have no clock."""
             return build_graph(
                 fake_ask(next(scenarios), sleep, delay),
                 small_model="small",

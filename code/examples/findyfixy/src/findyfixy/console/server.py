@@ -63,7 +63,7 @@ Failure modes
       the error. The server stays up.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import asdict
 from functools import partial
 from http import HTTPStatus
@@ -104,14 +104,15 @@ from findyfixy.events import Emit, Event, make_emit, make_stamped_emit
 from findyfixy.llm import answer_options, ollama_ask, ollama_decision_ask
 from findyfixy.observability.adapter import EventSpans, traced_sink
 from findyfixy.observability.tracing import open_tracing
-from findyfixy.paths import EVALS, PAGE, ROOT, WORKSPACE, DataVersion
+from findyfixy.paths import DATA_VERSIONS, EVALS, PAGE, ROOT, WORKSPACE, DataVersion
 from findyfixy.retrieval.incidents import DEFAULT_PATH, Incident, load_incidents
 from findyfixy.settings import load_env, optional_models
 from findyfixy.tools.deploys import make_deploys_tool
-from findyfixy.tools.investigate import Investigator, build_investigator
+from findyfixy.tools.guard import TOOL_STEP, guard
+from findyfixy.tools.investigate import Investigator, agent_prompt, build_investigator
 from findyfixy.triage.graph import QUESTIONS, THRESHOLD, Recall, build_graph
 from findyfixy.triage.record import RECALL_K, Ask, TriageError
-from findyfixy.wiring import SharedRetrieval, build_agent, stage_spans
+from findyfixy.wiring import Agent, SharedRetrieval, build_agent, process_broker, stage_spans
 from wyld3rness.trace.tracing import Tracing
 
 Mode = Literal["live", "fake"]
@@ -179,8 +180,9 @@ class EvalRequest(BaseModel):
 
     mode: Mode
     cases: StrictInt = Field(ge=1)
-    # Which golden set a live run uses: v1 (frozen, the gate's set) or v2 (the
-    # hard cases, scores only). Fake runs have their own invented set.
+    # Which golden set a live run uses: v1 (frozen, the gate's set), or a hard
+    # set, scores only: v2, or v3 (v2 on a timeline, with a change log). Fake
+    # runs have their own invented set.
     data: DataVersion = "v1"
     # Live only (Day 7): run the agent, the system under test. False runs the
     # earlier fixed path for comparison, scores only: the gate's baseline is the agent's.
@@ -219,7 +221,7 @@ class _Watch:
 def _rotate(question: str, banks: list[list[str]]) -> list[str]:
     """The questions a hunt cycles through, starting at `question`.
 
-    If `question` is in one of the banks (the lesson five, or the incident
+    If `question` is in one of the banks (the fixed five, or the incident
     bank), rotate that bank so the cycle starts there. Any other question
     (typed by the user) is the only one used.
     """
@@ -250,30 +252,32 @@ class RunHub:
         fake_delay: float = 0.6,
         clock: Callable[[], float] = time.perf_counter,
         live_eval: EvalSuite | None = None,
-        live_eval_v2: EvalSuite | None = None,
+        live_eval_hard: Mapping[DataVersion, EvalSuite] | None = None,
         baseline_path: Path = BASELINE_PATH,
         tracing: Tracing | None = None,
-        make_agent: Callable[[str, Recall], Investigator] | None = None,
+        make_agent: Callable[[str, Recall], Agent] | None = None,
     ) -> None:
         """Hold the wiring. Nothing runs until `start` or `start_eval`.
 
         `live_eval` is the real eval run and its golden set's size (built in
         `main` when models are configured); None means live eval runs are
-        refused as not configured. `live_eval_v2` is the same over the v2 hard
-        cases and table; it never applies the gate. Fake eval runs are always available and
+        refused as not configured. `live_eval_hard` holds the same for each
+        hard set that could be read (v2, v3), over its cases and table; it
+        never applies the gate. Fake eval runs are always available and
         need no model.
 
         `tracing`, when set, turns every run into a trace (findyfixy/observability/adapter.py).
         None leaves the run exactly as it was.
 
-        `make_agent(model, recall)` builds the agent's loop for a live agent
-        run (findyfixy/wiring.py, `build_agent`); None turns agent runs off.
+        `make_agent(model, recall)` builds the agent's loop, its
+        instructions and the judge of its decision for a live agent run (findyfixy/wiring.py, `build_agent`);
+        None turns agent runs off.
         """
         self._make_agent = make_agent
         self._tracing = tracing
         self._live_models = live_models
         self._live_eval = live_eval
-        self._live_eval_v2 = live_eval_v2
+        self._live_eval_hard = dict(live_eval_hard or {})
         self._fake_eval = fake_eval(sleep, fake_delay)
         self._baseline_path = baseline_path
         self.incidents = incidents or []
@@ -320,7 +324,8 @@ class RunHub:
         """How many cases each mode's eval set has. None for live when it is not configured."""
         return {
             "live": self._live_eval.size if self._live_eval else None,
-            "live_v2": self._live_eval_v2.size if self._live_eval_v2 else None,
+            # Every hard set has a key, None when it is off, so the page can grey it out.
+            **{f"live_{v}": s.size if (s := self._live_eval_hard.get(v)) else None for v in DATA_VERSIONS if v != "v1"},
             "fake": self._fake_eval.size,
         }
 
@@ -357,12 +362,12 @@ class RunHub:
         if req.mode == "live":
             if self._live_eval is None:
                 raise NotConfigured("live eval needs SMALL_MODEL and LARGE_MODEL")
-            chosen = self._live_eval if req.data == "v1" else self._live_eval_v2
+            chosen = self._live_eval if req.data == "v1" else self._live_eval_hard.get(req.data)
             if chosen is None:
-                raise NotConfigured("live v2 eval is not configured: data/v2/golden.jsonl could not be read")
+                raise NotConfigured(f"live {req.data} eval is not configured: its golden file could not be read")
             suite = chosen
         elif req.data != "v1":
-            raise ValueError("the v2 hard cases run live only; fake mode has its own invented set")
+            raise ValueError(f"the {req.data} hard cases run live only; fake mode has its own invented set")
         else:
             suite = self._fake_eval
         if req.cases > suite.size:
@@ -407,6 +412,8 @@ class RunHub:
         Validation of the combination happens here, before the thread, so a
         bad request is a clean HTTP error and not a failed run.
         """
+        # The agent's loop, instructions and judge, on an agent run only.
+        built: Agent | None = None
         if req.mode == "live":
             if self._live_models is None:
                 raise NotConfigured("SMALL_MODEL and LARGE_MODEL are not set")
@@ -427,7 +434,8 @@ class RunHub:
                         "the agent has its own tools and asks for a decision: no tool step, stress or retry"
                     )
                 ask = ollama_decision_ask
-                investigator = self._make_agent(small, self._recall)
+                built = self._make_agent(small, self._recall)
+                investigator = built.investigator
             elif req.use_tools:
                 if self._investigator is None:
                     raise NotConfigured("the tool step is not configured")
@@ -447,7 +455,7 @@ class RunHub:
             if req.scenario in TOOL_HOURS:
                 investigator = build_investigator(
                     ScriptedToolModel(TOOL_HOURS[req.scenario]),
-                    make_deploys_tool(),
+                    guard(make_deploys_tool(), process_broker(), TOOL_STEP),
                 )
 
         run_id = self._begin(_HUNT_TERMINAL if req.hunt_max else _RUN_TERMINAL, stoppable=bool(req.hunt_max))
@@ -467,6 +475,7 @@ class RunHub:
             ),
             kwargs={
                 "investigator": investigator,
+                "built_agent": built,
                 "stress": req.stress,
                 # The agent searches through its own tool; a fixed recall step would add incidents it did not choose.
                 "recall": None if req.agent else self._recall_for(req.mode),
@@ -491,7 +500,7 @@ class RunHub:
             self._cond.notify_all()
 
     def _banks(self) -> list[list[str]]:
-        """The question banks a hunt can rotate: the lesson five, then incidents."""
+        """The question banks a hunt can rotate: the fixed five, then incidents."""
         return [QUESTIONS, [i.text for i in self.incidents]]
 
     def stop(self) -> bool:
@@ -520,6 +529,7 @@ class RunHub:
         force_retry: bool,
         *,
         investigator: Investigator | None = None,
+        built_agent: Agent | None = None,
         stress: Stress = "none",
         recall: Recall | None = None,
         agent: bool = False,
@@ -564,6 +574,7 @@ class RunHub:
                 stress,
                 recall,
                 agent,
+                built_agent,
             )
 
         try:
@@ -591,6 +602,7 @@ class RunHub:
         stress: Stress = "none",
         recall: Recall | None = None,
         agent: bool = False,
+        built_agent: Agent | None = None,
     ) -> Literal["finished", "failed", "error"]:
         """One graph run. Returns how it ended, after emitting its event.
 
@@ -624,6 +636,8 @@ class RunHub:
                 investigate_model=small if investigator is not None and mode == "live" else None,
                 recall=recall,
                 agent=agent,
+                agent_instructions=built_agent.instructions if built_agent else agent_prompt,
+                judge=built_agent.new_judge() if built_agent else None,  # a fresh ledger per run
             )
             result = graph.invoke({"question": question})
             emit(
@@ -957,29 +971,32 @@ def parse_args(argv: list[str]) -> tuple[bool, int]:
     return reload, port
 
 
-def _v2_suite(retrieval: SharedRetrieval, tracing: Tracing | None) -> EvalSuite | None:
-    """The live eval over the v2 hard cases, or None (with a warning) when v2's data cannot be read.
+def _hard_suites(retrieval: SharedRetrieval, tracing: Tracing | None) -> dict[DataVersion, EvalSuite]:
+    """The live eval over each hard set (v2, v3) whose data can be read. A warning for each that cannot.
 
-    v2 is optional: a missing or invalid data/v2 file turns off the v2 choice
+    A hard set is optional: a missing or invalid file turns off that choice
     and nothing else, so v1 evals and triage still run. The session itself is
-    answers_v2.open_v2_session, the one place a v2 session is wired; it reads
-    the cases each time it opens.
+    answers_hard.open_hard_session, the one place a hard session is wired; it
+    reads the cases each time it opens.
     """
-    from findyfixy.evals.answers_v2 import open_v2_session
-    from findyfixy.evals.golden_v2 import golden_v2_path, load_golden_v2
+    from findyfixy.evals.answers_hard import HARD_SETS, golden_path, load_hard, open_hard_session
 
-    try:
-        size = len(load_golden_v2())
-    except (OSError, ValueError) as err:
-        print(f"v2 hard cases off: cannot read {golden_v2_path().name} ({type(err).__name__}: {err})", file=sys.stderr)
-        return None
-    return live_eval(
-        partial(open_v2_session, retrieval=retrieval, tracing=tracing),
-        golden_path=golden_v2_path(),
-        repo_dir=ROOT,
-        progress=lambda msg: print(msg, file=sys.stderr, flush=True),
-        size=size,
-    )
+    suites: dict[DataVersion, EvalSuite] = {}
+    for version in HARD_SETS:
+        try:
+            size = len(load_hard(version))
+        except (OSError, ValueError) as err:
+            name = golden_path(version).name
+            print(f"{version} hard cases off: cannot read {name} ({type(err).__name__}: {err})", file=sys.stderr)
+            continue
+        suites[version] = live_eval(
+            partial(open_hard_session, version, retrieval=retrieval, tracing=tracing),
+            golden_path=golden_path(version),
+            repo_dir=ROOT,
+            progress=lambda msg: print(msg, file=sys.stderr, flush=True),
+            size=size,
+        )
+    return suites
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -1008,7 +1025,7 @@ def main(argv: list[str] | None = None) -> None:
     if models:
         from langchain_ollama import ChatOllama
 
-        tool = make_deploys_tool()
+        tool = guard(make_deploys_tool(), process_broker(), TOOL_STEP)
         investigator = build_investigator(ChatOllama(model=models.small, **answer_options()).bind_tools([tool]), tool)
     # One database connection, embedder and reranker for the whole process:
     # triage recall and the eval session share it, so a live eval loads no copy.
@@ -1016,7 +1033,7 @@ def main(argv: list[str] | None = None) -> None:
     # Closed last, which sends what is still queued.
     with open_tracing() as tracing:
         retrieval = SharedRetrieval(stage=stage_spans(tracing)) if models else None
-        live_eval_suite = live_eval_v2_suite = None
+        live_eval_suite, hard_suites = None, {}
         if retrieval is not None:
             from findyfixy.evals.answers import open_live_session
             from findyfixy.evals.golden import DEFAULT_PATH as GOLDEN_PATH
@@ -1029,7 +1046,7 @@ def main(argv: list[str] | None = None) -> None:
                 progress=lambda msg: print(msg, file=sys.stderr, flush=True),
                 size=len(load_golden(GOLDEN_PATH)),
             )
-            live_eval_v2_suite = _v2_suite(retrieval, tracing)
+            hard_suites = _hard_suites(retrieval, tracing)
         hub = RunHub(
             tracing=tracing,
             live_models=(models.small, models.large) if models else None,
@@ -1037,7 +1054,7 @@ def main(argv: list[str] | None = None) -> None:
             investigator=investigator,
             recall=retrieval.recall(RECALL_K) if retrieval else None,
             live_eval=live_eval_suite,
-            live_eval_v2=live_eval_v2_suite,
+            live_eval_hard=hard_suites,
             make_agent=build_agent if models else None,
         )
         dev = WORKSPACE if os.environ.get("FINDYFIXY_DEV") else None

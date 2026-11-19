@@ -71,6 +71,7 @@ from findyfixy.observability.tracing import open_tracing
 from findyfixy.paths import EVALS, REPORTS, ROOT, WORKSPACE, DataVersion
 from findyfixy.settings import MissingEnvironment, load_env, read_models
 from findyfixy.triage.graph import Recall
+from findyfixy.triage.record import AlertFacts
 from findyfixy.wiring import SharedRetrieval, stage_spans
 from wyld3rness.eval import cli
 from wyld3rness.eval.attest import Inputs
@@ -99,11 +100,11 @@ ATTEST_SOURCE_ROOTS: tuple[str, ...] = ("src", "examples/findyfixy/src")
 # invisible to that test. The embedding and reranker weights are pinned by
 # name and revision in the code, which is fingerprinted, not by their bytes.
 #
-# v1 only. This command runs v1 alone; v2 runs go through answers_v2.py, which
-# imports this module and never the reverse. So v2's files and modules
-# (answers_v2.py, golden_v2.py, corpus_v2.py) stay out of the closure and the
-# set: editing a hard case cannot void the v1 attestation, because it cannot
-# change a v1 answer.
+# v1 only. This command runs v1 alone; v2 and v3 runs go through answers_hard.py,
+# which imports this module and never the reverse. So the hard sets' files and
+# modules (answers_hard.py, golden_v2.py, golden_v3.py, corpus_v2.py) stay out of
+# the closure and the set: editing a hard case cannot void the v1 attestation,
+# because it cannot change a v1 answer.
 ATTEST_EXTRA: tuple[str, ...] = (
     # the golden set, the corpus `make ingest` loads (and its twin pairs), the deploy tool's data
     "examples/findyfixy/data/v1/",
@@ -119,7 +120,7 @@ NO_RECALL_HELP = "negative control: run without the recall step. Never saved as 
 # for comparison only.
 FIXED_FLAG = "--fixed"
 # The flags that belong to the gate. The gate's baseline and attestation are
-# made on the agent, so a fixed-path run (and a v2 run) is scores only.
+# made on the agent, so a fixed-path run (and a hard-set run) is scores only.
 GATE_FLAGS = ("--gate", "--write-baseline", "--baseline-from")
 
 
@@ -211,11 +212,11 @@ def open_live_session(
     under the harness's case span, and the scores land on it.
 
     `version` picks the table recall reads, and `goldens` the cases (v1's
-    golden set when None). Only answers_v2.open_v2_session passes anything
-    else (the v2 command line and the console both go through it); this module
-    never imports v2 code, so the attestation never covers v2. A shared
-    `retrieval` must already read `version`: open_v2_session passes the v2
-    sibling of the console's.
+    golden set when None). Only answers_hard.open_hard_session passes anything
+    else (the hard sets' command lines and the console all go through it); this
+    module never imports hard-set code, so the attestation never covers it. A
+    shared `retrieval` must already read `version`: open_hard_session passes
+    the matching sibling of the console's.
 
     `agent` (the default since Day 7) runs the agent; False runs the earlier
     fixed path, for comparison. The agent: the small model
@@ -224,12 +225,12 @@ def open_live_session(
     (findyfixy/wiring.py, `build_agent`). The negative control still removes
     recall: in agent mode that means search returns nothing.
     """
-    from findyfixy.llm import ollama_ask, ollama_decision_ask, warm_model
+    from findyfixy.llm import ollama_ask, warm_model
     from findyfixy.triage.graph import build_graph
-    from findyfixy.wiring import build_agent
+    from findyfixy.wiring import build_agent_graph
 
     if version != "v1":
-        # v1's freshness check runs as the attestation's precondition. A v2 run
+        # v1's freshness check runs as the attestation's precondition. A hard-set run
         # writes no attestation, so its table is checked here, as the live run
         # starts: a stale table would score answers against an old corpus.
         stale = check_database(version)
@@ -265,19 +266,16 @@ def open_live_session(
         for name in dict.fromkeys((large, small)):
             warm_model(name)
 
-        def make_graph(recall: Recall) -> Invokable:
-            """The production graph with recall bound to one case, or none for the control."""
+        def make_graph(recall: Recall, alert: AlertFacts | None) -> Invokable:
+            """The production graph with recall bound to one case, or none for the control.
+
+            `alert` is what the case's alert states: a change-log version's tool
+            looks back from its time, and the ledger bounds a rollback to its
+            service (findyfixy/policy.py). None for versions without it.
+            """
             if agent:
                 search = (lambda question: []) if negative_control else recall
-                return build_graph(
-                    ollama_decision_ask,
-                    small_model=small,
-                    large_model=large,
-                    emit=emit,
-                    investigator=build_agent(small, search, version),
-                    investigate_model=small,
-                    agent=True,
-                )
+                return build_agent_graph(small, large, search, version, alert, emit)
             return build_graph(
                 ollama_ask,
                 small_model=small,

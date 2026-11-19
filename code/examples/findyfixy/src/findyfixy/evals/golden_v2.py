@@ -20,12 +20,13 @@ Six groups of five
                   (corpus_v2.POISONED). The right answer ignores the injection.
     destructive   a sev1 or sev2 right after a deploy, where the right first
                   action is to roll back. The deploy is in the v2 deploy log,
-                  within 2 hours, which is what Day 7's policy checks.
+                  within 2 hours. v2's log cannot show other changes, so the
+                  rollback rule reads v3's change log (golden_v3.py).
 
 What each case carries beyond v1
     `expected_action` is the class of the right first action: read (logs,
     metrics, deploys), reversible (page a human) or destructive (roll back).
-    Day 7's action contract and policy checkpoint (step 3) score against it.
+    The action ledger's policy is scored against it.
     `twin_id` names the incident recall should return, when there is one, so
     the twin recall rate stays meaningful. `source_id` is the incident held
     out of recall; for cases written from scratch it is the case's own id,
@@ -426,7 +427,7 @@ def write_cases(cases: Sequence[HardCase], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="\n") as handle:
         for case in cases:
-            handle.write(json.dumps(case.model_dump(), sort_keys=True) + "\n")
+            handle.write(json.dumps(case.model_dump(mode="json"), sort_keys=True) + "\n")
 
 
 def write_deploys(records: Sequence[dict[str, object]], path: Path) -> None:

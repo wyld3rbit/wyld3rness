@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from findyfixy.evals import answers_v2
+from findyfixy.evals import answers_hard
 from findyfixy.evals.adapter import to_case
 from findyfixy.evals.golden import MAX_QUESTION_CHARS, load_golden, read_incidents
 from findyfixy.evals.golden_v2 import (
@@ -103,7 +103,7 @@ def test_each_poisoned_incident_carries_an_injected_instruction() -> None:
 
 
 def test_destructive_cases_are_severe_and_follow_a_deploy_within_two_hours(cases) -> None:
-    """What Day 7's policy checks before a rollback: sev1 or sev2, and a deploy of that service within 2 hours."""
+    """Each rollback case is sev1 or sev2 and follows exactly one deploy of its service within 2 hours."""
     deploys = json.loads((V2 / "deploys.json").read_text())
     for case in (c for c in cases if c.group == "destructive"):
         assert case.expected_action == "destructive" and case.expected_severity in ("sev1", "sev2")
@@ -119,20 +119,21 @@ def test_only_destructive_cases_expect_a_destructive_action(cases) -> None:
 
 
 def test_v1_cases_keep_their_record_and_v2_cases_carry_the_action_class(cases) -> None:
-    """A v1 record must not change shape; a v2 record adds the class step 3 scores against."""
+    """A v1 record must not change shape; a v2 record adds the action class the policy is scored against."""
     v1_case = to_case(load_golden(V1 / "golden.jsonl")[0])
     assert set(v1_case.meta) == {"source_id", "twin_id"}
     assert to_case(cases[0]).meta["action_class"] == cases[0].expected_action
 
 
+@pytest.mark.parametrize("version", ["v2", "v3"])
 @pytest.mark.parametrize("flag", ["--gate", "--write-baseline", "--baseline-from=r.json", "--ga", "--write"])
-def test_a_v2_run_refuses_the_gate_and_the_baseline(capsys, flag: str) -> None:
+def test_a_hard_set_run_refuses_the_gate_and_the_baseline(capsys, flag: str, version) -> None:
     """v1 is the gate's set; comparing v2 with v1's baseline would call every change a regression."""
 
     def never(*args, **kwargs):
         raise AssertionError("no session may open")
 
-    assert answers_v2.main([flag], open_session=never) == 2
+    assert answers_hard.main([flag], version=version, open_session=never) == 2
     assert "cover v1 only" in capsys.readouterr().err
 
 
@@ -142,12 +143,12 @@ def test_ordinary_flags_are_not_mistaken_for_gate_flags() -> None:
     assert not asks_for(["--no-recall", "--workers", "2", "--show-case", "h07", "-"], GATE_FLAGS)
 
 
-def test_the_v1_gate_never_imports_v2_code() -> None:
-    """The attestation fingerprints the v1 command's import closure; v2 must stay outside it."""
+def test_the_v1_gate_never_imports_hard_set_code() -> None:
+    """The attestation fingerprints the v1 command's import closure; the hard sets must stay outside it."""
     from findyfixy.evals.answers import ATTEST_ENTRY, ATTEST_EXTRA, ATTEST_SOURCE_ROOTS
     from findyfixy.paths import WORKSPACE
     from wyld3rness.eval.attest import import_closure
 
     files = {p.name for p in import_closure(WORKSPACE, ATTEST_ENTRY, ATTEST_SOURCE_ROOTS)}
-    assert {"answers_v2.py", "golden_v2.py", "corpus_v2.py"}.isdisjoint(files)
-    assert not any("data/v2" in extra for extra in ATTEST_EXTRA)
+    assert {"answers_hard.py", "golden_v2.py", "golden_v3.py", "corpus_v2.py"}.isdisjoint(files)
+    assert not any("data/v2" in extra or "data/v3" in extra for extra in ATTEST_EXTRA)

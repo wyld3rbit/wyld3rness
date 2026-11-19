@@ -17,7 +17,7 @@ Why a tool, and not a separate decision call after the loop
 
 The tool executes nothing
     It records the proposal and returns "submitted". What may act on it is
-    the policy's decision (step 3), never the model's.
+    the action ledger's decision, never the model's.
 """
 
 from langchain_core.tools import StructuredTool

@@ -1,6 +1,6 @@
 # Release and runtime controls for LLM applications
 
-wyld3rness is a harness that measures an LLM app's answers before a change ships and records every run, without relying on the model to behave. It is tested on FindyFixy, an event detection, determination and mitigation agent in this repository. Everything runs on one machine with open-source models and synthetic data.
+wyld3rness is a harness that measures an LLM app's answers before a change ships and records every run, without relying on the model to behave. It is tested on FindyFixy, an incident-triage agent in this repository that investigates with read-only tools and proposes, but never executes, a next action. Everything runs on one machine with open-source models and synthetic data.
 
 ![The visualizer on a live eval run: two golden cases move through FindyFixy while the harness scores them](code/docs/demo.gif)
 
@@ -9,6 +9,8 @@ wyld3rness is a harness that measures an LLM app's answers before a change ships
 - **Eval gate and CI gate.** The app answers golden test cases, and the gate fails on a measured regression against a frozen baseline. A passing local run writes an attestation, and CI refuses any change to an answer-affecting file that no passing run covers.
 - **Tracing.** Every run is an OpenTelemetry trace in a self-hosted Langfuse, with scores and a cost on each model call. A slow or stopped backend does not slow a run, and runs with tracing on scored identically.
 - **One interface.** An app plugs in through three methods, and a test fails if the harness imports it.
+- **A trust boundary.** Every action an agent proposes passes an action ledger that decides it from facts the model cannot write, and every tool call carries a five-minute token scoped to one agent, tool and resource. An injection suite proves nothing an attacker wants gets through, even with every agent fooled. Nothing executes yet.
+- **An agent under test.** FindyFixy investigates within a turn and time budget and submits a validated decision from a closed set (read, page a human, or roll back a named version). Out of budget, code hands the incident to a person. It is measured on a frozen set and on hard sets of cascades, poisoned incidents and rollbacks, one of them on a real timeline with a change log.
 
 ## Target design
 
@@ -36,6 +38,7 @@ Then, in the page, pick Triage run or Eval run and press Run. Fake mode needs no
 make triage           # triage five fixed questions in the terminal
 make eval             # score FindyFixy on 30 golden cases through the harness (live models, minutes)
 make case ID=g07      # one case end to end: the alert, the answer, every judge decision
+make attacks          # the injection suite live: the real agent on 20 attacks, what the ledger let through
 make test             # the harness and FindyFixy tests (make test-harness: the harness alone)
 make obs-secrets      # once: secrets for the local Langfuse stack
 make obs-up           # then open http://127.0.0.1:3000 to see every run as a trace
