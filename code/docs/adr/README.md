@@ -17,4 +17,4 @@ Day 5 was rebuilt after ADR 0005 was accepted, so ADR 0006 records the rebuilt p
 | [0005](0005-gate-releases-on-measured-answer-quality.md) | Day 5 | Gate releases on measured answer quality | `1e7f27a` |
 | [0006](0006-eval-gate-as-harness-component-attested-in-ci.md) | Day 5, rebuilt | The eval gate is a harness component, attested in CI | `6f9e3ee` |
 | [0007](0007-every-run-is-a-trace-in-a-self-hosted-backend.md) | Day 6 | Every run is an OpenTelemetry trace in a self-hosted backend | `d2cb636` |
-| [0008](0008-a-deterministic-trust-boundary-between-agents-and-systems.md) | Day 7 | A deterministic trust boundary between agents and systems | the commit that adds it |
+| [0008](0008-a-deterministic-trust-boundary-between-agents-and-systems.md) | Day 7 | A deterministic trust boundary between agents and systems | `2c43921` |

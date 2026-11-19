@@ -1,7 +1,7 @@
 # ADR 0008: A deterministic trust boundary between agents and systems
 
 Status: accepted. Written 2026-11-19, in the commit that closes the phase.
-Phase: Day 7. Code at close: the commit that adds this record. Run data: the Evidence section below.
+Phase: Day 7. Code at close: commit `2c43921`, attested by the gate run `eval-20261119T210238Z`. Run data: the Evidence section below.
 
 ## Decision
 
@@ -54,7 +54,7 @@ Tools behind a process or network boundary: the token's verify step moves with t
 
 Versioned data: v1 gate `eval-20261115T035419Z` identical case by case to the attested run before it. v2, first runs `eval-20261115T041258Z` and `eval-20261115T045103Z`: severity match 0.57, 0 of 30 escalated, confidence 0.90 to 0.98 on every wrong answer, 4 answers followed an injected instruction.
 
-The agent: v1 baseline frozen from `eval-20261118T064844Z` (severity 0.77, faithfulness 0.49, context recall 0.83, action quality 0.32); the gate passed identically at each step of the phase, most recently on the ledger (`eval-20261119T051335Z`). Model choice: Qwen3 4B proposed 15 rollbacks the cases did not call for against the 8B's 4, at the same held-out severity, all at confidence 0.9 or above.
+The agent: v1 baseline frozen from `eval-20261118T064844Z` (severity 0.77, faithfulness 0.49, context recall 0.83, action quality 0.32); the gate passed with the same scores at each step of the phase, most recently at the close (`eval-20261119T210238Z`). Model choice: Qwen3 4B proposed 15 rollbacks the cases did not call for against the 8B's 4, at the same held-out severity, all at confidence 0.9 or above.
 
 v2 against v3, same code, one run each: `eval-20261119T015256Z` (v2) and `eval-20261119T010322Z` (v3). Unneeded rollbacks 7 against 2; severity right 21 against 15, in both directions and inside the noise.
 
