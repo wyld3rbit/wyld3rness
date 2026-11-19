@@ -203,13 +203,14 @@
       </div>
       <div class="field" id="data-field" hidden>
         <label for="data">Golden set</label>
-        <select id="data" title="v1 is frozen and is the gate's set. v2 holds 30 hard cases: no precedent, conflicting signals, cascades, noisy alerts, poisoned incidents and rollbacks. A v2 run shows scores only, never the gate.">
+        <select id="data" title="v1 is frozen and is the gate's set. v2 holds 30 hard cases: no precedent, conflicting signals, cascades, noisy alerts, poisoned incidents and rollbacks. v3 is the same cases on a real timeline: each case has its alert time, and the agent reads a change log (deploys, config, flags, key rotations) as of that time. A v2 or v3 run shows scores only, never the gate.">
           <option value="v1" selected>v1, frozen (the gate's set)</option>
           <option value="v2">v2, hard cases (scores only)</option>
+          <option value="v3">v3, hard cases with a change log (scores only)</option>
         </select>
       </div>
       <div class="field" id="agent-field" hidden>
-        <label class="check" title="Day 7: the agent investigates with tools (incident search, the deploy log, the service map) within 6 turns and 25 seconds, stating a hypothesis before each lookup, and submits its decision: read, page a human, or roll back to a named version. Out of budget, it hands the incident to a human. Nothing it proposes is executed. The agent is the system under test and the gate's baseline; untick it to run the earlier fixed path for comparison (scores only)."><input type="checkbox" id="agent" checked> Agent: investigate, then decide</label>
+        <label class="check" title="Day 7: the agent investigates with tools (incident search, the deploy log, or on v3 the change log, the service map) within 6 turns and 25 seconds, stating a hypothesis before each lookup, and submits its decision: read, page a human, or roll back to a named version. Out of budget, it hands the incident to a human. Nothing it proposes is executed. The agent is the system under test and the gate's baseline; untick it to run the earlier fixed path for comparison (scores only)."><input type="checkbox" id="agent" checked> Agent: investigate, then decide</label>
       </div>
       <div class="field" id="cases-field" hidden>
         <label for="cases">Cases, first N of <span id="cases-size">the set</span></label>
@@ -349,7 +350,7 @@
         <text class="badge" x="65" y="119" id="b_recall"> </text>
       </g>
       <g class="node" id="n_tool" data-status="built" data-code="findyfixy/tools/deploys.py">
-        <title>In: The tool the model asked for and its arguments.&#10;Out: get_recent_deploys: that service's deploys in the window, newest first. Agent mode adds search_incidents (similar past incidents, through the same recall), get_dependencies (what a service depends on, and what depends on it) and submit_decision (the decision record as the call's arguments; it ends the loop and executes nothing). Out of turns or time, the decision's action becomes page_human.&#10;Logic: Arguments are validated again inside each tool, so a direct call is as safe as one from a model. Every tool only reads.</title>
+        <title>In: The tool the model asked for and its arguments.&#10;Out: get_recent_deploys: that service's deploys in the window, newest first. On data v3 it is get_recent_changes instead (findyfixy/tools/changes.py): every change kind (deploys, config, flags, key rotations) in the window before the case's own alert time, with whether each deploy is safe to roll back. Agent mode adds search_incidents (similar past incidents, through the same recall), get_dependencies (what a service depends on, and what depends on it) and submit_decision (the decision record as the call's arguments; it ends the loop and executes nothing). Out of turns or time, the decision's action becomes page_human.&#10;Logic: Arguments are validated again inside each tool, so a direct call is as safe as one from a model. Every tool only reads.</title>
         <rect x="142" y="62" width="130" height="64" rx="8"/>
         <text class="t" x="207" y="86">Deploy tool</text>
         <text class="s" x="207" y="103">get_recent_deploys</text>
@@ -447,11 +448,12 @@ let hunting = false;          // true once the stream shows a hunt_started
 let iteration = [];           // events of the hunt's current run, for the slow replay
 // Cases per eval set, by mode, and the default count. Filled from /config; the
 // server reads each size from its set and checks every request against it.
-const evalCfg = { sizes: { live: null, live_v2: null, fake: null }, fallback: 2, agent: false, tools: true };
-// How many cases the chosen set has: live v1, live v2 (the hard cases) or the fake set.
+const evalCfg = { sizes: { live: null, live_v2: null, live_v3: null, fake: null }, fallback: 2, agent: false, tools: true };
+// How many cases the chosen set has: live v1, a live hard set (v2, v3) or the fake set.
 function evalSize() {
   if ($("mode").value !== "live") return evalCfg.sizes.fake;
-  return $("data").value === "v2" ? evalCfg.sizes.live_v2 : evalCfg.sizes.live;
+  const data = $("data").value;
+  return data === "v1" ? evalCfg.sizes.live : evalCfg.sizes[`live_${data}`];
 }
 
 // ---- small helpers -------------------------------------------------------
@@ -539,8 +541,9 @@ function labelsText(d) {
 }
 function evalVerdict(d) {
   // Only a run started here as a live fixed-path run (evalAgent false) is scores only; a replay leaves it unset.
-  if (view.evalAgent === false && view.evalData !== "v2") return { cls: "warn", badge: "scores only", text: "scores only: the baseline is the agent's, so a fixed-path run never applies the gate" };
-  if (view.evalData === "v2") return { cls: "warn", badge: "scores only", text: "scores only: the v2 hard cases have no baseline, so a v2 run never applies the gate, full or partial" };
+  const hard = view.evalData !== undefined && view.evalData !== "v1";
+  if (view.evalAgent === false && !hard) return { cls: "warn", badge: "scores only", text: "scores only: the baseline is the agent's, so a fixed-path run never applies the gate" };
+  if (hard) return { cls: "warn", badge: "scores only", text: `scores only: the ${view.evalData} hard cases have no baseline, so a ${view.evalData} run never applies the gate, full or partial` };
   if (d.subset) return { cls: "warn", badge: "subset, no gate", text: `subset, gate not applied (${d.summary.n} case${d.summary.n === 1 ? "" : "s"} ran; the baseline is defined on the full set)` };
   if (d.gate.length === 0) return { cls: "ok", badge: "gate PASS", text: "PASS: the gate found no problem against evals/baseline.json" };
   return { cls: "bad", badge: "gate FAIL", text: `FAIL: ${d.gate.length} gate problem(s), listed under Result` };
@@ -1129,7 +1132,7 @@ function syncMode() {
   const evalRun = $("kind").value === "eval";
   $("cases-field").hidden = !evalRun;
   $("data-field").hidden = !(evalRun && live);
-  $("data").querySelector('option[value="v2"]').disabled = !evalCfg.sizes.live_v2;
+  for (const v of ["v2", "v3"]) $("data").querySelector(`option[value="${v}"]`).disabled = !evalCfg.sizes[`live_${v}`];
   const size = evalSize();
   if (size) { $("cases").max = size; $("cases-size").textContent = String(size); }
   $("fake-field").hidden = live || evalRun;

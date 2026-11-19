@@ -26,7 +26,7 @@ Design decisions and what changes at scale:
 - One table per data version (`TABLES`). v1 keeps the table it always had,
   `chunks`, so its rows, ids and SQL are exactly those of every earlier run,
   and a v2 query can never return a v2-only incident to a v1 run. The cost is
-  a second copy of v1's 800 vectors in `chunks_v2`. At scale you would keep one
+  a copy of v1's 800 vectors in each later table (`chunks_v2`, `chunks_v3`). At scale you would keep one
   table with a version column (or a partition per version) instead of copies.
 - `twin_of` in the source file is the Day 4 answer key. This module never reads
   it. If retrieval could see its own answer key, the recall number would mean
@@ -62,7 +62,7 @@ DIMENSIONS = 384
 # input, which is why they can be formatted into SQL below. Every function that
 # touches a table takes a version and resolves the name here (`table_for`), so
 # no caller can hand a raw string to the SQL.
-TABLES: dict[DataVersion, str] = {"v1": "chunks", "v2": "chunks_v2"}
+TABLES: dict[DataVersion, str] = {"v1": "chunks", "v2": "chunks_v2", "v3": "chunks_v3"}
 
 
 def table_for(version: DataVersion) -> str:

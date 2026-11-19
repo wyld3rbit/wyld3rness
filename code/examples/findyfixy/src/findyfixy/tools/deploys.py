@@ -53,6 +53,9 @@ MAX_HOURS = 168
 Service = CorpusService
 
 
+DEPLOYS_TOOL = "get_recent_deploys"
+
+
 def deploys_path(version: DataVersion) -> Path:
     """The deploy log of one data version. The tool reads the log of the data the run uses."""
     return data_dir(version) / "deploys.json"
@@ -91,7 +94,7 @@ def make_deploys_tool(path: Path = DEFAULT_DEPLOYS_PATH) -> StructuredTool:
 
     return StructuredTool.from_function(
         func=run,
-        name="get_recent_deploys",
+        name=DEPLOYS_TOOL,
         description="List recent deploys of one service, newest first.",
         args_schema=DeploysArgs,
     )

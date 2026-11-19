@@ -176,6 +176,7 @@ def build_graph(
     investigate_model: str | None = None,
     recall: Recall | None = None,
     agent: bool = False,
+    agent_instructions: Callable[[str], str] = agent_prompt,
 ) -> TriageGraph:
     """Wire the router and return a compiled graph, ready for `.invoke()`.
 
@@ -209,6 +210,10 @@ def build_graph(
     recall is one of the agent's tools, and a second fixed recall would put
     incidents in the prompt that the agent did not choose. Raises ValueError
     on either mistake, at build time.
+
+    `agent_instructions` wraps the question in the agent's instructions. It
+    must name the tools the investigator really has; `wiring.agent_instructions`
+    builds the one that matches a data version's change tool.
     """
     if agent and investigator is None:
         raise ValueError("agent mode needs an investigator: the agent's tools are its only evidence")
@@ -253,7 +258,7 @@ def build_graph(
         """
         assert investigator is not None  # wired only when an investigator is set
         emit("node_entered", node="investigate", model=investigate_model)
-        prompt = agent_prompt if agent else investigation_prompt
+        prompt = agent_instructions if agent else investigation_prompt
         messages: list[BaseMessage] = [HumanMessage(prompt(state["question"]))]
         stopped: Stopped | None = None
         turn = 0

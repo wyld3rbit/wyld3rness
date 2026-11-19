@@ -426,7 +426,7 @@ def write_cases(cases: Sequence[HardCase], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="\n") as handle:
         for case in cases:
-            handle.write(json.dumps(case.model_dump(), sort_keys=True) + "\n")
+            handle.write(json.dumps(case.model_dump(mode="json"), sort_keys=True) + "\n")
 
 
 def write_deploys(records: Sequence[dict[str, object]], path: Path) -> None:

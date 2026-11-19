@@ -38,6 +38,12 @@ Agent mode (Day 7)
     - The record keeps the decision (action, rollback version), the tool calls
       and whether the loop stopped on its budget.
 
+The case's clock (data v3)
+    A v3 case carries `alert_at`, the moment its alert fired. It travels in
+    the case's meta (and so in the saved record) as ISO text, and `answer`
+    hands it to `make_graph`, which gives the agent a change tool that looks
+    back from that moment. Earlier cases have no clock, and `make_graph` gets None.
+
 Thread safety
     `answer` keeps its per-case state (the recall sink) local, so several
     workers can call it at once. The injected `candidates` must be thread-safe;
@@ -47,6 +53,7 @@ Thread safety
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
+from datetime import datetime
 from typing import TYPE_CHECKING, Any, Protocol
 
 from findyfixy.evals.golden import GoldenCase
@@ -113,7 +120,7 @@ def to_case(golden: GoldenCase, *, agent: bool = False) -> Case:
 
 
 def _meta(golden: GoldenCase) -> dict[str, Any]:
-    """The ids the adapter needs, plus a v2 case's action class when it has one.
+    """The ids the adapter needs, plus a v2 case's action class and a v3 case's alert time.
 
     v1 cases carry exactly the two ids they always did, so a v1 record is
     unchanged byte for byte.
@@ -124,6 +131,9 @@ def _meta(golden: GoldenCase) -> dict[str, Any]:
         # Named action_class, not expected_action: in agent mode the `action`
         # label owns the record keys action, expected_action and action_match.
         meta["action_class"] = expected_action
+    alert_at = getattr(golden, "alert_at", None)
+    if alert_at is not None:
+        meta["alert_at"] = alert_at.isoformat()  # text, because meta is saved in the JSON record
     return meta
 
 
@@ -193,7 +203,8 @@ def twin_recall_rate(records: Sequence[Mapping[str, Any]]) -> float | None:
 class FindyFixy:
     """The triage graph behind the `SystemUnderTest` seam.
 
-    `make_graph` compiles a graph with recall bound to one case. Compiling is
+    `make_graph(recall, at)` compiles a graph with recall bound to one case,
+    and `at` the case's alert time (None for a case without one). Compiling is
     cheap; the model calls are not. The negative control is the caller's
     choice of `make_graph` (one that ignores the recall it is given), so the
     adapter runs the same way in both cases.
@@ -202,7 +213,7 @@ class FindyFixy:
     def __init__(
         self,
         *,
-        make_graph: Callable[[Recall], Invokable],
+        make_graph: Callable[[Recall, datetime | None], Invokable],
         candidates: Candidates,
         small_model: str,
         large_model: str,
@@ -264,7 +275,9 @@ class FindyFixy:
         twin_id = case.meta["twin_id"]
         recall = make_holdout_recall(self._candidates, case.meta["source_id"], self._k, seen, accumulate=self._agent)
         try:
-            state = self._make_graph(recall).invoke({"question": case.question})
+            alert_at = case.meta.get("alert_at")
+            at = datetime.fromisoformat(alert_at) if alert_at is not None else None
+            state = self._make_graph(recall, at).invoke({"question": case.question})
             triage = state.get("triage")
             if triage is None:
                 raise ValueError("graph returned no triage")

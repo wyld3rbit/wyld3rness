@@ -110,7 +110,7 @@ class FakeGraph:
 def graph_factory(severity: str = "sev2", fail_on: set[str] | None = None, use_recall: bool = True):
     """make_graph for tests. A graph fails when its question names an id in `fail_on`."""
 
-    def make_graph(recall: Any) -> FakeGraph:
+    def make_graph(recall: Any, at: Any) -> FakeGraph:
         """Compile a fake graph; it fails for questions that name an id in `fail_on`."""
         graph = FakeGraph(recall if use_recall else None, severity, False)
         original = graph.invoke
@@ -265,7 +265,7 @@ def test_a_graph_that_returns_no_triage_is_a_run_error() -> None:
             """A final state with no triage."""
             return {}
 
-    sut = FindyFixy(make_graph=lambda recall: Empty(), candidates=ranked(), small_model="s", large_model="l")
+    sut = FindyFixy(make_graph=lambda recall, at: Empty(), candidates=ranked(), small_model="s", large_model="l")
     assert run([golden("g1", "S")], sut=sut)["cases"][0]["run_error"] == "ValueError: graph returned no triage"
 
 

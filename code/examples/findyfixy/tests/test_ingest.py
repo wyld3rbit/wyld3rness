@@ -166,18 +166,18 @@ def test_the_live_check_reads_the_source_against_the_table(tmp_path: Path) -> No
 
 
 def test_each_data_version_reads_only_its_own_table(tmp_path: Path) -> None:
-    """v1 keeps the table every earlier run used; v2 has its own, so neither can see the other's rows."""
+    """v1 keeps the table every earlier run used; v2 and v3 each have their own, so none sees another's rows."""
     path = tmp_path / "incidents.jsonl"
     path.write_text(json.dumps(ROW) + "\n")
     synced = {c.id: c.hash for c in read_chunks(path)}
-    for version, table in (("v1", "chunks"), ("v2", "chunks_v2")):
+    for version, table in (("v1", "chunks"), ("v2", "chunks_v2"), ("v3", "chunks_v3")):
         conn = FakeConnection(synced)
         assert database_staleness(conn, version, path) == []
         assert {q.split("FROM ")[1].split()[0] for q in conn.queries} == {table}
     missing = database_staleness(FakeConnection(None), "v2", path)
     assert missing == ["the database has no chunks_v2 table: run make ingest"]
     with pytest.raises(ValueError, match="unknown data version"):
-        table_for("v3")  # type: ignore[arg-type]
+        table_for("v4")  # type: ignore[arg-type]
 
 
 def test_the_v1_schema_and_sql_are_unchanged() -> None:

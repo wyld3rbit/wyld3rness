@@ -41,13 +41,14 @@ if TYPE_CHECKING:
 
 from findyfixy.tools.deploys import (
     DEFAULT_DEPLOYS_PATH,
+    DEPLOYS_TOOL,
     MAX_HOURS,
     DeploysArgs,
     Service,
     get_recent_deploys,
 )
 
-TOOL_NAME = "get_recent_deploys"
+TOOL_NAME = DEPLOYS_TOOL  # the direct tool's name, so the two paths cannot drift
 SERVER_EXPORT_TIMEOUT_S = 1.0
 # Same text the direct tool shows the model (see make_deploys_tool in tools.py).
 TOOL_DESCRIPTION = "List recent deploys of one service, newest first."

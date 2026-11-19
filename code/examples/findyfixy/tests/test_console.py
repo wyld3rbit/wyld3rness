@@ -605,9 +605,10 @@ def live_agent_hub(
     from findyfixy.console.fakes import as_chunk
     import findyfixy.console.server as console
     from findyfixy.tools.deploys import make_deploys_tool
-    from findyfixy.tools.investigate import build_investigator
+    from findyfixy.tools.investigate import agent_prompt, build_investigator
     from findyfixy.tools.memory import make_search_tool
     from findyfixy.tools.services import make_services_tool
+    from findyfixy.wiring import Agent
 
     monkeypatch.setattr(console, "ollama_decision_ask", lambda m, p: decision)
     searched: list[str] = []
@@ -634,7 +635,7 @@ def live_agent_hub(
                 yield as_chunk(next(replies))
 
         tools = [make_search_tool(recall), make_deploys_tool(), make_services_tool()]
-        return build_investigator(Model(), tools, max_turns=6, deadline_s=30.0)
+        return Agent(build_investigator(Model(), tools, max_turns=6, deadline_s=30.0), agent_prompt)
 
     hub = RunHub(live_models=("s", "l"), recall=recall, make_agent=make_agent, sleep=lambda s: None, fake_delay=0)
     srv = serve(hub, port=0)
@@ -985,7 +986,7 @@ def test_a_full_eval_without_a_baseline_ends_in_eval_failed(tmp_path):
         {"mode": "weird", "cases": 2},
         {"mode": "fake", "cases": 2, "scenario": "stay_small"},
         {"mode": "fake", "cases": 2, "data": "v2"},
-        {"mode": "live", "cases": 2, "data": "v3"},
+        {"mode": "live", "cases": 2, "data": "v4"},
     ],
 )
 def test_bad_eval_requests_are_422(server, payload):
@@ -1027,21 +1028,27 @@ def test_a_full_v2_run_uses_the_hard_set_and_never_applies_the_gate(tmp_path):
     hub = RunHub(
         live_models=("s", "l"),
         live_eval=suite("v1"),
-        live_eval_v2=suite("v2"),
+        live_eval_hard={"v2": suite("v2"), "v3": suite("v3")},
         baseline_path=tmp_path / "missing.json",  # a gated run would fail on this
         sleep=no_wait,
         fake_delay=0,
     )
     srv, port = _serve(hub)
     try:
-        assert post_eval(port, {"mode": "live", "cases": 30, "data": "v2"})[0] == 202
-        events = stream(port)
+        finished = []
+        for data in ("v2", "v3"):
+            for _ in range(50):
+                if post_eval(port, {"mode": "live", "cases": 30, "data": data})[0] == 202:
+                    break
+                time.sleep(0.02)
+            finished.append(stream(port)[-1])
     finally:
         srv.shutdown()
         srv.server_close()
-    assert used == ["v2"]
-    assert events[-1]["kind"] == "eval_finished"
-    assert events[-1]["data"]["gate"] is None and events[-1]["data"]["subset"] is False
+    assert used == ["v2", "v3"]
+    for event in finished:
+        assert event["kind"] == "eval_finished"
+        assert event["data"]["gate"] is None and event["data"]["subset"] is False
 
 
 def test_the_agent_eval_is_gated_and_a_fixed_path_eval_is_not(tmp_path):
@@ -1120,7 +1127,7 @@ def test_config_reports_each_eval_sets_size(server):
     """The page reads the sizes from /config; live is None when not configured."""
     _, port = server
     cfg = json.loads(call(port, "GET", "/config")[1])
-    assert cfg["eval_sizes"] == {"live": None, "live_v2": None, "fake": FAKE_SIZE}
+    assert cfg["eval_sizes"] == {"live": None, "live_v2": None, "live_v3": None, "fake": FAKE_SIZE}
     assert cfg["eval_default"] == 2
 
 
@@ -1241,7 +1248,7 @@ def test_live_eval_cuts_the_session_to_n_cases_and_hands_the_graph_its_emitter(m
         """A session of three cases whose graph reports to the run's `emit`."""
         controls.append(negative_control)
 
-        def make_graph(recall):
+        def make_graph(recall, at):
             """A graph with a confident scripted model and this case's recall."""
             return build_graph(
                 lambda m, p: scripted_reply(0.9), small_model="s", large_model="l", emit=emit, recall=recall

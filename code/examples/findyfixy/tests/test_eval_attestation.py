@@ -141,7 +141,7 @@ def covered(rel: str) -> bool:
     """True when a declared file is `rel`, or a declared directory holds it.
 
     A path built for some data version (`data/<version>/...`) is read as its v1
-    instance: the gate runs v1 only, and v2 runs go through answers_v2.py,
+    instance: the gate runs v1 only, and hard-set runs go through answers_hard.py,
     outside this closure.
     """
     rel = rel.replace("<version>", "v1")

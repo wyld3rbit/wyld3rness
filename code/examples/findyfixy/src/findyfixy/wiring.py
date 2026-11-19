@@ -15,6 +15,9 @@ functions, so importing this module costs nothing.
 """
 
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
+from datetime import datetime
+from functools import partial
 import threading
 from typing import TYPE_CHECKING
 
@@ -23,6 +26,7 @@ from findyfixy.triage.record import RECALL_K, Prior
 if TYPE_CHECKING:
     from contextlib import AbstractContextManager
 
+    from langchain_core.tools import BaseTool
     from psycopg import Connection
 
     from findyfixy.paths import DataVersion
@@ -49,15 +53,62 @@ def connect() -> "Connection":
     return conn
 
 
-def build_agent(model: str, recall: "Recall", version: "DataVersion" = "v1") -> "Investigator":
+# Data versions whose cases carry their own alert time and a change log
+# (tools/changes.py). Earlier versions have a deploy log against one shared moment.
+CHANGE_LOG_VERSIONS: frozenset["DataVersion"] = frozenset({"v3"})
+
+
+def changes_tool(version: "DataVersion", at: datetime | None) -> "BaseTool":
+    """The tool that lists what changed, for one data version: the deploy log, or the change log as of `at`.
+
+    A change-log version needs `at`, the alert's time, because its log is
+    absolute: without it the tool could not tell recent from old. Raises
+    ValueError when it is missing, or given to a version that has no clock.
+    """
+    from findyfixy.tools.changes import changes_path, make_changes_tool
+    from findyfixy.tools.deploys import deploys_path, make_deploys_tool
+
+    if version in CHANGE_LOG_VERSIONS:
+        if at is None:
+            raise ValueError(f"data {version} looks back from each case's alert time: pass `at`")
+        return make_changes_tool(changes_path(version), at)
+    if at is not None:
+        raise ValueError(f"data {version} has a deploy log with no clock: `at` would be ignored")
+    return make_deploys_tool(deploys_path(version))
+
+
+def agent_instructions(version: "DataVersion") -> Callable[[str], str]:
+    """The agent's instructions, naming the change tool `build_agent` gives it for `version`."""
+    from findyfixy.tools.changes import CHANGES_TOOL
+    from findyfixy.tools.deploys import DEPLOYS_TOOL
+    from findyfixy.tools.investigate import agent_prompt
+
+    return partial(agent_prompt, changes_tool=CHANGES_TOOL if version in CHANGE_LOG_VERSIONS else DEPLOYS_TOOL)
+
+
+@dataclass(frozen=True)
+class Agent:
+    """The agent's loop and the instructions that name its tools. Built together, used together.
+
+    The graph's investigate step sends `instructions(question)` to the loop.
+    Kept in one object because the two must agree: instructions naming a
+    tool the loop does not have send the model calling a tool that fails.
+    """
+
+    investigator: "Investigator"
+    instructions: Callable[[str], str]
+
+
+def build_agent(model: str, recall: "Recall", version: "DataVersion" = "v1", at: datetime | None = None) -> Agent:
     """The agent's investigation loop (Day 7): `model` with its three read-only tools and its budget.
 
-    The tools are incident search over `recall`, the deploy log of `version`,
-    and the service map. `recall` decides what search may see: the eval passes
-    one with the case's own incident held out, the console the plain one. The
-    deploy log follows the data version, so a v2 case sees the deploys its
-    rollback cases were written against. One builder for the eval and the
-    console, so the two cannot run different agents.
+    The tools are incident search over `recall`, what changed in a service
+    (`changes_tool`), and the service map. `recall` decides what search may
+    see: the eval passes one with the case's own incident held out, the console
+    the plain one. What changed follows the data version: v1 and v2 read their
+    deploy log, v3 its change log as of `at`, the case's alert time. One
+    builder for the eval and the console, so the two cannot run different
+    agents. The instructions come with it (`Agent`), naming the same tools.
 
     Every tool here only reads. Nothing the agent proposes is executed; the
     policy checkpoint (step 3) is what will judge a proposal.
@@ -65,7 +116,6 @@ def build_agent(model: str, recall: "Recall", version: "DataVersion" = "v1") -> 
     from langchain_ollama import ChatOllama
 
     from findyfixy.llm import answer_options
-    from findyfixy.tools.deploys import deploys_path, make_deploys_tool
     from findyfixy.tools.investigate import AGENT_DEADLINE_S, AGENT_MAX_TURNS, build_investigator
     from findyfixy.tools.memory import make_search_tool
     from findyfixy.tools.services import make_services_tool
@@ -73,14 +123,15 @@ def build_agent(model: str, recall: "Recall", version: "DataVersion" = "v1") -> 
 
     tools = [
         make_search_tool(recall),
-        make_deploys_tool(deploys_path(version)),
+        changes_tool(version, at),
         make_services_tool(),
         make_submit_tool(),
     ]
     llm = ChatOllama(model=model, **answer_options()).bind_tools(tools)
-    return build_investigator(
+    investigator = build_investigator(
         llm, tools, max_turns=AGENT_MAX_TURNS, deadline_s=AGENT_DEADLINE_S, finish_tool=SUBMIT_TOOL
     )
+    return Agent(investigator, agent_instructions(version))
 
 
 def build_retriever(

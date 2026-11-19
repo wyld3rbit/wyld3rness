@@ -96,7 +96,7 @@ from langgraph.graph import StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.graph.state import CompiledStateGraph
 
-from findyfixy.tools.deploys import Service, make_tools_node
+from findyfixy.tools.deploys import DEPLOYS_TOOL, Service, make_tools_node
 
 # Model calls per run. Four is enough for ask, fix a bad argument, retry,
 # answer. More only helps a model that is already lost.
@@ -142,9 +142,12 @@ def investigation_prompt(question: str) -> str:
 # submit_decision (findyfixy/tools/submit.py), whose arguments are the
 # validated `Decision` record. A run that ends without a valid submission
 # falls back to a separate validated decision call (findyfixy/triage/graph.py).
+# `{changes_tool}` is the tool that lists what changed: the deploy log up to
+# data v2, the change log from v3 (tools/changes.py). Filled with the deploy
+# tool's name, the text is exactly what the v1 baseline ran.
 AGENT_PROMPT = (
     "You are an incident triage agent. Investigate the report with your tools before deciding. "
-    "search_incidents finds similar past incidents, get_recent_deploys lists what changed in a "
+    "search_incidents finds similar past incidents, {changes_tool} lists what changed in a "
     "service, get_dependencies shows what a service depends on. Known services: {services}. "
     "Work like an on-call engineer: before each tool call, state in one line the hypothesis it tests. "
     "Check what changed in the service that alerted. If it may be a victim of another service, look "
@@ -156,9 +159,13 @@ AGENT_PROMPT = (
 )
 
 
-def agent_prompt(question: str) -> str:
-    """Wrap a report in the agent's investigation instructions. Pure."""
-    return AGENT_PROMPT.format(services=", ".join(get_args(Service)), question=question)
+def agent_prompt(question: str, changes_tool: str = DEPLOYS_TOOL) -> str:
+    """Wrap a report in the agent's investigation instructions. Pure.
+
+    `changes_tool` names the tool the agent has for what changed (the deploy
+    tool by default, the change tool from data v3).
+    """
+    return AGENT_PROMPT.format(services=", ".join(get_args(Service)), changes_tool=changes_tool, question=question)
 
 
 class ToolModel(Protocol):

@@ -177,7 +177,7 @@ def run_and_judge(
 ) -> None:
     """Drive one eval run to exactly one terminal event: `eval_finished` or `eval_failed`.
 
-    `gated` False (a v2 run) never applies the gate: `gate` is None, as for a
+    `gated` False (a hard-set run, v2 or v3) never applies the gate: `gate` is None, as for a
     set the baseline was not defined on. The baseline is v1's alone. `agent`
     is passed to the run; the caller sets `gated` False with it.
 
