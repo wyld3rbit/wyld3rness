@@ -112,7 +112,7 @@ text { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-se
 <g class="node" data-status="built">
         <rect x="372" y="-96" width="120" height="64" rx="8"/>
         <text class="t" x="432" y="-70">Action ledger</text>
-        <text class="s" x="432" y="-52">harness, every proposal</text>
+        <text class="s" x="432" y="-52">harness, actions</text>
       </g>
 <g class="node" data-status="built">
         <rect x="506" y="-96" width="120" height="64" rx="8"/>
