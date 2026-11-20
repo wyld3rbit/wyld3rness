@@ -382,7 +382,7 @@
         <title>In: Every action an agent proposes: the incident, the proposer, the action, its target and its fields.&#10;Out: A verdict: allowed, downgraded to paging a person, rejected (undeclared) or queued, with its reasons, the facts and an order number.&#10;Logic: The harness decides in code; FindyFixy supplies the facts through its port (findyfixy/policy.py). A rollback passes only if its target is the alerting service or one it depends on, the deploy is the only change to it in the 2 hours before the alert and is safe to roll back, and the version is the one before it. An action that changes a system holds its blast radius; one destructive action in flight per incident. Nothing executes yet.</title>
         <rect x="372" y="-96" width="120" height="64" rx="8"/>
         <text class="t" x="432" y="-70">Action ledger</text>
-        <text class="s" x="432" y="-52">harness, every proposal</text>
+        <text class="s" x="432" y="-52">harness, actions</text>
       </g>
       <g class="node" data-status="built" data-layer="harness" data-code="wyld3rness/identity/broker.py">
         <title>In: An agent, a tool and the resource a call reads.&#10;Out: A JWT for that one call (HMAC-SHA256), expiring in 5 minutes, or a refusal.&#10;Logic: Tokens only for granted tools; a token for another agent, tool or resource, from another key or expired is refused. FindyFixy's guard (findyfixy/tools/guard.py) issues and verifies one around every agent tool. In one process this proves the contract, not isolation.</title>
