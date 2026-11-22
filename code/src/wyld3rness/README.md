@@ -1,6 +1,6 @@
 # wyld3rness
 
-The `code/src/wyld3rness/` package is the harness: evaluation (`code/src/wyld3rness/eval/`) scores an LLM system's answers and gates a release on the scores, and tracing (`code/src/wyld3rness/trace/`) records every run as a trace. It knows nothing about any one application. FindyFixy is its first consumer.
+The `code/src/wyld3rness/` package is the harness: evaluation (`code/src/wyld3rness/eval/`) scores an LLM system's answers and gates a release on the scores, and tracing (`code/src/wyld3rness/trace/`) records every run as a trace. It knows nothing about any one application. FindyFixy is its first consumer. The loop, the budget and the action controls that autonomous operation needs are planned, and are not in the package yet (`code/docs/adr/0008-autonomous-operation-with-cost-as-an-invariant.md`).
 
 **The seam.** An application implements `SystemUnderTest` in `code/src/wyld3rness/eval/sut.py`: `describe()` returns the settings that shaped its answers, `answer(case)` returns an `Answer` (the text the judge scores, the contexts the model saw, the proposed action, the labels and app data), and `summarise(records)` returns any extra aggregates. Cases arrive as `Case` from `code/src/wyld3rness/eval/case.py`. FindyFixy's implementation is `code/examples/findyfixy/src/findyfixy/evals/adapter.py`.
 

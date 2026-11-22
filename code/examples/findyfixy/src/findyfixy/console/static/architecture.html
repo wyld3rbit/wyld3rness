@@ -9,9 +9,10 @@
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b1220'/%3E%3Ccircle cx='27' cy='27' r='13' fill='none' stroke='%235cc8ff' stroke-width='6'/%3E%3Cline x1='37' y1='37' x2='52' y2='52' stroke='%235cc8ff' stroke-width='7' stroke-linecap='round'/%3E%3Cpath d='M20 27l5 5 9-10' fill='none' stroke='%234ade80' stroke-width='4.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <!--
   What this is
-    One page: the system as a schematic in two lanes, a Run button, and a live
-    event log. The top lane is the harness. The bottom lane is
-    FindyFixy, the app the harness tests. Served by `uv run findyfixy-console`.
+    One page: the system as a schematic, a Run button, and a live event log.
+    Top to bottom: what a human sets before runtime, the harness around the
+    decision, FindyFixy's decision, the harness's act-verify-undo loop, and
+    the simulated production it acts on. What is not built is dashed. Served by `uv run findyfixy-console`.
     Opening the file directly shows the diagram but cannot run anything (it
     needs the server's /run, /eval and /events).
 
@@ -36,7 +37,7 @@
     Event data includes model output, which is untrusted text. Everything from
     the stream goes in with textContent, never as markup.
 
-  How to extend (one edit per build day)
+  How to extend (one edit per build phase)
     Flip a node's data-status from "planned" to "built" and point its data-code
     at the code. Add the phase to tools/adr_snapshot.py.
 -->
@@ -117,14 +118,17 @@
   .edge { fill: none; stroke: var(--line); stroke-width: 2; }
   .edge.dashed { stroke-dasharray: 5 5; }
   .edge.faint { opacity: 0; transition: opacity .2s; }
-  .edge.tool { stroke-dasharray: 5 5; stroke: var(--warn); }
+  .edge.tool { stroke: var(--warn); }
   .node.skipped rect { opacity: .4; }
-  .node.skipped .t, .node.skipped .s { opacity: .5; }
+  .node.skipped .t, .node.skipped .s, .node.skipped .i { opacity: .5; }
   .edge-label { fill: var(--muted); font-size: 11px; text-anchor: middle; }
   .node rect, .node polygon { fill: var(--bg); stroke: var(--accent); stroke-width: 1.5; }
   .node .t { fill: var(--text); font-size: 14px; font-weight: 600; text-anchor: middle; }
   .node .s { fill: var(--muted); font-size: 11px; text-anchor: middle; }
   .node .badge { fill: var(--muted); font-size: 11px; text-anchor: middle; }
+  .edge.planned { stroke: var(--planned); stroke-dasharray: 5 5; stroke-width: 1.5; marker-end: url(#arrow-planned); }
+  .lane.human { stroke: #e07a5f; stroke-opacity: .6; }
+  .lane-label.human { fill: #e07a5f; }
   .node[data-status=planned] rect { stroke: var(--planned); stroke-dasharray: 5 4; }
   .node[data-status=planned] .t { fill: var(--planned); }
   .node[data-status=planned] .s { fill: var(--planned); }
@@ -140,6 +144,10 @@
   .node.ok .badge { fill: var(--ok); }
   .node.bad .badge { fill: var(--bad); }
   @keyframes pulse { 50% { fill: #1a3a5e; } }
+  /* Icons: Lucide 0.460.0 (ISC, see NOTICE). Rust when built, grey when planned.
+     The class is doubled to outrank the state rules above, which colour the box. */
+  .node .i.i.i { fill: none; stroke: #e07a5f; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; animation: none; }
+  .node[data-status=planned] .i.i.i { stroke: var(--planned); stroke-dasharray: none; }
   #dot { fill: var(--accent); opacity: 0; }
   #dot.on { opacity: 1; }
 
@@ -181,7 +189,7 @@
 <body>
 <header>
   <h1>FindyFixy</h1>
-  <p>Fire a run and watch it move through the system. Top lane: the harness. Bottom lane: FindyFixy. Dashed boxes are not built yet.</p>
+  <p>The target: on-call without a human approving each action, inside a cost budget. Solid runs today: fire a run and watch it. Dashed is not built yet.</p>
 </header>
 
 <main>
@@ -249,14 +257,27 @@
 
   <section class="panel" aria-label="Architecture schematic">
     <div class="schematic">
-    <svg viewBox="-60 -128 1000 594" role="img" aria-labelledby="svgtitle">
-      <title id="svgtitle">Two lanes. The top lane is the harness: an eval gate, a CI gate and tracing that are built, and policy, gateway and human review that are planned. The bottom lane is FindyFixy, the app under test. The eval gate sends each golden case into the app as a question. The question goes to a recall step that looks up similar past incidents, then to an investigate step that may look up deploys with a tool, then to the small model, then validation, then a route that either ends or escalates to the large model, and finally a triage record. The triage record goes back to the eval gate, which scores the answer.</title>
+    <svg viewBox="-60 -198 1000 1044" role="img" aria-labelledby="svgtitle">
+      <title id="svgtitle">Autonomous on-call, target and built. Before runtime a human sets the goal, the invariants, the allowed kinds of action and the budget. Built today: an eval gate, a CI gate and tracing in the harness, and FindyFixy's decision, which takes a question through recall, an optional tool step, a small model, validation and a route to a triage record. Planned: the record becomes one typed action that passes policy and identity, acts on a simulated production and is verified on real signals. A recovery is kept and scored with its cost. A failure that can be undone is undone and tried again, until the tries or the budget run out. Then, or when a failure cannot be undone, the system goes to a safe state.</title>
 
-      <!-- lanes: the harness on top, the app it tests below -->
+      <defs><marker id="arrow-planned" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,1 L10,5 L0,9 z" fill="#7f8fb0"/></marker></defs>
+
+      <!-- lanes: before runtime, the harness, the app, the loop, the systems -->
+      <rect class="lane human" x="-54" y="-192" width="988" height="58" rx="10"/>
+      <text class="lane-label human" x="-44" y="-174">Before runtime, a human sets</text>
       <rect class="lane harness" x="-54" y="-122" width="988" height="114" rx="10"/>
       <text class="lane-label harness" x="-44" y="-106">Harness</text>
       <rect class="lane" x="-54" y="24" width="988" height="436" rx="10"/>
       <text class="lane-label" x="-20" y="44">FindyFixy</text>
+      <rect class="lane harness" x="-54" y="476" width="988" height="236" rx="10"/>
+      <text class="lane-label harness" x="-20" y="498">Harness: act, verify, undo. No human per action</text>
+      <rect class="lane" x="-54" y="728" width="988" height="110" rx="10"/>
+      <text class="lane-label" x="-20" y="748">Simulated production</text>
+      <text class="edge-label" x="40" y="-149">the goal</text>
+      <text class="edge-label" x="185" y="-149">the invariants</text>
+      <text class="edge-label" x="370" y="-149">the kinds of action allowed</text>
+      <text class="edge-label" x="565" y="-149">the budget per incident</text>
+      <text class="edge-label" x="780" y="-149">the gate, which no agent can edit</text>
 
       <!-- edges between the lanes: cases go in, answers come back to be scored -->
       <path id="e_eval_q" class="edge" d="M-28,-16 L-28,260 L10,260"/>
@@ -283,16 +304,45 @@
       <text class="edge-label" x="71" y="182">similar incidents</text>
       <text id="l_bypass" class="edge-label" x="198" y="356" style="opacity:0">tool step off</text>
 
+      <!-- planned paths: the loop that is not built yet -->
+      <path id="p_small_gateway" class="edge planned" d="M400,228 L400,20 L525,20 L525,-31"/>
+      <path id="p_val_second" class="edge planned" d="M511,228 L511,127"/>
+      <path id="p_rec_policy" class="edge planned" d="M880,292 L880,519"/>
+      <path id="p_policy_identity" class="edge planned" d="M796,552 L759,552"/>
+      <path id="p_identity_act" class="edge planned" d="M628,552 L591,552"/>
+      <path id="p_act_verify" class="edge planned" d="M460,552 L423,552"/>
+      <path id="p_verify_undo" class="edge planned" d="M292,552 L255,552"/>
+      <path id="p_verify_safe" class="edge planned" d="M300,584 L300,618 L40,618 L40,585"/>
+      <path id="p_undo_safe" class="edge planned" d="M124,552 L87,552"/>
+      <path id="p_undo_again" class="edge planned" d="M189,520 L189,442 L80,442 L80,293"/>
+      <path id="p_verify_score" class="edge planned" d="M357,584 L357,627"/>
+      <path id="p_safe_score" class="edge planned" d="M21,584 L21,660 L291,660"/>
+      <path id="p_kill_policy" class="edge planned" d="M861,628 L861,585"/>
+      <path id="p_act_services" class="edge planned" d="M525,584 L525,761"/>
+      <path id="p_services_verify" class="edge planned" d="M470,762 L470,722 L436,722 L436,570 L423,570"/>
+      <path id="p_services_alerts" class="edge planned" d="M460,794 L255,794"/>
+      <path id="p_faults_services" class="edge planned" d="M796,794 L591,794"/>
+      <path id="p_alerts_question" class="edge planned" d="M124,794 L-48,794 L-48,310 L30,310 L30,293"/>
+      <text class="edge-label" x="273" y="543">no</text>
+      <text class="edge-label" x="112" y="604">out of tries or budget</text>
+      <text class="edge-label" x="186" y="632">no, and cannot be undone</text>
+      <text class="edge-label" x="148" y="434">again, with what failed</text>
+      <text class="edge-label" x="390" y="610">recovered</text>
+      <text class="edge-label" x="388" y="724">real signals</text>
+      <text class="edge-label" x="40" y="786">page</text>
+
       <!-- app nodes: data-code names the graph node or module that implements each box -->
       <g class="node" id="n_q" data-status="built" data-code="graph:__start__">
         <title>In: The pasted incident report or log lines. In an eval run, a golden case's alert.&#10;Out: The same text, unchanged, to every step.&#10;Logic: Capped at 8000 characters. Treated as untrusted input.</title>
         <rect x="10" y="228" width="110" height="64" rx="8"/>
+        <path class="i" transform="translate(15 232) scale(.56)" d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path class="i" transform="translate(15 232) scale(.56)" d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>
         <text class="t" x="65" y="256">Question</text>
         <text class="s" x="65" y="274">incident report</text>
       </g>
       <g class="node" id="n_inv" data-status="built" data-code="graph:investigate">
         <title>In: The question.&#10;Out: Evidence text from tool calls. May be empty.&#10;Logic: A tool-calling model decides whether to call get_recent_deploys. The loop has a turn cap. Every run pays for these model requests, even when no tool is called.</title>
         <rect x="142" y="228" width="130" height="64" rx="8"/>
+        <circle class="i" transform="translate(147 232) scale(.56)" cx="11" cy="11" r="8"/><path class="i" transform="translate(147 232) scale(.56)" d="m21 21-4.3-4.3"/>
         <text class="t" x="207" y="254">Investigate</text>
         <text class="s" x="207" y="271">tool-calling model</text>
         <text class="badge" x="207" y="286" id="b_inv"> </text>
@@ -300,6 +350,7 @@
       <g class="node" id="n_small" data-status="built" data-code="graph:small">
         <title>In: The question, the recalled incidents and the evidence.&#10;Out: A triage record: severity, component, next action, confidence.&#10;Logic: Temperature 0, output constrained to the schema. If the record stays invalid after the retry, the result is empty and the route escalates.</title>
         <rect x="294" y="228" width="130" height="64" rx="8"/>
+        <rect class="i" transform="translate(299 232) scale(.56)" width="16" height="16" x="4" y="4" rx="2"/><rect class="i" transform="translate(299 232) scale(.56)" width="6" height="6" x="9" y="9" rx="1"/><path class="i" transform="translate(299 232) scale(.56)" d="M15 2v2"/><path class="i" transform="translate(299 232) scale(.56)" d="M15 20v2"/><path class="i" transform="translate(299 232) scale(.56)" d="M2 15h2"/><path class="i" transform="translate(299 232) scale(.56)" d="M2 9h2"/><path class="i" transform="translate(299 232) scale(.56)" d="M20 15h2"/><path class="i" transform="translate(299 232) scale(.56)" d="M20 9h2"/><path class="i" transform="translate(299 232) scale(.56)" d="M9 2v2"/><path class="i" transform="translate(299 232) scale(.56)" d="M9 20v2"/>
         <text class="t" x="359" y="254">Small model</text>
         <text class="s" x="359" y="271">answers first</text>
         <text class="badge" x="359" y="286" id="b_small"> </text>
@@ -307,6 +358,7 @@
       <g class="node" id="n_val" data-status="built" data-code="findyfixy/triage/record.py">
         <title>In: The model's raw reply.&#10;Out: A checked triage record, or a typed error.&#10;Logic: Pydantic checks the severity value and the 0 to 1 confidence bound. An invalid reply is asked again once, with the error text added.</title>
         <rect x="446" y="228" width="130" height="64" rx="8"/>
+        <circle class="i" transform="translate(451 232) scale(.56)" cx="12" cy="12" r="10"/><path class="i" transform="translate(451 232) scale(.56)" d="m9 12 2 2 4-4"/>
         <text class="t" x="511" y="254">Validate</text>
         <text class="s" x="511" y="271">Pydantic, 1 retry</text>
         <text class="badge" x="511" y="286" id="b_val"> </text>
@@ -314,19 +366,22 @@
       <g class="node" id="n_route" data-status="built" data-code="findyfixy/triage/graph.py">
         <title>In: The triage record.&#10;Out: End the run, or escalate to the large model.&#10;Logic: A pure function, no model call. Escalates when the record is missing or confidence is below 0.7 (exactly 0.7 stays). If both models are the same name it always ends.</title>
         <polygon points="658,215 718,260 658,305 598,260"/>
+        <path class="i" transform="translate(651 222) scale(.56)" d="M16 3h5v5"/><path class="i" transform="translate(651 222) scale(.56)" d="M8 3H3v5"/><path class="i" transform="translate(651 222) scale(.56)" d="M12 22v-8.3a4 4 0 0 0-1.172-2.872L3 3"/><path class="i" transform="translate(651 222) scale(.56)" d="m15 9 6-6"/>
         <text class="t" x="658" y="258">Route</text>
         <text class="badge" x="658" y="274" id="b_route"> </text>
       </g>
       <g class="node" id="n_large" data-status="built" data-code="graph:large">
         <title>In: The same question, recall and evidence as the small model.&#10;Out: The final triage record, overwriting the small model's.&#10;Logic: Same step as the small model. No tier above it, so an invalid reply fails loudly.</title>
         <rect x="593" y="388" width="130" height="64" rx="8"/>
+        <rect class="i" transform="translate(598 392) scale(.56)" width="16" height="16" x="4" y="4" rx="2"/><rect class="i" transform="translate(598 392) scale(.56)" width="6" height="6" x="9" y="9" rx="1"/><path class="i" transform="translate(598 392) scale(.56)" d="M15 2v2"/><path class="i" transform="translate(598 392) scale(.56)" d="M15 20v2"/><path class="i" transform="translate(598 392) scale(.56)" d="M2 15h2"/><path class="i" transform="translate(598 392) scale(.56)" d="M2 9h2"/><path class="i" transform="translate(598 392) scale(.56)" d="M20 15h2"/><path class="i" transform="translate(598 392) scale(.56)" d="M20 9h2"/><path class="i" transform="translate(598 392) scale(.56)" d="M9 2v2"/><path class="i" transform="translate(598 392) scale(.56)" d="M9 20v2"/>
         <text class="t" x="658" y="414">Large model</text>
-        <text class="s" x="658" y="431">second tier, if set</text>
+        <text class="s" x="658" y="431">off if one model is set</text>
         <text class="badge" x="658" y="446" id="b_large"> </text>
       </g>
       <g class="node" id="n_rec" data-status="built" data-code="graph:__end__">
         <title>In: The final record.&#10;Out: Severity, component, next action, confidence and the model used.&#10;Logic: Shown as is. It is the only thing downstream steps read.</title>
         <rect x="780" y="228" width="130" height="64" rx="8"/>
+        <path class="i" transform="translate(785 232) scale(.56)" d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path class="i" transform="translate(785 232) scale(.56)" d="M9 18h6"/><path class="i" transform="translate(785 232) scale(.56)" d="M10 22h4"/>
         <text class="t" x="845" y="254">Triage record</text>
         <text class="s" x="845" y="271">severity, component</text>
         <text class="badge" x="845" y="286" id="b_rec"> </text>
@@ -334,6 +389,7 @@
       <g class="node" id="n_recall" data-status="built" data-code="graph:recall">
         <title>In: The question.&#10;Out: Up to 3 similar past incidents, each with severity, cause and fix, as prompt text.&#10;Logic: BM25 (keyword) and vector search each take their top 50. Reciprocal-rank fusion merges them, a cross-encoder reranker re-scores the best 30, and results collapse to one per incident. A database fault stops the run instead of being hidden.</title>
         <rect x="10" y="62" width="110" height="64" rx="8"/>
+        <ellipse class="i" transform="translate(15 66) scale(.56)" cx="12" cy="5" rx="9" ry="3"/><path class="i" transform="translate(15 66) scale(.56)" d="M3 5V19A9 3 0 0 0 21 19V5"/><path class="i" transform="translate(15 66) scale(.56)" d="M3 12A9 3 0 0 0 21 12"/>
         <text class="t" x="65" y="86">Recall</text>
         <text class="s" x="65" y="103">hybrid + rerank</text>
         <text class="badge" x="65" y="119" id="b_recall"> </text>
@@ -341,6 +397,7 @@
       <g class="node" id="n_tool" data-status="built" data-code="findyfixy/tools/deploys.py">
         <title>In: Service name and a number of hours.&#10;Out: JSON of that service's deploys in the window, newest first.&#10;Logic: Arguments are validated again inside the tool, so a direct call is as safe as one from a model.</title>
         <rect x="142" y="62" width="130" height="64" rx="8"/>
+        <path class="i" transform="translate(147 66) scale(.56)" d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
         <text class="t" x="207" y="86">Deploy tool</text>
         <text class="s" x="207" y="103">get_recent_deploys</text>
         <text class="badge" x="207" y="119" id="b_tool"> </text>
@@ -348,8 +405,9 @@
 
       <!-- harness nodes: one edit per build day flips data-status to built -->
       <g class="node" id="n_eval" data-status="built" data-layer="harness" data-code="wyld3rness/eval/runner.py">
-        <title>In: An app's golden cases, through one interface (SystemUnderTest: describe, answer, summarise). FindyFixy plugs in with an adapter: 30 cases, each with a reference severity, cause and fix.&#10;Out: Scores per metric with confidence intervals, a saved report, and a pass or fail gate.&#10;Logic: The harness package (code/src/wyld3rness/eval) never imports the app. A judge model from a different family scores faithfulness, context recall, action quality and response relevancy; labels such as severity are matched exactly. The gate fails if a score drops below its frozen floor (baseline mean minus 0.05), regresses outside its 95% interval, or the judge failure rate passes 0.15. Moving it into the harness changed no score: the frozen baseline still reproduces byte for byte.&#10;Watch it: choose Eval run above. Each case goes into the app lane, the answer comes back, and the metrics are scored here. The console is a viewer: it writes no report and no baseline, and it applies the gate only when every golden case ran.</title>
+        <title>In: An app's golden cases, through one interface (SystemUnderTest: describe, answer, summarise). FindyFixy plugs in with an adapter: 30 cases, each with a reference severity, cause and fix.&#10;Out: Scores per metric with confidence intervals, a saved report, and a pass or fail gate.&#10;Logic: The harness package (code/src/wyld3rness/eval) never imports the app. A judge model from an older generation of the same vendor scores faithfulness, context recall, action quality and response relevancy; labels such as severity are matched exactly. The gate fails if a score drops below its frozen floor (baseline mean minus 0.05), regresses outside its 95% interval, or the judge failure rate passes 0.15. Moving it into the harness changed no score: the frozen baseline still reproduces byte for byte.&#10;Watch it: choose Eval run above. Each case goes into the app lane, the answer comes back, and the metrics are scored here. The console is a viewer: it writes no report and no baseline, and it applies the gate only when every golden case ran.</title>
         <rect x="-44" y="-96" width="130" height="80" rx="8"/>
+        <circle class="i" transform="translate(-39 -92) scale(.56)" cx="12" cy="12" r="10"/><circle class="i" transform="translate(-39 -92) scale(.56)" cx="12" cy="12" r="6"/><circle class="i" transform="translate(-39 -92) scale(.56)" cx="12" cy="12" r="2"/>
         <text class="t" x="21" y="-74">Eval gate</text>
         <text class="s" x="21" y="-58">harness, any app</text>
         <text class="badge" x="21" y="-43" id="b_eval"> </text>
@@ -358,32 +416,121 @@
       <g class="node" data-status="built" data-layer="harness" data-code="wyld3rness/eval/attest.py">
         <title>In: A make eval-gate command that passes as a whole: the full golden set, a clean tree, a known judge digest, and a database that matches the corpus (a stale ingest stops the run). Never a subset or the negative control.&#10;Out: examples/findyfixy/evals/attestation.json, committed with the change: the SHA-256 of every answer-affecting file, the report hash, the verdict, the models, the judge digest and the git SHA.&#10;Logic: The answer-affecting files are computed, not listed: the import closure of the eval entry point, read from the source, plus the data directory, the lock file and the compose file the app declares. A console change is outside it, so it needs no rerun. CI rehashes them first, in its own job, with plain python3, imports none of them, and fails a pull request whose files differ from the attested ones, naming each changed, added or removed file.&#10;Trust: A process control, not a security control. CI trusts the local run: whoever can push can also edit the attestation. It stops an honest change from merging without a passing run; review stops a dishonest one. At scale a GPU runner replaces it with a real run.</title>
         <rect x="124" y="-96" width="130" height="64" rx="8"/>
+        <circle class="i" transform="translate(129 -92) scale(.56)" cx="12" cy="12" r="10"/><path class="i" transform="translate(129 -92) scale(.56)" d="m9 12 2 2 4-4"/>
         <text class="t" x="189" y="-70">CI gate</text>
         <text class="s" x="189" y="-52">local run, attested</text>
       </g>
       <g class="node" data-status="built" data-layer="harness" data-code="wyld3rness/trace/spans.py">
         <title>In: An app's run events (FindyFixy: findyfixy/observability/adapter.py), the eval runner's cases and judge calls, and every command.&#10;Out: One OpenTelemetry trace per run, eval case and command, sent to a local Langfuse: a span per step with inputs, outputs and errors, and on model calls the model and its input and output tokens. Eval scores sit on their case's trace. Each model call carries a cost, priced by Langfuse from a committed reference price table (examples/findyfixy/config/prices.toml, make obs-prices). Every trace carries a user, and a hunt's or an eval run's traces share a session.&#10;Logic: Spans follow the OpenTelemetry GenAI conventions, so any OTLP backend reads them. The exporter sends in batches on its own thread: a slow or stopped backend never slows a run, and a full queue drops spans rather than block. Tracing changes no answer and no score: the gate's runs with it on were identical case by case.&#10;Watch it: with Langfuse running (make obs-up), each run in the event log gets a run_traced line with a link to its trace.</title>
         <rect x="292" y="-96" width="130" height="64" rx="8"/>
+        <path class="i" transform="translate(297 -92) scale(.56)" d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/>
         <text class="t" x="357" y="-70">Tracing</text>
         <text class="s" x="357" y="-52">harness, Langfuse</text>
       </g>
       <g class="node" data-status="planned" data-layer="harness" data-code="none">
-        <title>Planned for Day 7. Not built, no behavior yet.</title>
+        <title>Planned. Not built, no behavior yet.&#10;The one path to a model: routes, pins and meters every call.</title>
         <rect x="460" y="-96" width="130" height="64" rx="8"/>
-        <text class="t" x="525" y="-70">Policy</text>
-        <text class="s" x="525" y="-52">Day 7, guardrails</text>
+        <rect class="i" transform="translate(465 -92) scale(.56)" width="20" height="8" x="2" y="14" rx="2"/><path class="i" transform="translate(465 -92) scale(.56)" d="M6.01 18H6"/><path class="i" transform="translate(465 -92) scale(.56)" d="M10.01 18H10"/><path class="i" transform="translate(465 -92) scale(.56)" d="M15 10v4"/><path class="i" transform="translate(465 -92) scale(.56)" d="M17.84 7.17a4 4 0 0 0-5.66 0"/><path class="i" transform="translate(465 -92) scale(.56)" d="M20.66 4.34a8 8 0 0 0-11.31 0"/>
+        <text class="t" x="525" y="-70">Gateway</text>
+        <text class="s" x="525" y="-52">every model call</text>
       </g>
       <g class="node" data-status="planned" data-layer="harness" data-code="none">
-        <title>Planned for Day 8. Not built, no behavior yet.</title>
+        <title>Planned. Not built, no behavior yet.&#10;A model call reserves its worst-case cost before it runs. An unknown cost counts as over budget, never as zero. No budget left means safe state.</title>
         <rect x="628" y="-96" width="130" height="64" rx="8"/>
-        <text class="t" x="693" y="-70">Gateway</text>
-        <text class="s" x="693" y="-52">Day 8, routing</text>
+        <circle class="i" transform="translate(633 -92) scale(.56)" cx="8" cy="8" r="6"/><path class="i" transform="translate(633 -92) scale(.56)" d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path class="i" transform="translate(633 -92) scale(.56)" d="M7 6h1v4"/><path class="i" transform="translate(633 -92) scale(.56)" d="m16.71 13.88.7.71-2.82 2.82"/>
+        <text class="t" x="693" y="-70">Budget</text>
+        <text class="s" x="693" y="-52">cost per incident</text>
       </g>
       <g class="node" data-status="planned" data-layer="harness" data-code="none">
-        <title>Planned for Day 9. Not built, no behavior yet.</title>
+        <title>Planned. Not built, no behavior yet.&#10;Which kinds of action may run, from measured evidence. Falling evidence removes a kind with nobody involved.</title>
         <rect x="796" y="-96" width="130" height="64" rx="8"/>
-        <text class="t" x="861" y="-70">Human review</text>
-        <text class="s" x="861" y="-52">Day 9, approval</text>
+        <line class="i" transform="translate(801 -92) scale(.56)" x1="21" x2="14" y1="4" y2="4"/><line class="i" transform="translate(801 -92) scale(.56)" x1="10" x2="3" y1="4" y2="4"/><line class="i" transform="translate(801 -92) scale(.56)" x1="21" x2="12" y1="12" y2="12"/><line class="i" transform="translate(801 -92) scale(.56)" x1="8" x2="3" y1="12" y2="12"/><line class="i" transform="translate(801 -92) scale(.56)" x1="21" x2="16" y1="20" y2="20"/><line class="i" transform="translate(801 -92) scale(.56)" x1="12" x2="3" y1="20" y2="20"/><line class="i" transform="translate(801 -92) scale(.56)" x1="14" x2="14" y1="2" y2="6"/><line class="i" transform="translate(801 -92) scale(.56)" x1="8" x2="8" y1="10" y2="14"/><line class="i" transform="translate(801 -92) scale(.56)" x1="16" x2="16" y1="18" y2="22"/>
+        <text class="t" x="861" y="-70">Autonomy</text>
+        <text class="s" x="861" y="-52">evidence sets it</text>
+      </g>
+      <g class="node" data-status="planned" data-code="none">
+        <title>Planned. Not built, no behavior yet.&#10;A model from another generation or vendor, asked when the evidence disagrees with the answer or a fix failed. Kept only if it is worth its cost.</title>
+        <rect x="446" y="62" width="130" height="64" rx="8"/>
+        <rect class="i" transform="translate(451 66) scale(.56)" width="16" height="16" x="4" y="4" rx="2"/><rect class="i" transform="translate(451 66) scale(.56)" width="6" height="6" x="9" y="9" rx="1"/><path class="i" transform="translate(451 66) scale(.56)" d="M15 2v2"/><path class="i" transform="translate(451 66) scale(.56)" d="M15 20v2"/><path class="i" transform="translate(451 66) scale(.56)" d="M2 15h2"/><path class="i" transform="translate(451 66) scale(.56)" d="M2 9h2"/><path class="i" transform="translate(451 66) scale(.56)" d="M20 15h2"/><path class="i" transform="translate(451 66) scale(.56)" d="M20 9h2"/><path class="i" transform="translate(451 66) scale(.56)" d="M9 2v2"/><path class="i" transform="translate(451 66) scale(.56)" d="M9 20v2"/>
+        <text class="t" x="521" y="88">Second opinion</text>
+        <text class="s" x="511" y="106">evidence disagrees</text>
+      </g>
+      <g class="node" data-status="planned" data-layer="harness" data-code="none">
+        <title>Planned. Not built, no behavior yet.&#10;Deterministic. Allowed kinds of action only, with preconditions checked when the action executes.</title>
+        <rect x="796" y="520" width="130" height="64" rx="8"/>
+        <path class="i" transform="translate(801 524) scale(.56)" d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path class="i" transform="translate(801 524) scale(.56)" d="m9 12 2 2 4-4"/>
+        <text class="t" x="861" y="546">Policy</text>
+        <text class="s" x="861" y="564">allowed kind?</text>
+      </g>
+      <g class="node" data-status="planned" data-layer="harness" data-code="none">
+        <title>Planned. Not built, no behavior yet.&#10;A credential for one action on one resource, short-lived.</title>
+        <rect x="628" y="520" width="130" height="64" rx="8"/>
+        <path class="i" transform="translate(633 524) scale(.56)" d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle class="i" transform="translate(633 524) scale(.56)" cx="16.5" cy="7.5" r=".5"/>
+        <text class="t" x="693" y="546">Identity</text>
+        <text class="s" x="693" y="564">this action only</text>
+      </g>
+      <g class="node" data-status="planned" data-layer="harness" data-code="none">
+        <title>Planned. Not built, no behavior yet.&#10;A typed action, idempotent, one writer per blast radius. Never a shell.</title>
+        <rect x="460" y="520" width="130" height="64" rx="8"/>
+        <polygon class="i" transform="translate(465 524) scale(.56)" points="6 3 20 12 6 21 6 3"/>
+        <text class="t" x="525" y="546">Act</text>
+        <text class="s" x="525" y="564">typed, one at a time</text>
+      </g>
+      <g class="node" data-status="planned" data-layer="harness" data-code="none">
+        <title>Planned. Not built, no behavior yet.&#10;A check the agent cannot touch reads the real signals after a wait.</title>
+        <rect x="292" y="520" width="130" height="64" rx="8"/>
+        <path class="i" transform="translate(297 524) scale(.56)" d="m12 14 4-4"/><path class="i" transform="translate(297 524) scale(.56)" d="M3.34 19a10 10 0 1 1 17.32 0"/>
+        <text class="t" x="357" y="546">Verify</text>
+        <text class="s" x="357" y="564">did it recover?</text>
+      </g>
+      <g class="node" data-status="planned" data-layer="harness" data-code="none">
+        <title>Planned. Not built, no behavior yet.&#10;Only for an action that can be undone: a failed one that cannot goes straight to the safe state. Puts back the state from before the action, then the next try starts with fresh context and what failed.</title>
+        <rect x="124" y="520" width="130" height="64" rx="8"/>
+        <circle class="i" transform="translate(129 524) scale(.56)" cx="18" cy="18" r="3"/><circle class="i" transform="translate(129 524) scale(.56)" cx="6" cy="6" r="3"/><path class="i" transform="translate(129 524) scale(.56)" d="M6 21V9a9 9 0 0 0 9 9"/>
+        <text class="t" x="189" y="546">Undo</text>
+        <text class="s" x="189" y="564">then try again</text>
+      </g>
+      <g class="node" data-status="planned" data-layer="harness" data-code="none">
+        <title>Planned. Not built, no behavior yet.&#10;A containment approved before runtime. No further change is made.</title>
+        <rect x="-44" y="520" width="130" height="64" rx="8"/>
+        <path class="i" transform="translate(-39 524) scale(.56)" d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path class="i" transform="translate(-39 524) scale(.56)" d="m9 12 2 2 4-4"/>
+        <text class="t" x="21" y="546">Safe state</text>
+        <text class="s" x="21" y="564">contain and stop</text>
+      </g>
+      <g class="node" data-status="planned" data-layer="harness" data-code="none">
+        <title>Planned. Not built, no behavior yet.&#10;Per incident: cost including failed tries, customer minutes lost, harm, and whether it was resolved.</title>
+        <rect x="292" y="628" width="130" height="64" rx="8"/>
+        <circle class="i" transform="translate(297 632) scale(.56)" cx="8" cy="8" r="6"/><path class="i" transform="translate(297 632) scale(.56)" d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path class="i" transform="translate(297 632) scale(.56)" d="M7 6h1v4"/><path class="i" transform="translate(297 632) scale(.56)" d="m16.71 13.88.7.71-2.82 2.82"/>
+        <text class="t" x="357" y="654">Scorecard</text>
+        <text class="s" x="357" y="672">cost, minutes, harm</text>
+      </g>
+      <g class="node" data-status="planned" data-layer="harness" data-code="none">
+        <title>Planned. Not built, no behavior yet.&#10;Stops every action at once. Available, and never needed for an action to proceed.</title>
+        <rect x="796" y="628" width="130" height="64" rx="8"/>
+        <path class="i" transform="translate(801 632) scale(.56)" d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle class="i" transform="translate(801 632) scale(.56)" cx="9" cy="7" r="4"/><polyline class="i" transform="translate(801 632) scale(.56)" points="16 11 18 13 22 9"/>
+        <text class="t" x="861" y="654">Kill switch</text>
+        <text class="s" x="861" y="672">stops every action</text>
+      </g>
+      <g class="node" data-status="planned" data-code="none">
+        <title>Planned. Not built, no behavior yet.&#10;Pages the agent when a service burns its error budget.</title>
+        <rect x="124" y="762" width="130" height="64" rx="8"/>
+        <path class="i" transform="translate(129 766) scale(.56)" d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path class="i" transform="translate(129 766) scale(.56)" d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>
+        <text class="t" x="189" y="788">Alerts</text>
+        <text class="s" x="189" y="806">error budget burn</text>
+      </g>
+      <g class="node" data-status="planned" data-code="none">
+        <title>Planned. Not built, no behavior yet.&#10;Small real services in containers, synthetic customers and data.</title>
+        <rect x="460" y="762" width="130" height="64" rx="8"/>
+        <ellipse class="i" transform="translate(465 766) scale(.56)" cx="12" cy="5" rx="9" ry="3"/><path class="i" transform="translate(465 766) scale(.56)" d="M3 5V19A9 3 0 0 0 21 19V5"/><path class="i" transform="translate(465 766) scale(.56)" d="M3 12A9 3 0 0 0 21 12"/>
+        <text class="t" x="525" y="788">Services</text>
+        <text class="s" x="525" y="806">under real load</text>
+      </g>
+      <g class="node" data-status="planned" data-code="none">
+        <title>Planned. Not built, no behavior yet.&#10;Injected on a schedule the agent cannot read or control.</title>
+        <rect x="796" y="762" width="130" height="64" rx="8"/>
+        <path class="i" transform="translate(801 766) scale(.56)" d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+        <text class="t" x="861" y="788">Faults</text>
+        <text class="s" x="861" y="806">hidden from the agent</text>
       </g>
 
       <circle id="dot" r="7" cx="0" cy="0"/>
@@ -391,7 +538,7 @@
     </div>
     <div class="legend">
       <span class="l-built">built</span>
-      <span class="l-planned">planned (day shown)</span>
+      <span class="l-planned">planned, not built</span>
       <span class="l-harness">harness control</span>
     </div>
   </section>

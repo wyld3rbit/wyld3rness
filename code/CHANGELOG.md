@@ -4,6 +4,10 @@ Notable changes to wyld3rness and its example app. The format follows [Keep a Ch
 
 ## Unreleased
 
+### Direction
+
+- **Autonomous operation, with cost as an invariant.** The target is on-call without a human approving each action: an act, verify and undo loop on a simulated production, a budget per incident and cost per resolved incident. The order of the four planned controls is kept, human approval moves from each action to each kind of action, and the planned computed escalation signal and harder static golden set are replaced by a recovery check and versioned faults. Nothing of it is built yet; the design, the visualizer and the README show it as planned. ([ADR 0008](docs/adr/0008-autonomous-operation-with-cost-as-an-invariant.md))
+
 ### Harness
 
 - **Eval gate.** Runs an app on golden cases with known answers. Labels such as severity are matched exactly, and a judge model scores faithfulness, response relevancy, context recall and action quality. Each run is compared with a frozen baseline, with seeded bootstrap intervals, and fails on a measured regression or a judge failure rate above its cap. A negative control can never become a baseline. ([ADR 0005](docs/adr/0005-gate-releases-on-measured-answer-quality.md))
@@ -34,6 +38,11 @@ Notable changes to wyld3rness and its example app. The format follows [Keep a Ch
 - The model names come from an untracked `.env` file, so a model swap changes answers without failing CI. Only the judge is pinned, through the baseline.
 - The stale-database check catches a changed embedding model name, not a new revision of the same model.
 - The golden set is small and synthetic, and it has not yet exercised escalation.
+- With one model configured, an answer that stays invalid after its retry leaves no record, and the console and `make triage` fail on it.
+- The shared database connection is never replaced, so a database restart fails the rest of a run.
+- The judge can reject a claim its own context supports (ADR 0008), so a faithfulness score alone does not show a wrong answer.
+- The direct and MCP tool runs record tokens without a model name, so Langfuse puts no cost on those calls.
+- Nothing enforces a cost limit. Cost is computed after the fact, on the trace.
 
 ## History
 

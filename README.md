@@ -1,20 +1,33 @@
-# Release and runtime controls for LLM applications
+# Autonomous on-call, safe and affordable to be wrong
 
-wyld3rness is a harness that measures an LLM app's answers before a change ships and records every run, without relying on the model to behave. It is tested on FindyFixy, an event detection, determination and mitigation agent in this repository. Everything runs on one machine with open-source models and synthetic data.
+wyld3rness is being built as a harness and a set of agentic loops for agents that run on-call without a human approving each action. People will set the goal, the invariants, the allowed kinds of action and the budget before runtime. Code will decide what may act, check real signals, undo what did not work, and stop when the tries or the money run out. It is tested on FindyFixy, an event detection, determination and mitigation agent.
 
-![The visualizer on a live eval run: two golden cases move through FindyFixy while the harness scores them](code/docs/demo.gif)
+**Today FindyFixy diagnoses and proposes. It cannot act yet.** The loop and the simulated production it will act on are the build in progress.
 
-## Built
+![The visualizer on a live eval run: two golden cases move through what is built, inside the planned loop drawn dashed](code/docs/demo.gif)
 
-- **Eval gate and CI gate.** The app answers golden test cases, and the gate fails on a measured regression against a frozen baseline. A passing local run writes an attestation, and CI refuses any change to an answer-affecting file that no passing run covers.
-- **Tracing.** Every run is an OpenTelemetry trace in a self-hosted Langfuse, with scores and a cost on each model call. A slow or stopped backend does not slow a run, and runs with tracing on scored identically.
-- **One interface.** An app plugs in through three methods, and a test fails if the harness imports it.
+## Built and planned
+
+| The question | The control | Status |
+|---|---|---|
+| May this change ship? | Eval gate, and a CI gate that refuses an unattested change | **Built** |
+| What happened, and what did it cost? | A trace per run, with a reference cost on each triage and eval model call | **Built** |
+| What may one incident spend? | A budget reserved before each call, through one gateway | Planned |
+| May this action run, and as whom? | Policy by kind of action, and a credential per action | Planned |
+| Did it work? | A recovery check on real signals that the agent cannot touch | Planned |
+| What if it was wrong? | Undo and retry where that is possible, otherwise a safe state. A kill switch above all of it | Planned |
+| Is it worth it? | Agent against runbook, by cost per resolved incident | Planned |
+| How much may it do alone? | A person approves each kind of action once, and evidence keeps or removes it | Planned |
+
+## Cost is an invariant
+
+Cost per resolved incident is every attempt's cost, failed ones included, divided by the incidents resolved. Today cost is measured and nothing limits it. The target: an incident cannot spend past its budget, the cheapest option that passes the safety and resolution bars wins, and a runbook with no model is always one of the options.
 
 ## Target design
 
-![Target design: the agent as the data plane, with the harness's checkpoints on every path in and out. Solid is built, dashed is planned.](code/docs/target-design.svg)
+![Target design: what a human sets before runtime, the harness, the agent's decision, the act-verify-undo loop and a simulated production. Solid is built, dashed is planned.](code/docs/target-design.svg)
 
-Details: [design and strategy](code/docs/design.md).
+Details: [design and strategy](code/docs/design.md), and the decision behind it, [ADR 0008](code/docs/adr/0008-autonomous-operation-with-cost-as-an-invariant.md).
 
 ## Run it
 
@@ -46,6 +59,10 @@ make help             # everything else
 ## Docs
 
 [Design and strategy](code/docs/design.md) · [Decision records](code/docs/adr/README.md) · [Changelog](code/CHANGELOG.md) · [Harness](code/src/wyld3rness/README.md) · [FindyFixy](code/examples/findyfixy/README.md) · [Workspace](code/README.md) · [Infrastructure](code/infra/README.md) · [Checks](tools/README.md) · [Hooks](.githooks/README.md) · [Contributing](CONTRIBUTING.md)
+
+## Limits
+
+One machine, local models, synthetic data, and a production that is simulated and will be labeled so wherever it is shown. Reference prices are a yardstick, not a bill. Nothing here is evidence of safety on real systems.
 
 <details>
 <summary>Disclaimer</summary>

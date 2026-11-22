@@ -27,7 +27,7 @@ What changes at scale
     - A server is a separate thing to deploy, patch and authenticate. The data
       path here reads a local file, so there is no credential to protect. A real
       tool would hold credentials, and that is the case for MCP: the model-facing
-      client never sees them (Day 7).
+      client never sees them (the planned identity control).
 """
 
 from pathlib import Path

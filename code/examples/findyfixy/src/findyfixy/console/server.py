@@ -31,7 +31,7 @@ Test it:  uv run pytest
 Why the standard library, and not FastAPI
     This is a local dev tool with four routes. `http.server` adds nothing to
     the supply chain (no new package, no license, no advisory to track).
-    The cost is hand-written plumbing and no async. At gateway scale (Day 8)
+    The cost is hand-written plumbing and no async. At gateway scale
     use a real framework. Moving over is cheap: the logic lives in `RunHub`,
     and the HTTP layer is a thin shell around it.
 
