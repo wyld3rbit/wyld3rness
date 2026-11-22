@@ -25,6 +25,7 @@ Notable changes to wyld3rness and its example app. The format follows [Keep a Ch
 - A privacy scanner in the pre-commit and pre-push hooks blocks personal data and secrets in files and commit metadata.
 - Ruff and mypy in the hooks and in CI. CI runs with a read-only token and no secrets, with actions pinned by commit.
 - `make check` covers documentation drift, the repository tools' tests and the privacy scan.
+- The local Langfuse's ClickHouse no longer keeps its own profiler and internal logs (`code/infra/langfuse/clickhouse-logs.xml`); the query and part logs expire after a day. Left on, they used about 15 GB and kept the machine busy with nothing running.
 
 ### Known issues
 
