@@ -14,7 +14,7 @@ wyld3rness is a harness that measures an LLM app's answers before a change ships
 
 ![Target design: the agent as the data plane, with the harness's checkpoints on every path in and out. Solid is built, dashed is planned.](code/docs/target-design.svg)
 
-Details: [design](code/docs/design.md), [strategy](code/docs/strategy.md).
+Details: [design and strategy](code/docs/design.md).
 
 ## Run it
 
@@ -45,7 +45,7 @@ make help             # everything else
 
 ## Docs
 
-[Strategy](code/docs/strategy.md) · [Design](code/docs/design.md) · [Decision records](code/docs/adr/README.md) · [Changelog](code/CHANGELOG.md) · [Harness](code/src/wyld3rness/README.md) · [FindyFixy](code/examples/findyfixy/README.md) · [Workspace](code/README.md) · [Infrastructure](code/infra/README.md) · [Checks](tools/README.md) · [Hooks](.githooks/README.md) · [Contributing](CONTRIBUTING.md)
+[Design and strategy](code/docs/design.md) · [Decision records](code/docs/adr/README.md) · [Changelog](code/CHANGELOG.md) · [Harness](code/src/wyld3rness/README.md) · [FindyFixy](code/examples/findyfixy/README.md) · [Workspace](code/README.md) · [Infrastructure](code/infra/README.md) · [Checks](tools/README.md) · [Hooks](.githooks/README.md) · [Contributing](CONTRIBUTING.md)
 
 <details>
 <summary>Disclaimer</summary>

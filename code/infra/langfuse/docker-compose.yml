@@ -11,9 +11,9 @@
 #     and the worker publish nothing: only Langfuse's own containers use them,
 #     over the compose network, and Postgres would clash with FindyFixy's 5432.
 #   - Telemetry to Langfuse off.
-#   - ClickHouse's own profiler log and noisiest internal logs off, the rest
-#     kept a day (clickhouse-logs.xml): left on, they grew to over 15 GB and
-#     held the VM at about 150% CPU.
+#   - ClickHouse's own profiler log and noisiest internal logs off, the query
+#     and part logs kept a day (clickhouse-logs.xml): left on, they grew to
+#     over 15 GB and held the VM at about 150% CPU.
 #   - No default secrets. Upstream falls back to "mysalt", "miniosecret" and so
 #     on; here a missing value stops `docker compose` with an error. The values
 #     live in code/infra/langfuse/.env (git-ignored), written once by
