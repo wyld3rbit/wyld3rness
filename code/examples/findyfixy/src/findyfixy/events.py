@@ -46,8 +46,6 @@ EventKind = Literal[
     "retry",
     "node_exited",
     "route",
-    "handover",
-    "policy",
     "run_finished",
     "run_failed",
     "run_traced",

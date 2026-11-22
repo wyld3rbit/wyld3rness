@@ -1,4 +1,4 @@
-"""Day 2: the deploy tool, served over MCP.
+"""Day 2, step 5: the deploy tool, served over MCP.
 
 What it does
     A FastMCP server that exposes `get_recent_deploys` over stdio. It calls the
@@ -41,14 +41,13 @@ if TYPE_CHECKING:
 
 from findyfixy.tools.deploys import (
     DEFAULT_DEPLOYS_PATH,
-    DEPLOYS_TOOL,
     MAX_HOURS,
     DeploysArgs,
     Service,
     get_recent_deploys,
 )
 
-TOOL_NAME = DEPLOYS_TOOL  # the direct tool's name, so the two paths cannot drift
+TOOL_NAME = "get_recent_deploys"
 SERVER_EXPORT_TIMEOUT_S = 1.0
 # Same text the direct tool shows the model (see make_deploys_tool in tools.py).
 TOOL_DESCRIPTION = "List recent deploys of one service, newest first."

@@ -1,7 +1,7 @@
 """Day 5: the golden set. 30 holdout cases for scoring the agent.
 
 What it does
-    Builds `data/v1/golden.jsonl`: 30 cases, each a pasted incident report
+    Builds `data/golden.jsonl`: 30 cases, each a pasted incident report
     (`question`), the correct triage (`reference`) and the correct severity.
 
 Why a fixed golden set
@@ -55,20 +55,18 @@ from typing import Literal, get_args
 
 from pydantic import BaseModel
 
-from findyfixy.paths import data_dir
+from findyfixy.paths import DATA
 from findyfixy.retrieval.corpus import Incident
 from findyfixy.triage.record import Severity
 
-# v1 is frozen (findyfixy/paths.py). The hard cases of v2 live in golden_v2.py.
-INCIDENTS_PATH = data_dir("v1") / "incidents.jsonl"
-DEFAULT_PATH = data_dir("v1") / "golden.jsonl"
+INCIDENTS_PATH = DATA / "incidents.jsonl"
+DEFAULT_PATH = DATA / "golden.jsonl"
 
 TWIN_CASES = 20
 NO_TWIN_CASES = 10
 # Fixed so the no_twin pick never changes. Change it and the file changes.
 SEED = 5
-# The incident bank caps an excerpt at 3500 characters (retrieval/incidents.py).
-# A golden question stays well under it.
+# The triage prompt caps input at 3500 characters. Stay clear of the cap.
 MAX_QUESTION_CHARS = 3000
 
 # One definition of severity for the whole app (findyfixy.triage.record). Redefining it here
@@ -215,7 +213,7 @@ def format_cases(cases: Sequence[GoldenCase]) -> str:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    """Rebuild `data/v1/golden.jsonl`, or with `--show` print the committed one."""
+    """Rebuild `data/golden.jsonl`, or with `--show` print the committed one."""
     args = list(argv) if argv is not None else sys.argv[1:]
     if args == ["--show"]:
         print(format_cases(load_golden()))

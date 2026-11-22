@@ -15,7 +15,6 @@ dependencies = [
     "opentelemetry-exporter-otlp-proto-http>=1.45.2",
     "opentelemetry-sdk>=1.45.2",
     "pydantic>=2.14.1",
-    "pyjwt>=2.15.1",
 ]
 
 # The CI gate's check, for a local run. CI itself calls the file with plain
@@ -42,23 +41,18 @@ members = ["examples/findyfixy"]
 exclude-newer = "2026-11-02T00:00:00Z"
 # `mcp` lists these as hard requirements, but only its HTTP serving and OAuth
 # features import them. This project talks to MCP over stdio, so they are not
-# needed. A never-true marker removes them from the install while the lock
-# still records them. If an MCP feature ever raises ImportError for one of
-# these, delete its line here.
-# An override also cancels a package you add yourself: `uv add uvicorn`
-# succeeds, then the import fails. Day 9 needs a server such as uvicorn, so
-# delete that line FIRST. examples/findyfixy/tests/test_dependencies.py fails
-# if not, for a package added to any workspace member. pyjwt's line was
-# removed on Day 7: the harness's credential broker depends on it. mcp asks for
-# pyjwt's `crypto` extra, which pulls in cryptography (and cffi, pycparser);
-# the broker signs with HMAC-SHA256, which needs only the standard library, so
-# cryptography is kept out too. An asymmetric key (RS256, EdDSA) would need it:
-# delete its line then.
+# needed. A never-true marker removes them from the install (about 4.4 MB, most
+# of it `cryptography`) while the lock still records them. If an MCP feature
+# ever raises ImportError for one of these, delete its line here.
+# An override also cancels a package you add yourself: `uv add pyjwt` succeeds,
+# then `import jwt` fails. Day 7 needs pyjwt and Day 9 needs a server such as
+# uvicorn, so delete those lines FIRST. examples/findyfixy/tests/test_dependencies.py
+# fails if not, for a package added to any workspace member.
 override-dependencies = [
   "uvicorn ; sys_platform == 'never'",
   "python-multipart ; sys_platform == 'never'",
+  "pyjwt ; sys_platform == 'never'",
   "click ; sys_platform == 'never'",
-  "cryptography ; sys_platform == 'never'",
 ]
 
 [dependency-groups]
@@ -102,8 +96,6 @@ select = ["E", "W", "F", "I", "B", "UP", "SIM", "RUF"]
 # Synthetic incident text, one sentence per string: splitting them adds noise, not clarity.
 "examples/findyfixy/src/findyfixy/retrieval/corpus.py" = ["E501"]
 "examples/findyfixy/src/findyfixy/evals/queries.py" = ["E501"]
-"examples/findyfixy/src/findyfixy/retrieval/corpus_v2.py" = ["E501"]
-"examples/findyfixy/src/findyfixy/evals/golden_v2.py" = ["E501"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["wyld3rness", "findyfixy"]

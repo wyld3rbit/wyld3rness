@@ -1,7 +1,7 @@
 # ADR 0006: The eval gate is a harness component, attested in CI
 
 Status: accepted. Written 2026-11-09, in the commit that closes the rebuilt phase.
-Phase: Day 5, rebuilt. It supersedes the layout in [ADR 0005](0005-gate-releases-on-measured-answer-quality.md), whose policies on the judge, holdout, failures and baseline still hold. Code at close: commit `6f9e3ee`. Run data: the Evidence section below.
+Phase: Day 5, rebuilt. It supersedes the layout in [ADR 0005](0005-gate-releases-on-measured-answer-quality.md), whose policies on the judge, holdout, failures and baseline still hold. Code at close: the commit that adds this record. Run data: the Results section of [lessons/d05.md](../../../lessons/d05.md).
 
 ## Decision
 

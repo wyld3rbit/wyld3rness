@@ -201,17 +201,6 @@
           <option value="fake">Fake (scripted, no model)</option>
         </select>
       </div>
-      <div class="field" id="data-field" hidden>
-        <label for="data">Golden set</label>
-        <select id="data" title="v1 is frozen and is the gate's set. v2 holds 30 hard cases: no precedent, conflicting signals, cascades, noisy alerts, poisoned incidents and rollbacks. v3 is the same cases on a real timeline: each case has its alert time, and the agent reads a change log (deploys, config, flags, key rotations) as of that time. A v2 or v3 run shows scores only, never the gate.">
-          <option value="v1" selected>v1, frozen (the gate's set)</option>
-          <option value="v2">v2, hard cases (scores only)</option>
-          <option value="v3">v3, hard cases with a change log (scores only)</option>
-        </select>
-      </div>
-      <div class="field" id="agent-field" hidden>
-        <label class="check" title="Day 7: the agent investigates with tools (incident search, the deploy log, or on v3 the change log, the service map) within 6 turns and 25 seconds, stating a hypothesis before each lookup, and submits its decision: read, page a human, or roll back to a named version. Out of budget, it hands the incident to a human. Nothing it proposes is executed. The agent is the system under test and the gate's baseline; untick it to run the earlier fixed path for comparison (scores only)."><input type="checkbox" id="agent" checked> Agent: investigate, then decide</label>
-      </div>
       <div class="field" id="cases-field" hidden>
         <label for="cases">Cases, first N of <span id="cases-size">the set</span></label>
         <input type="number" id="cases" min="1" value="2" title="The gate applies only when every case runs: the baseline is defined on the full set.">
@@ -224,7 +213,7 @@
         <label for="qset">Question set</label>
         <select id="qset">
           <option value="incidents">Realistic incidents</option>
-          <option value="fixed">Fixed questions</option>
+          <option value="lesson">Lesson questions</option>
         </select>
       </div>
       <div class="field grow" id="question-field" hidden>
@@ -302,7 +291,7 @@
         <text class="s" x="65" y="274">incident report</text>
       </g>
       <g class="node" id="n_inv" data-status="built" data-code="graph:investigate">
-        <title>In: The question.&#10;Out: Evidence text from tool calls. May be empty.&#10;Logic: A tool-calling model decides whether to call get_recent_deploys. The loop has a turn cap. Every run pays for these model requests, even when no tool is called.&#10;Agent mode (Day 7, the system under test): the model investigates with three read-only tools (incident search, the deploy log, or on data v3 the change log, and the service map) within 6 turns and 25 seconds, and finishes by submitting its decision as a tool call (a separate decision call is the fallback). Out of budget, the decision is handed to a human in code.</title>
+        <title>In: The question.&#10;Out: Evidence text from tool calls. May be empty.&#10;Logic: A tool-calling model decides whether to call get_recent_deploys. The loop has a turn cap. Every run pays for these model requests, even when no tool is called.</title>
         <rect x="142" y="228" width="130" height="64" rx="8"/>
         <text class="t" x="207" y="254">Investigate</text>
         <text class="s" x="207" y="271">tool-calling model</text>
@@ -350,7 +339,7 @@
         <text class="badge" x="65" y="119" id="b_recall"> </text>
       </g>
       <g class="node" id="n_tool" data-status="built" data-code="findyfixy/tools/deploys.py">
-        <title>In: The tool the model asked for and its arguments.&#10;Out: get_recent_deploys: that service's deploys in the window, newest first. On data v3 it is get_recent_changes instead (findyfixy/tools/changes.py): every change kind (deploys, config, flags, key rotations) in the window before the case's own alert time, with whether each deploy is safe to roll back. Agent mode adds search_incidents (similar past incidents, through the same recall), get_dependencies (what a service depends on, and what depends on it) and submit_decision (the decision record as the call's arguments; it ends the loop and executes nothing). Out of turns or time, the decision's action becomes page_human.&#10;Logic: Arguments are validated again inside each tool, so a direct call is as safe as one from a model. Every tool only reads. Each call carries a token from the harness's credential broker, scoped to the agent, the tool and the resource it reads, and expiring in five minutes; a call without a valid token never runs the tool.</title>
+        <title>In: Service name and a number of hours.&#10;Out: JSON of that service's deploys in the window, newest first.&#10;Logic: Arguments are validated again inside the tool, so a direct call is as safe as one from a model.</title>
         <rect x="142" y="62" width="130" height="64" rx="8"/>
         <text class="t" x="207" y="86">Deploy tool</text>
         <text class="s" x="207" y="103">get_recent_deploys</text>
@@ -359,7 +348,7 @@
 
       <!-- harness nodes: one edit per build day flips data-status to built -->
       <g class="node" id="n_eval" data-status="built" data-layer="harness" data-code="wyld3rness/eval/runner.py">
-        <title>In: An app's golden cases, through one interface (SystemUnderTest: describe, answer, summarise). FindyFixy plugs in with an adapter: 30 cases, each with a reference severity, cause and fix.&#10;Out: Scores per metric with confidence intervals, a saved report, and a pass or fail gate.&#10;Logic: The harness package (code/src/wyld3rness/eval) never imports the app. A judge model from a different family scores faithfulness, context recall, action quality and response relevancy; labels such as severity are matched exactly. The gate fails if a score drops below its frozen floor (baseline mean minus 0.05), regresses outside its 95% interval, or the judge failure rate passes 0.15. Moving it into the harness changed no score: the baseline frozen before the move reproduced byte for byte after it.&#10;Watch it: choose Eval run above. Each case goes into the app lane, the answer comes back, and the metrics are scored here. The console is a viewer: it writes no report and no baseline, and it applies the gate only when every golden case ran.</title>
+        <title>In: An app's golden cases, through one interface (SystemUnderTest: describe, answer, summarise). FindyFixy plugs in with an adapter: 30 cases, each with a reference severity, cause and fix.&#10;Out: Scores per metric with confidence intervals, a saved report, and a pass or fail gate.&#10;Logic: The harness package (code/src/wyld3rness/eval) never imports the app. A judge model from a different family scores faithfulness, context recall, action quality and response relevancy; labels such as severity are matched exactly. The gate fails if a score drops below its frozen floor (baseline mean minus 0.05), regresses outside its 95% interval, or the judge failure rate passes 0.15. Moving it into the harness changed no score: the frozen baseline still reproduces byte for byte.&#10;Watch it: choose Eval run above. Each case goes into the app lane, the answer comes back, and the metrics are scored here. The console is a viewer: it writes no report and no baseline, and it applies the gate only when every golden case ran.</title>
         <rect x="-44" y="-96" width="130" height="80" rx="8"/>
         <text class="t" x="21" y="-74">Eval gate</text>
         <text class="s" x="21" y="-58">harness, any app</text>
@@ -368,39 +357,33 @@
       </g>
       <g class="node" data-status="built" data-layer="harness" data-code="wyld3rness/eval/attest.py">
         <title>In: A make eval-gate command that passes as a whole: the full golden set, a clean tree, a known judge digest, and a database that matches the corpus (a stale ingest stops the run). Never a subset or the negative control.&#10;Out: examples/findyfixy/evals/attestation.json, committed with the change: the SHA-256 of every answer-affecting file, the report hash, the verdict, the models, the judge digest and the git SHA.&#10;Logic: The answer-affecting files are computed, not listed: the import closure of the eval entry point, read from the source, plus the data directory, the lock file and the compose file the app declares. A console change is outside it, so it needs no rerun. CI rehashes them first, in its own job, with plain python3, imports none of them, and fails a pull request whose files differ from the attested ones, naming each changed, added or removed file.&#10;Trust: A process control, not a security control. CI trusts the local run: whoever can push can also edit the attestation. It stops an honest change from merging without a passing run; review stops a dishonest one. At scale a GPU runner replaces it with a real run.</title>
-        <rect x="104" y="-96" width="120" height="64" rx="8"/>
-        <text class="t" x="164" y="-70">CI gate</text>
-        <text class="s" x="164" y="-52">local run, attested</text>
+        <rect x="124" y="-96" width="130" height="64" rx="8"/>
+        <text class="t" x="189" y="-70">CI gate</text>
+        <text class="s" x="189" y="-52">local run, attested</text>
       </g>
       <g class="node" data-status="built" data-layer="harness" data-code="wyld3rness/trace/spans.py">
         <title>In: An app's run events (FindyFixy: findyfixy/observability/adapter.py), the eval runner's cases and judge calls, and every command.&#10;Out: One OpenTelemetry trace per run, eval case and command, sent to a local Langfuse: a span per step with inputs, outputs and errors, and on model calls the model and its input and output tokens. Eval scores sit on their case's trace. Each model call carries a cost, priced by Langfuse from a committed reference price table (examples/findyfixy/config/prices.toml, make obs-prices). Every trace carries a user, and a hunt's or an eval run's traces share a session.&#10;Logic: Spans follow the OpenTelemetry GenAI conventions, so any OTLP backend reads them. The exporter sends in batches on its own thread: a slow or stopped backend never slows a run, and a full queue drops spans rather than block. Tracing changes no answer and no score: the gate's runs with it on were identical case by case.&#10;Watch it: with Langfuse running (make obs-up), each run in the event log gets a run_traced line with a link to its trace.</title>
-        <rect x="238" y="-96" width="120" height="64" rx="8"/>
-        <text class="t" x="298" y="-70">Tracing</text>
-        <text class="s" x="298" y="-52">harness, Langfuse</text>
+        <rect x="292" y="-96" width="130" height="64" rx="8"/>
+        <text class="t" x="357" y="-70">Tracing</text>
+        <text class="s" x="357" y="-52">harness, Langfuse</text>
       </g>
-      <g class="node" data-status="built" data-layer="harness" data-code="wyld3rness/action/ledger.py">
-        <title>In: Every action an agent proposes: the incident, the proposer, the action, its target and its fields.&#10;Out: A verdict: allowed, downgraded to paging a person, rejected (undeclared) or queued, with its reasons, the facts and an order number.&#10;Logic: The harness decides in code; FindyFixy supplies the facts through its port (findyfixy/policy.py). A rollback passes only if its target is the alerting service or one it depends on, the deploy is the only change to it in the 2 hours before the alert and is safe to roll back, and the version is the one before it. An action that changes a system holds its blast radius; one destructive action in flight per incident. Nothing executes yet.</title>
-        <rect x="372" y="-96" width="120" height="64" rx="8"/>
-        <text class="t" x="432" y="-70">Action ledger</text>
-        <text class="s" x="432" y="-52">harness, actions</text>
-      </g>
-      <g class="node" data-status="built" data-layer="harness" data-code="wyld3rness/identity/broker.py">
-        <title>In: An agent, a tool and the resource a call reads.&#10;Out: A JWT for that one call (HMAC-SHA256), expiring in 5 minutes, or a refusal.&#10;Logic: Tokens only for granted tools; a token for another agent, tool or resource, from another key or expired is refused. FindyFixy's guard (findyfixy/tools/guard.py) issues and verifies one around every agent tool. In one process this proves the contract, not isolation.</title>
-        <rect x="506" y="-96" width="120" height="64" rx="8"/>
-        <text class="t" x="566" y="-70">Credentials</text>
-        <text class="s" x="566" y="-52">harness, per call</text>
+      <g class="node" data-status="planned" data-layer="harness" data-code="none">
+        <title>Planned for Day 7. Not built, no behavior yet.</title>
+        <rect x="460" y="-96" width="130" height="64" rx="8"/>
+        <text class="t" x="525" y="-70">Policy</text>
+        <text class="s" x="525" y="-52">Day 7, guardrails</text>
       </g>
       <g class="node" data-status="planned" data-layer="harness" data-code="none">
         <title>Planned for Day 8. Not built, no behavior yet.</title>
-        <rect x="640" y="-96" width="120" height="64" rx="8"/>
-        <text class="t" x="700" y="-70">Gateway</text>
-        <text class="s" x="700" y="-52">Day 8, budgets</text>
+        <rect x="628" y="-96" width="130" height="64" rx="8"/>
+        <text class="t" x="693" y="-70">Gateway</text>
+        <text class="s" x="693" y="-52">Day 8, routing</text>
       </g>
       <g class="node" data-status="planned" data-layer="harness" data-code="none">
         <title>Planned for Day 9. Not built, no behavior yet.</title>
-        <rect x="774" y="-96" width="120" height="64" rx="8"/>
-        <text class="t" x="834" y="-70">Human review</text>
-        <text class="s" x="834" y="-52">Day 9, approval</text>
+        <rect x="796" y="-96" width="130" height="64" rx="8"/>
+        <text class="t" x="861" y="-70">Human review</text>
+        <text class="s" x="861" y="-52">Day 9, approval</text>
       </g>
 
       <circle id="dot" r="7" cx="0" cy="0"/>
@@ -448,19 +431,13 @@ let source = null;
 let running = false;
 let lastRunExists = false;
 let queue = Promise.resolve();
-const banks = { fixed: [], incidents: [] };   // filled from /config
+const banks = { lesson: [], incidents: [] };   // filled from /config
 let reloadPending = false;    // dev mode: a reload is due once the current run ends
 let hunting = false;          // true once the stream shows a hunt_started
 let iteration = [];           // events of the hunt's current run, for the slow replay
 // Cases per eval set, by mode, and the default count. Filled from /config; the
 // server reads each size from its set and checks every request against it.
-const evalCfg = { sizes: { live: null, live_v2: null, live_v3: null, fake: null }, fallback: 2, agent: false, tools: true };
-// How many cases the chosen set has: live v1, a live hard set (v2, v3) or the fake set.
-function evalSize() {
-  if ($("mode").value !== "live") return evalCfg.sizes.fake;
-  const data = $("data").value;
-  return data === "v1" ? evalCfg.sizes.live : evalCfg.sizes[`live_${data}`];
-}
+const evalCfg = { sizes: { live: null, fake: null }, fallback: 2 };
 
 // ---- small helpers -------------------------------------------------------
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -546,10 +523,6 @@ function labelsText(d) {
   }).join("; ") || "no labels";
 }
 function evalVerdict(d) {
-  // Only a run started here as a live fixed-path run (evalAgent false) is scores only; a replay leaves it unset.
-  const hard = view.evalData !== undefined && view.evalData !== "v1";
-  if (view.evalAgent === false && !hard) return { cls: "warn", badge: "scores only", text: "scores only: the baseline is the agent's, so a fixed-path run never applies the gate" };
-  if (hard) return { cls: "warn", badge: "scores only", text: `scores only: the ${view.evalData} hard cases have no baseline, so a ${view.evalData} run never applies the gate, full or partial` };
   if (d.subset) return { cls: "warn", badge: "subset, no gate", text: `subset, gate not applied (${d.summary.n} case${d.summary.n === 1 ? "" : "s"} ran; the baseline is defined on the full set)` };
   if (d.gate.length === 0) return { cls: "ok", badge: "gate PASS", text: "PASS: the gate found no problem against evals/baseline.json" };
   return { cls: "bad", badge: "gate FAIL", text: `FAIL: ${d.gate.length} gate problem(s), listed under Result` };
@@ -566,17 +539,15 @@ const DESCRIBE = {
     tool_call: (d) => `${d.name}(${Object.entries(d.args).map(([k, v]) => k + "=" + v).join(", ")})`,
     tool_result: (d) => d.error ? `ERROR ${clip(d.result, 80)}` : clip(d.result, 90),
     model_request: (d) => `${d.model ?? "tool model"}, attempt ${d.attempt}`,
-    model_reply: (d) => d.cut ? `${d.model ?? "tool model"}, attempt ${d.attempt}, cut off at the deadline` : `${d.model ?? "tool model"}, attempt ${d.attempt}, ${d.reply.length} chars, ${servedText(d)}${d.input_tokens != null ? `, ${d.input_tokens} in / ${d.output_tokens} out tokens` : ""}`,
+    model_reply: (d) => `${d.model ?? "tool model"}, attempt ${d.attempt}, ${d.reply.length} chars, ${servedText(d)}${d.input_tokens != null ? `, ${d.input_tokens} in / ${d.output_tokens} out tokens` : ""}`,
     validation: (d) => d.ok ? `attempt ${d.attempt} valid` : `attempt ${d.attempt} INVALID`,
     fault_injected: (d) => `INJECTED: ${d.model} reply replaced, ${d.field} = ${d.value}`,
     retry: (d) => `re-asking ${d.model}, attempt ${d.attempt}`,
     node_exited: (d) => {
       if (d.node === "recall") return d.incidents.length ? `${d.incidents.length} similar incident(s): ${d.incidents.join(", ")}` : "no similar incidents";
-      if (d.node === "investigate") return `${d.calls} tool call(s), ${d.turns} turn(s), ${tokensText(d)}${d.stopped ? ", STOPPED: out of " + (d.stopped === "deadline" ? "time" : "turns") : d.hit_turn_cap ? ", HIT TURN CAP" : ""}`;
+      if (d.node === "investigate") return `${d.calls} tool call(s), ${d.turns} turn(s), ${tokensText(d)}${d.hit_turn_cap ? ", HIT TURN CAP" : ""}`;
       return d.triage ? `${d.node} produced a record` : `${d.node} produced no valid record`;
     },
-    handover: (d) => `out of ${d.reason === "deadline" ? "time" : "turns"}: proposed ${d.proposed}${d.rollback_version ? " " + d.rollback_version : ""}, handed to a human instead`,
-    policy: (d) => `action ledger: ${d.proposed} by ${d.proposer} ${d.outcome.toUpperCase()}${d.action !== d.proposed ? ", becomes " + d.action : ""}: ${d.reasons.join("; ")}${d.facts.length ? " | changes in the window: " + d.facts.join("; ") : ""}`,
     route: (d) => `confidence ${d.confidence === null ? "none" : d.confidence} vs ${d.threshold} -> ${d.target === "__end__" ? "done" : d.target}${d.threshold > 1 ? " (forced)" : ""}`,
     run_finished: (d) => `final: ${d.model_used} model`,
     run_failed: (d) => `${d.error_type}`,
@@ -673,7 +644,7 @@ function showResult(rows) {
 // ---- animation: one async step per event ---------------------------------
 // `view` tracks which node is "current", so a validation event knows whether
 // to light the Validate box (small model) or just flag the large node.
-const view = { recall: null, node: null, forced: false, tools: false, toolStep: null, verdict: null, served: {}, hasMismatch: false, live: false, replaying: false, stress: "none",
+const view = { recall: null, node: null, forced: false, tools: false, toolStep: null, served: {}, hasMismatch: false, live: false, replaying: false, stress: "none",
                evalRun: { n: 0, index: 0, id: "", fake: false, latest: {} } };
 
 
@@ -821,7 +792,6 @@ async function animate(ev) {
       view.forced = d.forced;
       view.tools = d.tools;
       view.toolStep = null;
-      view.verdict = null;
       view.served = {};
       view.hasMismatch = false;
       view.live = d.mode === "live";
@@ -877,7 +847,6 @@ async function animate(ev) {
     case "model_reply":
       view.served[view.node] = d.served_by;
       mark(view.node, "active");
-      if (d.cut) { mark(view.node, "warn"); setBadge(view.node, `cut off at the deadline, attempt ${d.attempt}`); break; }
       if (d.mismatch) { view.hasMismatch = true; mark(view.node, "bad"); setBadge(view.node, "MODEL MISMATCH"); break; }
       if ($("b_" + view.node).textContent === "reply INJECTED") break;
       setBadge(view.node, `replied, attempt ${d.attempt}`);
@@ -909,18 +878,9 @@ async function animate(ev) {
       }
       if (d.node === "investigate") {
         view.toolStep = d;
-        mark("inv", d.hit_turn_cap || d.stopped ? "bad" : "ok");
+        mark("inv", d.hit_turn_cap ? "bad" : "ok");
         setBadge("inv", d.calls ? `${d.calls} call${d.calls === 1 ? "" : "s"}, ${d.turns} turns` : "no lookup");
       }
-      break;
-    case "policy":
-      // The action ledger's verdict: shown on the result card beside the proposal.
-      view.verdict = d;
-      break;
-    case "handover":
-      // The decision's action was replaced in code: the loop ran out of budget.
-      mark(view.node, "warn");
-      setBadge(view.node, "handed to a human");
       break;
     case "route": {
       if (view.node === "small") await travel("e_val_route");
@@ -942,13 +902,11 @@ async function animate(ev) {
         ["Severity", d.triage.severity, "sev"],
         ["Component", d.triage.component, ""],
         ["Next action", d.triage.next_action, ""],
-        ...(d.triage.action ? [["Action", d.triage.action + (d.triage.rollback_version ? " " + d.triage.rollback_version : "") + " (proposed, not executed)", d.triage.action === "rollback" ? "bad" : ""]] : []),
-        ...(view.verdict ? [["Action ledger", view.verdict.outcome + (view.verdict.action !== view.verdict.proposed ? ", becomes " + view.verdict.action : "") + ": " + view.verdict.reasons.join("; "), view.verdict.outcome === "allowed" ? "" : "bad"]] : []),
         ["Confidence", String(d.triage.confidence), ""],
         ["Served by", servedSummary(), view.hasMismatch ? "bad" : ""],
         ...(view.stress !== "none" ? [["Stress", view.stress.replaceAll("_", " "), "bad"]] : []),
         ...(view.recall ? [["Recalled", view.recall.length ? view.recall.join(", ") : "nothing similar", ""]] : []),
-        ...(view.toolStep ? [["Tool step", `${view.toolStep.calls} call(s), ${view.toolStep.turns} turn(s), ${tokensText(view.toolStep)}${view.toolStep.stopped ? ", stopped: out of " + (view.toolStep.stopped === "deadline" ? "time" : "turns") : ""}`, view.toolStep.stopped ? "bad" : ""]] : []),
+        ...(view.toolStep ? [["Tool step", `${view.toolStep.calls} call(s), ${view.toolStep.turns} turn(s), ${tokensText(view.toolStep)}`, ""]] : []),
       ]);
       break;
     }
@@ -1047,13 +1005,7 @@ async function startRun() {
     // The server checks the range again (1 to the set's size). This only keeps
     // the request sensible when the box holds something odd.
     const n = Math.round(Number($("cases").value));
-    const size = evalSize() ?? n;
-    if (mode === "live") body.data = $("data").value;
-    // Always sent live: the server treats an unset flag as the agent.
-    if (mode === "live") body.agent = agentOn();
-    view.evalData = body.data || "v1";
-    // A fake run has its own scripted system and keeps the gate; only a live fixed-path run is scores only.
-    view.evalAgent = mode === "fake" || Boolean(body.agent);
+    const size = evalCfg.sizes[mode] ?? n;
     body.cases = Number.isFinite(n) && n >= 1 ? Math.min(size, n) : evalCfg.fallback;
     $("cases").value = body.cases;
   } else if (mode === "fake") {
@@ -1062,12 +1014,8 @@ async function startRun() {
     body.question = $("custom").value.trim() || $("question").value;
     body.force_escalation = $("force").checked;
     body.force_retry = $("retry").checked;
-    body.agent = agentOn();
-    // The agent has its own tools and asks for a decision, so the Day 2 tool
-    // step, stress and the injected retry do not apply (the server refuses them).
-    body.use_tools = !body.agent && $("usetools").checked;
-    body.stress = body.agent ? "none" : $("stress").value;
-    if (body.agent) body.force_retry = false;
+    body.use_tools = $("usetools").checked;
+    body.stress = $("stress").value;
     if ($("hunt").checked) body.hunt_max = Math.max(1, Math.min(50, Number($("huntmax").value) || 20));
   }
   say("");
@@ -1133,33 +1081,19 @@ function showPreview() {
 
 // Triage runs choose a question (live) or a scenario (fake). Eval runs choose
 // only how many golden cases to run; live or fake still applies.
-// The agent is on only when its option is shown (live, and the server has the
-// agent) and ticked. A hidden checkbox keeps its default tick, so reading the
-// tick alone would ask for an agent the server cannot run.
-function agentOn() {
-  return !$("agent-field").hidden && $("agent").checked;
-}
-
 function syncMode() {
   const live = $("mode").value === "live";
   const evalRun = $("kind").value === "eval";
   $("cases-field").hidden = !evalRun;
-  $("data-field").hidden = !(evalRun && live);
-  for (const v of ["v2", "v3"]) $("data").querySelector(`option[value="${v}"]`).disabled = !evalCfg.sizes[`live_${v}`];
-  const size = evalSize();
+  const size = evalCfg.sizes[$("mode").value];
   if (size) { $("cases").max = size; $("cases-size").textContent = String(size); }
   $("fake-field").hidden = live || evalRun;
-  $("agent-field").hidden = !live || !evalCfg.agent;
-  const agent = agentOn();
-  for (const id of ["usetools", "stress", "retry"]) $(id).disabled = agent || (id === "usetools" && !evalCfg.tools);
   for (const id of ["qset-field", "question-field", "live-extra"]) $(id).hidden = !live || evalRun;
 }
 
 async function init() {
   $("mode").addEventListener("change", syncMode);
-  $("data").addEventListener("change", syncMode);
   $("kind").addEventListener("change", syncMode);
-  $("agent").addEventListener("change", syncMode);
   $("run").addEventListener("click", startRun);
   // The server says whether anything will stop; the message repeats its answer.
   $("stop").addEventListener("click", async () => {
@@ -1185,9 +1119,6 @@ async function init() {
   syncMode();
   try {
     const cfg = await (await fetch("/config")).json();
-    evalCfg.agent = Boolean(cfg.agent_available);
-    evalCfg.tools = Boolean(cfg.tools_available);
-    syncMode();
     if (!cfg.tools_available) {
       $("usetools").checked = false;
       $("usetools").disabled = true;
@@ -1211,12 +1142,12 @@ async function init() {
       say($("stress").value === "none" ? "" : `Stress: ${cfg.stresses[$("stress").value]}`);
     });
     for (const s of cfg.scenarios) $("scenario").append(new Option(s.replaceAll("_", " "), s));
-    banks.fixed = cfg.questions.map((q) => ({ label: q, text: q }));
+    banks.lesson = cfg.questions.map((q) => ({ label: q, text: q }));
     banks.incidents = cfg.incidents.map((i) => ({ label: i.title, text: i.text }));
     $("qset").addEventListener("change", fillQuestions);
     $("question").addEventListener("change", showPreview);
     $("custom").addEventListener("input", showPreview);
-    if (!banks.incidents.length) $("qset").value = "fixed";
+    if (!banks.incidents.length) $("qset").value = "lesson";
     fillQuestions();
     if (!cfg.live_available) {
       // Live is the default, but it needs the model names in .env.

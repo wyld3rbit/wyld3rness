@@ -25,7 +25,6 @@ THIRD_PARTY = {
     "ollama": "ollama",
     "opentelemetry": "opentelemetry-*",
     "pydantic": "pydantic",
-    "jwt": "pyjwt",
 }
 
 

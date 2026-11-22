@@ -4,12 +4,12 @@ What it does
     Defines `Incident` (a synthetic log excerpt plus a hand-written answer
     key) and `load_incidents` (read and validate the file).
 
-Why a second bank beside the fixed questions
-    The five fixed questions are one-liners. A 1.5B model can answer them
+Why a second bank beside the lesson questions
+    The five lesson questions are one-liners. A 1.5B model can answer them
     from general knowledge, so they say little about how it handles real
     evidence. These incidents are 20 to 40 line log excerpts with noise, red
     herrings and an upstream root cause, so the model has to find the signal.
-    The fixed five stay as they are: they are fixed word for word so runs
+    The lesson five stay as they are: they are fixed word for word so runs
     stay comparable over time.
 
 The `expected` answer key

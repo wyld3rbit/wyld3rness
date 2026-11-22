@@ -23,7 +23,7 @@ Why the file is read on each call
     At scale this is a network call, so add a timeout and cache with care.
 
 Failure modes
-    - Bad arguments fail the tool's argument schema. `make_tools_node`
+    - Bad arguments raise Pydantic `ValidationError`. `make_tools_node`
       turns that into a ToolMessage with the error text, so the model can
       correct itself. Without that, one bad call crashes the whole run.
     - Missing or malformed data file raises. That is an operator fault, not
@@ -33,36 +33,22 @@ Failure modes
 from collections.abc import Sequence
 import json
 from pathlib import Path
+from typing import Literal
 
 from langchain_core.tools import BaseTool, StructuredTool
 from langgraph.prebuilt import ToolNode
 from pydantic import BaseModel, Field
 
-from findyfixy.paths import DataVersion, data_dir
-from findyfixy.retrieval.corpus import CorpusService
+from findyfixy.paths import DATA
+
+# Resolved from this file, so it works from any working directory.
+DEFAULT_DEPLOYS_PATH = DATA / "deploys.json"
 
 # One week. A longer window is almost certainly a mistake, and an unbounded
 # window on a real API is an expensive query.
 MAX_HOURS = 168
 
-# Every service the system has, the corpus's own list. Until Day 7 this held
-# only the five services with deploys in the log, so a question about ledger,
-# search or scheduler got a validation error instead of "no deploys". An agent
-# that follows a dependency (Day 7) asks about any service, and an empty list
-# is the true answer for a service that had no deploy.
-Service = CorpusService
-
-
-DEPLOYS_TOOL = "get_recent_deploys"
-
-
-def deploys_path(version: DataVersion) -> Path:
-    """The deploy log of one data version. The tool reads the log of the data the run uses."""
-    return data_dir(version) / "deploys.json"
-
-
-# Resolved from this file, so it works from any working directory.
-DEFAULT_DEPLOYS_PATH = deploys_path("v1")
+Service = Literal["auth", "billing", "gateway", "voice-verification", "notifications"]
 
 
 class DeploysArgs(BaseModel):
@@ -94,7 +80,7 @@ def make_deploys_tool(path: Path = DEFAULT_DEPLOYS_PATH) -> StructuredTool:
 
     return StructuredTool.from_function(
         func=run,
-        name=DEPLOYS_TOOL,
+        name="get_recent_deploys",
         description="List recent deploys of one service, newest first.",
         args_schema=DeploysArgs,
     )
@@ -105,14 +91,9 @@ def make_tools_node(tools: BaseTool | Sequence[BaseTool]) -> ToolNode:
 
     Takes one tool or several. MCP tools arrive as a list.
 
-    LangGraph's default error handler is kept on purpose: an invalid argument
-    from the model (a tool invocation error) comes back as a ToolMessage the
-    model can read and correct, and any other exception (a database down, a
-    broken data file) raises, so an outage stops the run instead of reaching
-    the model as text it might reason around. Until Day 7 this was
-    `handle_tool_errors=True`, which caught every exception. Each argument
-    error still costs a turn, so bound the loop with a turn cap, or a stubborn
-    model loops forever.
+    `handle_tool_errors=True` catches the tool's exception and returns it as a
+    ToolMessage. The model sees the validation text and can retry. Bound this
+    with a max-turns limit in the loop, or a stubborn model loops forever.
     """
     tool_list = [tools] if isinstance(tools, BaseTool) else list(tools)
-    return ToolNode(tool_list)
+    return ToolNode(tool_list, handle_tool_errors=True)

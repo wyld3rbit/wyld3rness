@@ -1,4 +1,4 @@
-"""Tests for "everything is observable" (Day 6): command traces, user, sessions, requests.
+"""Tests for "everything is observable" (Day 6, step 5): command traces, user, sessions, requests.
 
 What these tests cover
     `CommandTrace` is a no-op without tracing and one trace with steps inside
@@ -98,7 +98,7 @@ def test_every_top_span_carries_the_user_and_children_do_not(traced) -> None:
 
 
 def test_trace_user_comes_from_the_setting_with_local_as_the_default(tmp_path, monkeypatch) -> None:
-    """TRACE_USER names who ran it; unset means "local"."""
+    """TRACE_USER names who ran it; unset means "local" until Day 7's login."""
     from findyfixy.settings import read_tracing
 
     env = tmp_path / ".env"

@@ -105,8 +105,7 @@ def read_tracing(stack_env: Path | None = None) -> TraceConfig | None:
     `code/infra/langfuse/.env`, written by `make obs-secrets`), so nobody
     copies a secret by hand. Those keys are never sent to another host. No
     keys anywhere means off: tracing is optional. `TRACE_USER` names who ran
-    it (every trace's `user.id`), default "local". There is one local user; the
-    planned credential broker names the agent on each tool call, not the person.
+    it (every trace's `user.id`), default "local" until Day 7's login.
     `LANGFUSE_PROJECT_ID` (or, for the local host, the stack's own project)
     lets the console link each run to its trace; without it there is no link.
     """
