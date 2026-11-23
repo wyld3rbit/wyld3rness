@@ -25,6 +25,11 @@ services:
   db:
     # pgvector/pgvector:pg16 (Debian 12), pushed 2026-10-01.
     image: pgvector/pgvector:pg16@sha256:7b822b0aac60967beb1ea5e576b8602c94c300a157d187f385ae3e0da199b90a
+    # A small init process runs as PID 1 and reaps orphaned processes. Without
+    # it Postgres is PID 1, and when a health check that timed out (under swap)
+    # leaves an orphaned pg_isready, Postgres treats its exit as a crashed
+    # backend and restarts itself (research log, entry 004).
+    init: true
     environment:
       POSTGRES_PASSWORD: dev
       POSTGRES_DB: triage

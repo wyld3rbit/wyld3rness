@@ -2,6 +2,7 @@
 
 import threading
 import time
+from typing import ClassVar
 
 import pytest
 
@@ -31,19 +32,27 @@ class FakeRetriever:
 
 
 class FakeConnection:
-    """Counts closes, so a failed build can be shown to clean up."""
+    """Counts closes, so a failed build can be shown to clean up. `broken` is set by a dying query."""
 
-    closed = 0
+    closes = 0
+    made: ClassVar[list["FakeConnection"]] = []
+
+    def __init__(self) -> None:
+        self.closed = False
+        self.broken = False
+        FakeConnection.made.append(self)
 
     def close(self) -> None:
         """Record the close."""
-        FakeConnection.closed += 1
+        self.closed = True
+        FakeConnection.closes += 1
 
 
 def install(monkeypatch, builds: list[int], fail_first: bool = False, delay: float = 0.0) -> FakeRetriever:
     """Replace the database and the retriever build with fakes. Returns the fake retriever."""
     retriever = FakeRetriever()
-    FakeConnection.closed = 0
+    FakeConnection.closes = 0
+    FakeConnection.made = []
 
     def fake_connect():
         return FakeConnection()
@@ -99,7 +108,7 @@ def test_a_failed_first_build_is_retried_on_the_next_call(monkeypatch) -> None:
     recall = shared().recall(3)
     with pytest.raises(OSError):
         recall("q")
-    assert FakeConnection.closed == 1  # the failed build closed its connection
+    assert FakeConnection.closes == 1  # the failed build closed its connection
     assert len(recall("q")) == 2  # the database came back
     assert builds == [1, 1]
 
@@ -135,6 +144,143 @@ def test_close_closes_the_connection_and_a_later_use_rebuilds(monkeypatch) -> No
     retrieval.candidates("q", 1)
     retrieval.close()
     retrieval.close()  # harmless twice
-    assert FakeConnection.closed == 1
+    assert FakeConnection.closes == 1
     retrieval.candidates("q", 1)
     assert builds == [1, 1]
+
+
+# ---- A lost database -------------------------------------------------------------
+
+
+class Dying(FakeRetriever):
+    """Raises a connection-level error for the first `fails` queries, then answers."""
+
+    def __init__(self, fails: int) -> None:
+        super().__init__()
+        self.fails = fails
+
+    def hybrid_rerank(self, question: str, k: int):
+        if self.fails:
+            self.fails -= 1
+            import psycopg
+
+            FakeConnection.made[-1].broken = True  # what psycopg marks when the server goes away
+            raise psycopg.OperationalError("server closed the connection unexpectedly")
+        return super().hybrid_rerank(question, k)
+
+
+class Clock:
+    """A fake clock that only moves when the code sleeps."""
+
+    def __init__(self) -> None:
+        self.now = 0.0
+        self.slept: list[float] = []
+
+    def sleep(self, seconds: float) -> None:
+        self.slept.append(seconds)
+        self.now += seconds
+
+
+def install_dying(monkeypatch, fails: int) -> tuple[list[int], Dying]:
+    """A database whose connection dies `fails` times; returns the build counter and the retriever."""
+    builds: list[int] = []
+    retriever = Dying(fails)
+    FakeConnection.closes = 0
+    FakeConnection.made = []
+    monkeypatch.setattr(wiring, "connect", FakeConnection)
+
+    def fake_build(conn, embedder=None, stage=None):
+        builds.append(1)
+        return retriever
+
+    monkeypatch.setattr(wiring, "build_retriever", fake_build)
+    return builds, retriever
+
+
+def shared_with(clock: Clock) -> wiring.SharedRetrieval:
+    """A shared retrieval with a fake embedder and the fake clock."""
+    return wiring.SharedRetrieval(
+        make_embedder=lambda: lambda texts: [[1.0] for _ in texts], sleep=clock.sleep, clock=lambda: clock.now
+    )
+
+
+def test_a_connection_lost_once_is_replaced_and_the_query_retried(monkeypatch, caplog) -> None:
+    """A Postgres restart costs one wait and one rebuild, not the rest of the run."""
+    builds, _ = install_dying(monkeypatch, fails=1)
+    clock = Clock()
+    with caplog.at_level("WARNING"):
+        found = shared_with(clock).candidates("q", 2)
+    assert [p.incident_id for p in found] == ["INC-1", "INC-2"]
+    assert len(builds) == 2 and FakeConnection.closes == 1 and clock.slept == [1.0]
+    assert "connection lost" in caplog.text and "reconnected after 1.0 s" in caplog.text
+
+
+def test_a_database_down_past_the_deadline_fails_the_call(monkeypatch) -> None:
+    """Waits back off to 8 s and stop at the deadline; then the error reaches the caller."""
+    import psycopg
+
+    install_dying(monkeypatch, fails=10_000)
+    clock = Clock()
+    with pytest.raises(psycopg.OperationalError):
+        shared_with(clock).candidates("q", 2)
+    assert clock.slept[:5] == [1.0, 2.0, 4.0, 8.0, 8.0]
+    assert sum(clock.slept) <= wiring.RECONNECT_DEADLINE_S
+
+
+def test_an_error_on_a_live_connection_is_not_retried(monkeypatch) -> None:
+    """A timeout or out-of-memory error leaves the connection up: it is the query's failure, raised at once."""
+    import psycopg
+
+    builds, retriever = install_dying(monkeypatch, fails=0)
+
+    def timed_out(question, k):
+        raise psycopg.OperationalError("canceling statement due to statement timeout")
+
+    retriever.hybrid_rerank = timed_out  # type: ignore[method-assign]
+    clock = Clock()
+    with pytest.raises(psycopg.OperationalError, match="timeout"):
+        shared_with(clock).candidates("q", 2)
+    assert clock.slept == [] and len(builds) == 1
+
+
+def test_a_database_never_reached_fails_at_once(monkeypatch) -> None:
+    """A missing `make up` is reported in seconds, not after the reconnect deadline."""
+    import psycopg
+
+    def refused():
+        raise psycopg.OperationalError("connection refused")
+
+    monkeypatch.setattr(wiring, "connect", refused)
+    clock = Clock()
+    with pytest.raises(psycopg.OperationalError, match="refused"):
+        shared_with(clock).candidates("q", 2)
+    assert clock.slept == []
+
+
+def test_the_lock_is_released_while_waiting(monkeypatch) -> None:
+    """The judge's embedder must not wait on a reconnect it does not need."""
+    install_dying(monkeypatch, fails=1)
+    clock = Clock()
+    retrieval = shared_with(clock)
+    free: list[bool] = []
+
+    def sleep(seconds: float) -> None:
+        got = retrieval._lock.acquire(blocking=False)
+        free.append(got)
+        if got:
+            retrieval._lock.release()
+        clock.sleep(seconds)
+
+    retrieval._sleep = sleep
+    retrieval.candidates("q", 2)
+    assert free == [True]
+
+
+def test_a_failure_that_is_not_the_connection_is_not_retried(monkeypatch) -> None:
+    """A bug or a bad build propagates at once: retrying it would only hide it."""
+    builds: list[int] = []
+    install(monkeypatch, builds, fail_first=True)
+    clock = Clock()
+    with pytest.raises(OSError):
+        shared_with(clock).candidates("q", 2)
+    assert clock.slept == [] and len(builds) == 1

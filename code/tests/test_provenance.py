@@ -6,6 +6,7 @@ What these tests cover
     directory the caller names.
 """
 
+import os
 from pathlib import Path
 import subprocess
 from typing import Any
@@ -16,6 +17,13 @@ from wyld3rness.eval import provenance as pv
 from wyld3rness.eval.metrics import PROMPT_VERSIONS
 from wyld3rness.eval.provenance import CORE_KEYS, build_provenance, git_info
 from wyld3rness.testing import NOW
+
+
+@pytest.fixture(autouse=True)
+def no_outer_git(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Drop every GIT_* variable: inside a commit hook (GIT_DIR too, in a worktree) they point at this repository."""
+    for name in [n for n in os.environ if n.startswith("GIT_")]:
+        monkeypatch.delenv(name)
 
 
 def provenance(**over: Any) -> dict[str, Any]:

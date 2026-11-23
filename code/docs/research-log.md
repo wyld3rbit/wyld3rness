@@ -79,3 +79,35 @@ Two observations the protocol did not ask for:
 **Deviations.** Run D was first started and then stopped after about two minutes, before any case was answered, because the checkout was switched to another branch while the hook ran; the commit would have landed on that branch with an attestation for a different tree. The hook now refuses a commit when the branch, its commit or the staged files change during the gate (`599ede8`). Run D was then repeated from the start.
 
 **Meaning.** A commit that leaves the answers unchanged costs about 2.5 minutes of gate time instead of about 11, and a commit that makes the answers worse cannot be made. A change to the judge forces a full run without any special case. What this cannot show: other models, parallel workers, how often answers differ over weeks of model-server use, or a machine other than this one. Every gate run records its reuse counts in its attestation, so the rate keeps being measured.
+
+---
+
+## 004. Does a run survive a database restart? (protocol)
+
+**Question.** An unattended run must not lose the rest of its work when the database restarts. On 2026-11-21 a gate run lost 12 of 30 cases: Postgres restarted itself three times, for 39.5 s, 1.8 s and 6.6 s, and the one shared connection was never replaced. The cause was reproduced that day in a throwaway container: Postgres ran as process 1 and treated an orphaned `pg_isready`'s exit as a crashed backend; with an init process as process 1 the session survived. That the orphans were health checks that timed out under memory pressure is inferred, not shown. Two fixes follow: the database container gets an init process as process 1 (`init: true`), and a query that loses its connection reconnects with backoff for up to 60 s and retries.
+
+**Protocol.** Two live checks, after the container is recreated with the new compose file:
+
+| Check | How | Prediction |
+|---|---|---|
+| E | Read process 1's name inside the database container | It is the init process, not `postgres` |
+| F | `make eval` (all 30 cases, no gate), with `docker restart` of the database right after the 8th case is answered | 0 run errors; the output shows "database connection lost" and then "database reconnected after N s" with N under 60; every case's scores equal those of the attested run, because the answers repeat (entry 003) |
+
+The bar: both behave as predicted. The 2026-11-21 loss is the reference, with the caveat that its restarts had a different trigger than `docker restart`.
+
+**Ran.** Not yet.
+
+---
+
+## 005. Does a run survive a database restart? (results of 004)
+
+**Ran.** On 2026-11-23, at commit `d6c319a`, after the database container was recreated from its new compose file.
+
+| Check | Observed | Prediction met |
+|---|---|---|
+| E | Process 1 in the database container is `docker-init`; Postgres runs as process 27; `HostConfig.Init` is true; all 800 stored chunks were still there | yes |
+| F | `make eval`, `docker restart` of the database right after case 8 was answered. Case 9 logged "database connection lost (AdminShutdown); reconnecting", then "database reconnected after 2.9 s". 0 run errors in 30 cases. Every judge key (30 of 30) and every metric score (120 of 120) equal step 1's attested run (`eval-20261123T210734Z.json`). 680 s wall | yes |
+
+**Deviations.** The first attempt at the step 1 commit, before E and F, stopped because the container VM had shut down: its host agent received a termination signal at 12:16:36, from a cause not found. With no database, the gate failed within seconds, as the fail-fast rule in 004's change intends, and the commit was refused. It was repeated once the VM was back.
+
+**Meaning.** A database restart now costs the case in flight a few seconds instead of costing the rest of the run, and the restarts seen on 2026-11-21 lose their trigger. What this cannot show: a restart longer than the 60 s deadline (the case in flight fails and the next one tries again, by design, and is covered by tests with fakes only), a network path that drops silently (keepalives, also tested only with fakes), or behaviour under memory pressure, where the 2026-11-21 restarts began.
