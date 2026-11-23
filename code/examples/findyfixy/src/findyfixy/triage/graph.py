@@ -38,7 +38,10 @@ Known weaknesses (read these before trusting the numbers)
       0 to 1, so a reply of "75" retries and then escalates. It does not
       make the number meaningful: a small model can write 0.9 and be wrong.
     - The large model gets the same retry. If it is still invalid, the run
-      raises `TriageError`. There is no third tier and no human yet.
+      raises `TriageError`. So does the small model when it is the only one
+      configured (both names alike): with no second tier, swallowing the
+      error would end the run with no triage and nothing to say why. There is
+      no third tier and no human: the caller records the typed failure.
     - No timeout. If Ollama is down, the run raises. Retries cover bad
       output, not infrastructure faults.
 
@@ -259,9 +262,10 @@ def build_graph(
         """Build a node that asks `model` and writes the result into state.
 
         `small` and `large` differ only in which model they call and in what
-        happens when the model stays invalid after its retry. `small` records
-        `triage=None` so the router can escalate. `large` has nowhere to
-        escalate to, so it lets `TriageError` propagate. One factory means the
+        happens when the model stays invalid after its retry. With a second
+        tier, `small` records `triage=None` so the router can escalate.
+        `large`, and `small` when it is the only model, have nowhere to
+        escalate to, so they let `TriageError` propagate. One factory means the
         two cannot drift apart. The node returns a partial state update;
         LangGraph merges it. See `S` for the merge rule.
         """
@@ -335,7 +339,8 @@ def build_graph(
         return target
 
     g: StateGraph[S] = StateGraph(S)
-    g.add_node("small", make_node("small", small_model, tolerate_invalid=True))
+    # Swallowing an invalid answer is only safe when the router can escalate it.
+    g.add_node("small", make_node("small", small_model, tolerate_invalid=small_model != large_model))
     g.add_node("large", make_node("large", large_model, tolerate_invalid=False))
     # Steps before the cheap model, in order: recall, then investigate. Each is
     # optional, and the chain ends at `small`.
@@ -392,10 +397,21 @@ def main() -> None:
 
 
 def _triage_one(graph: TriageGraph, q: str, run: "AbstractContextManager[EventSpans | None]") -> None:
-    """Run one question, end its run trace (when tracing), print the triage and latency."""
+    """Run one question, end its run trace (when tracing), print the triage and latency.
+
+    A model that stays invalid after its retry is a typed failure, printed
+    with its reason and recorded on the trace; the next question still runs.
+    """
     with run as spans:
         start = time.perf_counter()
-        result = graph.invoke({"question": q})
+        try:
+            result = graph.invoke({"question": q})
+        except TriageError as err:
+            if spans is not None:
+                spans.finish_run(error=f"TriageError: {err}")
+            print(f"Q: {q}")
+            print(f"A: failed, TriageError: {err} | latency: {time.perf_counter() - start:.1f}s\n")
+            return
         latency = time.perf_counter() - start
         if spans is not None:
             spans.finish_run(output=result["triage"].model_dump(), model_used=result["model_used"])

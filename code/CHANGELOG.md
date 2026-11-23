@@ -23,6 +23,7 @@ Notable changes to wyld3rness and its example app. The format follows [Keep a Ch
 - **Incident memory.** Synthetic past incidents are chunked, embedded and stored in Postgres with pgvector by an ingestion job that is safe to re-run. ([ADR 0003](docs/adr/0003-incident-memory-in-postgres.md))
 - **Hybrid retrieval.** Keyword and vector search fused by reciprocal rank, then a cross-encoder reranker, returning incidents rather than chunks. ([ADR 0004](docs/adr/0004-hybrid-retrieval-with-reranker.md))
 - **Console.** A local page that runs a triage or an eval and shows each step on the live architecture diagram.
+- **Nothing that kills an unattended run.** With one model configured, an answer still invalid after its retry is a typed `TriageError`, recorded by the eval, the console and `make triage`, which goes on to the next question. A query that loses its database connection reconnects with backoff for up to 60 s and retries, and logs both events. The database container runs an init process as PID 1, so an orphaned health check can no longer make Postgres restart itself. (research log, entry 004)
 
 ### Tooling and security
 
@@ -39,8 +40,6 @@ Notable changes to wyld3rness and its example app. The format follows [Keep a Ch
 - The model names come from an untracked `.env` file, so a model swap changes answers without failing CI. Only the judge is pinned, through the baseline.
 - The stale-database check catches a changed embedding model name, not a new revision of the same model.
 - The golden set is small and synthetic, and it has not yet exercised escalation.
-- With one model configured, an answer that stays invalid after its retry leaves no record, and the console and `make triage` fail on it.
-- The shared database connection is never replaced, so a database restart fails the rest of a run.
 - The judge can reject a claim its own context supports (ADR 0008), so a faithfulness score alone does not show a wrong answer.
 - On some golden cases the judge writes four questions where response relevancy asks for three, on every run, so that metric fails there (research log, entry 003).
 - The direct and MCP tool runs record tokens without a model name, so Langfuse puts no cost on those calls.

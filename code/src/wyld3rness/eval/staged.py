@@ -112,6 +112,21 @@ def _git(repo: Path, *args: str, run: Runner = subprocess.run) -> str:
     return done.stdout.strip()
 
 
+def toplevel(cwd: Path, run: Runner = subprocess.run) -> Path:
+    """The working tree's root, found from `cwd`.
+
+    A hook in a git worktree runs with `GIT_DIR` set and no `GIT_WORK_TREE`,
+    and git then takes the current folder as the root, so the variables are
+    left out for this one lookup. Every later command runs from the root,
+    where `GIT_DIR` (and `GIT_INDEX_FILE`) still point at the commit's own.
+    """
+    env = {k: v for k, v in os.environ.items() if k not in ("GIT_DIR", "GIT_WORK_TREE")}
+    done = run(["git", "rev-parse", "--show-toplevel"], cwd=cwd, env=env, capture_output=True, text=True, check=False)
+    if done.returncode != 0:
+        raise Refused(f"not inside a git working tree: {done.stderr.strip()}")
+    return Path(done.stdout.strip())
+
+
 def check_index(environ: Mapping[str, str]) -> None:
     """Refuse a commit whose index is a temporary one (`git commit <path>`)."""
     index = environ.get("GIT_INDEX_FILE")
@@ -345,7 +360,7 @@ def main(argv: Sequence[str] | None = None, *, stdin: TextIO = sys.stdin) -> int
     """Exit 0 to let the commit or push go ahead, 1 to refuse it. Run from inside the repository."""
     args = _parser().parse_args(argv)
     try:
-        repo = Path(_git(Path.cwd(), "rev-parse", "--show-toplevel"))
+        repo = toplevel(Path.cwd())
         if args.command == "commit":
             gate = args.gate[1:] if args.gate[:1] == ["--"] else args.gate
             gate_commit(repo, args.workspace, args.attestation, args.link, gate)

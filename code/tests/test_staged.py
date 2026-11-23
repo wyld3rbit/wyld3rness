@@ -27,6 +27,7 @@ from wyld3rness.eval.staged import (
     gate_push,
     link_ignored,
     pushed_commits,
+    toplevel,
 )
 
 WS = "ws"
@@ -131,6 +132,12 @@ def staged_names(repo: Path) -> list[str]:
 
 
 # ---- Pure pieces ----------------------------------------------------------------
+
+
+def test_the_root_is_found_from_a_subfolder_inside_a_worktree_hook(repo: Path, monkeypatch) -> None:
+    """A worktree's hook sets GIT_DIR; git then mistakes the current folder for the root."""
+    monkeypatch.setenv("GIT_DIR", str(repo / ".git"))
+    assert toplevel(repo / WS) == repo.resolve()
 
 
 @pytest.mark.parametrize("index", [None, "/r/.git/index", "/r/.git/index.lock"])
