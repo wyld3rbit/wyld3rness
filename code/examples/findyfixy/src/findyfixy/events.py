@@ -3,14 +3,14 @@
 What it does
     Defines `Event` (one thing that happened), `Emit` (how code reports it),
     and `make_emit` (builds an `Emit` that stamps each event with a time and
-    hands it to a sink). The live console (Day 2) turns these into the
+    hands it to a sink). The live console turns these into the
     animation and the event log.
 
 Why code reports through a callback, and not through logging
     The graph and `ask_validated` should not know who is listening. They get
     an `Emit` argument, the same dependency injection as `ask`. A test passes
     a list's `append` and asserts on the events. The console passes a queue.
-    Day 6 adds a tracing sink beside the console's (findyfixy/observability/adapter.py),
+    A tracing sink sits beside the console's (findyfixy/observability/adapter.py),
     with no change to the graph. `run_traced` is the one kind the graph never
     emits: the console's tracing sink sends it to link a run to its trace.
 
@@ -25,7 +25,7 @@ Failure modes and what changes at scale
       sink only does `queue.put_nowait`, so it never blocks. A network
       exporter must buffer and drop, not block, or tracing can take prod down.
     - Events carry prompts and raw replies. In this lab the data is synthetic.
-      With real data, redact before emitting (Day 7).
+      With real data, redact before emitting.
     - Nothing here is a stable wire format yet. Treat `kind` names as
       internal until a consumer outside this repo depends on them.
 """

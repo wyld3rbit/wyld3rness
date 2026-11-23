@@ -1,4 +1,4 @@
-"""Day 1 router, Day 2 contract: small-model-first, with validated triage output.
+"""A small-model-first router, with validated triage output.
 
 What it does
     1. The small model returns a `Triage` record (findyfixy/triage/record.py). An
@@ -17,8 +17,8 @@ Why this shape
 Why a graph, and not an if statement
     Two nodes would fit in an if statement. The graph pays off as the system
     grows. Each step is a named node with its own inputs and outputs. That
-    makes it easy to trace, test, retry, and pause for a human later (Day 9).
-    Day 4 adds a recall node before `small`. Day 7 adds a policy node.
+    makes it easy to trace, test, retry, and pause for a human later.
+    A recall node sits before `small`, and a policy node can join the same way.
     With a graph, those are new nodes. With an if statement, they are a rewrite.
 
 Why the graph is built by a function that takes `ask`
@@ -27,7 +27,7 @@ Why the graph is built by a function that takes `ask`
     `ollama_ask`. Tests pass a fake that returns a chosen confidence.
     This is dependency injection. It buys three things:
       - Routing can be tested in milliseconds with no model and no network.
-      - Day 8 can swap in a gateway client without touching the graph.
+      - A gateway client can be swapped in without touching the graph.
       - Importing this module does nothing. No client is built, no graph is
         compiled, no environment is read until `main()` or a test asks.
     The alternative, patching a module-level function in tests, couples tests
@@ -35,7 +35,7 @@ Why the graph is built by a function that takes `ask`
 
 Known weaknesses (read these before trusting the numbers)
     - Confidence is still self-reported. Validation now rejects values outside
-      0 to 1, so the Day 1 "75" case retries and then escalates. It does not
+      0 to 1, so a reply of "75" retries and then escalates. It does not
       make the number meaningful: a small model can write 0.9 and be wrong.
     - The large model gets the same retry. If it is still invalid, the run
       raises `TriageError`. There is no third tier and no human yet.
@@ -78,7 +78,7 @@ from findyfixy.triage.record import (
 Recall = Callable[[str], Sequence[Prior]]
 
 # The routing policy in one number. Treat it as a product decision, not a
-# constant of nature: it trades cost against quality. Day 8 tunes it
+# constant of nature: it trades cost against quality. The cost comparison tunes it
 # (0.6, 0.7, 0.8) and measures the effect on cost, latency and faithfulness.
 THRESHOLD = 0.7
 

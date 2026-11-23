@@ -1,4 +1,4 @@
-"""Day 2: a fake deploy-history tool, bound directly into a LangGraph ToolNode.
+"""A fake deploy-history tool, bound directly into a LangGraph ToolNode.
 
 What it does
     `get_recent_deploys(service, hours)` returns deploys of one service in the
@@ -16,7 +16,7 @@ Why records hold `hours_ago`, not timestamps
     No clock in the code means no flaky tests and no data that goes stale. The
     cost: the file cannot say "when" in absolute terms. Fine for a fake. A real
     tool would query a deploy API with timestamps and its own credentials.
-    Credentials belong to this code, never to the model (Day 7).
+    Credentials belong to this code, never to the model.
 
 Why the file is read on each call
     No work at import time. For a file this small the cost is microseconds.

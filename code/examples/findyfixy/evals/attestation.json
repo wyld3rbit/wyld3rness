@@ -1,5 +1,5 @@
 {
-  "created_utc": "2026-11-23T19:22:49+00:00",
+  "created_utc": "2026-11-23T19:28:20+00:00",
   "files": {
     "examples/findyfixy/data/deploys.json": "c1c9fa59e3c07706a618dc5d65a461b34a08c71b50491cfb537713e135e9b2f8",
     "examples/findyfixy/data/golden.jsonl": "2d005967149bbc1fc3e9572ba042a5edbac13e471f3b4ffc9cbbb4a7d1d22a1f",
@@ -13,7 +13,7 @@
     "examples/findyfixy/src/findyfixy/evals/adapter.py": "026b94261ae18944d04180fdce1d53ec70155cceb9a354edc3a6031a4be61953",
     "examples/findyfixy/src/findyfixy/evals/answers.py": "110a7b0396d6d82e456cd0c330aab02e972f365e422513b03f30b0f9f9e5fe03",
     "examples/findyfixy/src/findyfixy/evals/golden.py": "45a9cb58fe3375e17205cedd1c157140bd7a727ff21c03334174c2a8fa9c362e",
-    "examples/findyfixy/src/findyfixy/events.py": "6365d07dbbaf057511b9bf01bca1dbcffdba015d2f9ac1b328cb8b2d8d948593",
+    "examples/findyfixy/src/findyfixy/events.py": "092fb2a4bad3d7259e0ba74af429593ccea078f1c5c08116aca4a42e90cd31aa",
     "examples/findyfixy/src/findyfixy/llm.py": "79b8098d475c9934944d4f17a70582bf5b097c9a8051c59105925a01579feab5",
     "examples/findyfixy/src/findyfixy/model_cache.py": "a1479480f4db0150efd6e87435c58d3713eec58bf13b1afae5318395be8d2d5d",
     "examples/findyfixy/src/findyfixy/observability/__init__.py": "b79bb0b0dfddabb2264d5d7ffb397160755fb499fab0a128243a2e1711ad0f6f",
@@ -25,12 +25,12 @@
     "examples/findyfixy/src/findyfixy/retrieval/ingest.py": "39c68bbd72946cf0ad88147874b78fc6d0260a2c22db702ae60d8653b982938d",
     "examples/findyfixy/src/findyfixy/retrieval/retrieve.py": "00a46fd37df4831e2f3c713cc3d0066d8ca1768df7f56e94435be3695c1d869f",
     "examples/findyfixy/src/findyfixy/retrieval/search.py": "75fb7131cb5ba5f4312251a7687b0c2554a85f5261f01f54283a1941ab6ae065",
-    "examples/findyfixy/src/findyfixy/settings.py": "1ca98070bf95696508cf2462569807abea7a59505265320df16f8b93c94f934b",
+    "examples/findyfixy/src/findyfixy/settings.py": "95cd4847cc86d940616ee6fc2f023f96839e9a7a1f9b1ac6a005c02beabe750f",
     "examples/findyfixy/src/findyfixy/tools/__init__.py": "f5e9b3d3083d0c45f18fbac13f86a0c8a575dec3a62f5220fb343d9aa99f5af1",
-    "examples/findyfixy/src/findyfixy/tools/deploys.py": "ceae99370a505e1dd25130ed81bc13b558cc080013cc6580c0d0629763bc3b48",
-    "examples/findyfixy/src/findyfixy/tools/investigate.py": "05b90b3f1e68689aefc2b168665710aff7117ff0a6ad59f59e7cc7b4139f2a2a",
+    "examples/findyfixy/src/findyfixy/tools/deploys.py": "f070ff5557761a2999bcadbd6cf0e9a796a747547b951d6c4aa38268266df1ea",
+    "examples/findyfixy/src/findyfixy/tools/investigate.py": "2c7c1f9891c608cd5aa750b552561c6bd87f7df5db35aac9d3b9be389120e402",
     "examples/findyfixy/src/findyfixy/triage/__init__.py": "9cfc4ab694f84f485b64009cc8b7199134600069f40c6b00647e57b8cf6f29a7",
-    "examples/findyfixy/src/findyfixy/triage/graph.py": "2cdb0d437f328544de24dd3e02983751e9073e94fa60c29958de3d1e84aa1459",
+    "examples/findyfixy/src/findyfixy/triage/graph.py": "48248952fe4db63d1c7deb86918fcde5664cd388f706bf2b956b3994e3ded429",
     "examples/findyfixy/src/findyfixy/triage/record.py": "bd4d32846d19bf553faf167e039816d15c0238d810b95a9d046e0cf2db127bb5",
     "examples/findyfixy/src/findyfixy/wiring.py": "3832e27d0eda4f384612320c62e0cabfd9c8cbca3e88f5417f82d28545d03a51",
     "src/wyld3rness/__init__.py": "f7c2656007a5873e1d5bbde4cac124ea8c27278f6eb55d9d9c10ab57e90bc70a",
@@ -51,10 +51,10 @@
     "src/wyld3rness/trace/command.py": "d13cb87397dd5c17e237b165f3a8c8f5f3b4c4e501a686aeb4c829be51462711",
     "src/wyld3rness/trace/scores.py": "afdcf4b6cd99125b22b7b82f1eda0a387a63c15600f6d805c2de3d7bfe237310",
     "src/wyld3rness/trace/spans.py": "145cd0e9a7704bc65d9ef901585ed2d65e2006cc7bdc3d111062133a4bbc3611",
-    "src/wyld3rness/trace/tracing.py": "835850ae71fe44a5bda840ee0c50bf7928fc88d222abd499238c9f1b61421cd4",
+    "src/wyld3rness/trace/tracing.py": "b85dde2f79b487a49496eec541c996c5aeed8f43e6fd7c0a0132448e10a65a8d",
     "uv.lock": "f35d6470c079affe4a16139d0ae97d51249f97dd08397767c15570d61a43f977"
   },
-  "fingerprint": "1277c38861eeb247cc6778dc427261228b8a05431a940c0736945e2be3798403",
+  "fingerprint": "a4d9a099995206c93a74e348d2ce6275bbd7a1e11a16addae3e7e3dcfc1775cd",
   "inputs": {
     "entry_modules": [
       "findyfixy.evals.answers"
@@ -71,16 +71,21 @@
     ]
   },
   "report": {
-    "name": "eval-20261123T192249Z.json",
-    "sha256": "1f930ecb44bec03c7559c94d52684683f13e27f31b9322ccd748aa364acbb461"
+    "name": "eval-20261123T192820Z.json",
+    "sha256": "a6d76efad75f3cc24bb2f770e867907a88673ca6484706b6d8531db0c456b413"
+  },
+  "reuse": {
+    "from": "eval-20261123T192249Z.json",
+    "judged": 3,
+    "reused": 27
   },
   "run": {
-    "git_sha": "tree-5ee6223fcc2c",
+    "git_sha": "tree-7bb104e8a195",
     "judge_digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
     "judge_model": "qwen2.5:7b",
     "large_model": "qwen3:4b-instruct",
     "small_model": "qwen3:4b-instruct",
-    "timestamp_utc": "2026-11-23T19:11:41+00:00"
+    "timestamp_utc": "2026-11-23T19:25:49+00:00"
   },
   "verdict": "pass",
   "version": 2
