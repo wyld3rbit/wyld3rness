@@ -1,4 +1,4 @@
-"""Day 2: connect to the MCP deploy server and get LangChain tools.
+"""Day 2, step 5: connect to the MCP deploy server and get LangChain tools.
 
 What it does
     `persistent_tools()` starts the server as a child process, opens ONE MCP

@@ -1,26 +1,41 @@
-# Release and runtime controls for LLM applications
+# Autonomous on-call, safe and affordable to be wrong
 
-wyld3rness is a harness that measures an LLM app's answers before a change ships and records every run, without relying on the model to behave. It is tested on FindyFixy, an incident-triage agent in this repository that investigates with read-only tools and proposes, but never executes, a next action. Everything runs on one machine with open-source models and synthetic data.
+wyld3rness is being built as a harness and a set of agentic loops for agents that run on-call without a human approving each action. People will set the goal, the invariants, the allowed kinds of action and the budget before runtime. Code will decide what may act, check real signals, undo what did not work, and stop when the tries or the money run out. It is tested on FindyFixy, an event detection, determination and mitigation agent.
 
-![The visualizer on a live eval run: two golden cases move through FindyFixy while the harness scores them](code/docs/demo.gif)
+**Today FindyFixy diagnoses and proposes. It cannot act yet.** The loop and the simulated production it will act on are the build in progress.
 
-## Built
+![The visualizer on a live eval run: two golden cases move through what is built, inside the planned loop drawn dashed](code/docs/demo.gif)
 
-- **Eval gate and CI gate.** The app answers golden test cases, and the gate fails on a measured regression against a frozen baseline. A passing local run writes an attestation, and CI refuses any change to an answer-affecting file that no passing run covers.
-- **Tracing.** Every run is an OpenTelemetry trace in a self-hosted Langfuse, with scores and a cost on each model call. A slow or stopped backend does not slow a run, and runs with tracing on scored identically.
-- **One interface.** An app plugs in through three methods, and a test fails if the harness imports it.
-- **A trust boundary.** Every action an agent proposes passes an action ledger that decides it from facts the model cannot write, and every tool call carries a five-minute token scoped to one agent, tool and resource. In an injection suite of 20 attacks, none gets through, even with every agent fooled. Nothing executes yet.
-- **An agent under test.** FindyFixy investigates within a turn and time budget and submits a validated decision from a closed set (read, page a human, or roll back a named version). Out of budget, code hands the incident to a person. It is measured on a frozen set and on hard sets of cascades, poisoned incidents and rollbacks, one of them on a real timeline with a change log.
+## Built and planned
+
+| The question | The control | Status |
+|---|---|---|
+| May this change ship? | Eval gate run at every commit on exactly what is staged, and a CI gate that refuses an unattested change | **Built** |
+| What happened, and what did it cost? | A trace per run, with a reference cost on each triage and eval model call | **Built** |
+| What may one incident spend? | A budget reserved before each call, through one gateway | Planned |
+| May this action run, and as whom? | Policy by kind of action, and a credential per action | Planned |
+| Did it work? | A recovery check on real signals that the agent cannot touch | Planned |
+| What if it was wrong? | Undo and retry where that is possible, otherwise a safe state. A kill switch above all of it | Planned |
+| Is it worth it? | Agent against runbook, by cost per resolved incident | Planned |
+| How much may it do alone? | A person approves each kind of action once, and evidence keeps or removes it | Planned |
+
+## Cost is an invariant
+
+Cost per resolved incident is every attempt's cost, failed ones included, divided by the incidents resolved. Today cost is measured and nothing limits it. The target: an incident cannot spend past its budget, the cheapest option that passes the safety and resolution bars wins, and a runbook with no model is always one of the options.
 
 ## Target design
 
-![Target design: the agent as the data plane, with the harness's checkpoints on every path in and out. Solid is built, dashed is planned.](code/docs/target-design.svg)
+![Target design: what a human sets before runtime, the harness, the agent's decision, the act-verify-undo loop and a simulated production. Solid is built, dashed is planned.](code/docs/target-design.svg)
 
-Details: [design](code/docs/design.md), [strategy](code/docs/strategy.md).
+Details: [design and strategy](code/docs/design.md), and the decision behind it, [ADR 0008](code/docs/adr/0008-autonomous-operation-with-cost-as-an-invariant.md).
+
+## Research log
+
+Every measurement behind a decision, dated, with the protocol written before the run, the command that ran, the result with its spread, and what it cannot show: [research log](code/docs/research-log.md).
 
 ## Run it
 
-You need [uv](https://docs.astral.sh/uv/), Docker Compose with a runtime (Colima or Docker) and [Ollama](https://ollama.com/). Plan for 16 GB of memory and about 11 GB of model downloads.
+You need [uv](https://docs.astral.sh/uv/), Docker Compose with a runtime (Colima or Docker) and [Ollama](https://ollama.com/). Plan for 16 GB of memory and about 8.5 GB of model downloads.
 
 ```bash
 cp code/examples/findyfixy/.env.example code/examples/findyfixy/.env    # model names; edit if you use other models
@@ -38,7 +53,6 @@ Then, in the page, pick Triage run or Eval run and press Run. Fake mode needs no
 make triage           # triage five fixed questions in the terminal
 make eval             # score FindyFixy on 30 golden cases through the harness (live models, minutes)
 make case ID=g07      # one case end to end: the alert, the answer, every judge decision
-make attacks          # the injection suite live: the real agent on 20 attacks, what the ledger let through
 make test             # the harness and FindyFixy tests (make test-harness: the harness alone)
 make obs-secrets      # once: secrets for the local Langfuse stack
 make obs-up           # then open http://127.0.0.1:3000 to see every run as a trace
@@ -48,7 +62,11 @@ make help             # everything else
 
 ## Docs
 
-[Strategy](code/docs/strategy.md) · [Design](code/docs/design.md) · [Decision records](code/docs/adr/README.md) · [Changelog](code/CHANGELOG.md) · [Harness](code/src/wyld3rness/README.md) · [FindyFixy](code/examples/findyfixy/README.md) · [Workspace](code/README.md) · [Infrastructure](code/infra/README.md) · [Checks](tools/README.md) · [Hooks](.githooks/README.md) · [Contributing](CONTRIBUTING.md)
+[Design and strategy](code/docs/design.md) · [Decision records](code/docs/adr/README.md) · [Changelog](code/CHANGELOG.md) · [Harness](code/src/wyld3rness/README.md) · [FindyFixy](code/examples/findyfixy/README.md) · [Workspace](code/README.md) · [Infrastructure](code/infra/README.md) · [Checks](tools/README.md) · [Hooks](.githooks/README.md) · [Contributing](CONTRIBUTING.md)
+
+## Limits
+
+One machine, local models, synthetic data, and a production that is simulated and will be labeled so wherever it is shown. Reference prices are a yardstick, not a bill. Nothing here is evidence of safety on real systems.
 
 <details>
 <summary>Disclaimer</summary>

@@ -1,4 +1,4 @@
-"""Day 4: the labelled queries that measure retrieval.
+"""Day 4, step 1: the labelled queries that measure retrieval.
 
 What it does
     Builds `data/retrieval_eval.jsonl`: 40 queries, each paired with the
@@ -7,7 +7,7 @@ What it does
 Why retrieval needs its own labelled set
     If the right incident never reaches the prompt, no prompt recovers it.
     Without queries that have known answers, "retrieval quality" is opinion.
-    Recall@5 and MRR (evals/retrieval.py) are computed against this file.
+    Recall@5 and MRR (step 3) are computed against this file.
 
 Two kinds of query, because the two retrievers fail differently
     meaning (30): a plain-words paraphrase of a seeded pair. The correct
@@ -46,9 +46,9 @@ from pathlib import Path
 import re
 from typing import Any, Literal
 
-from findyfixy.paths import DATA, data_dir
+from findyfixy.paths import DATA
 
-INCIDENTS_PATH = data_dir("v1") / "incidents.jsonl"  # the labels were written against corpus v1
+INCIDENTS_PATH = DATA / "incidents.jsonl"
 EVAL_PATH = DATA / "retrieval_eval.jsonl"
 
 # Text fields a hostname can appear in. The same fields the chunks are made of.
@@ -228,7 +228,7 @@ def write_queries(queries: Sequence[EvalQuery], path: Path = EVAL_PATH) -> None:
 
 
 def load_queries(path: Path = EVAL_PATH) -> list[EvalQuery]:
-    """Read the file back. The retrieval eval uses this."""
+    """Read the file back. Step 3 uses this."""
     with path.open(encoding="utf-8") as handle:
         return [
             EvalQuery(r["id"], r["kind"], r["query"], tuple(r["relevant"]))

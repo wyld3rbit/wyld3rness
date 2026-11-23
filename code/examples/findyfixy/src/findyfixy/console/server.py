@@ -31,7 +31,7 @@ Test it:  uv run pytest
 Why the standard library, and not FastAPI
     This is a local dev tool with four routes. `http.server` adds nothing to
     the supply chain (no new package, no license, no advisory to track).
-    The cost is hand-written plumbing and no async. At gateway scale (Day 8)
+    The cost is hand-written plumbing and no async. At gateway scale
     use a real framework. Moving over is cheap: the logic lives in `RunHub`,
     and the HTTP layer is a thin shell around it.
 
@@ -63,7 +63,7 @@ Failure modes
       the error. The server stays up.
 """
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from dataclasses import asdict
 from functools import partial
 from http import HTTPStatus
@@ -101,18 +101,17 @@ from findyfixy.console.fakes import (
 )
 from findyfixy.console.stress import DESCRIPTIONS, STRESSES, Stress, make_ollama_ask
 from findyfixy.events import Emit, Event, make_emit, make_stamped_emit
-from findyfixy.llm import answer_options, ollama_ask, ollama_decision_ask
+from findyfixy.llm import answer_options, ollama_ask
 from findyfixy.observability.adapter import EventSpans, traced_sink
 from findyfixy.observability.tracing import open_tracing
-from findyfixy.paths import DATA_VERSIONS, EVALS, PAGE, ROOT, WORKSPACE, DataVersion
+from findyfixy.paths import EVALS, PAGE, ROOT, WORKSPACE
 from findyfixy.retrieval.incidents import DEFAULT_PATH, Incident, load_incidents
 from findyfixy.settings import load_env, optional_models
 from findyfixy.tools.deploys import make_deploys_tool
-from findyfixy.tools.guard import TOOL_STEP, guard
-from findyfixy.tools.investigate import Investigator, agent_prompt, build_investigator
+from findyfixy.tools.investigate import Investigator, build_investigator
 from findyfixy.triage.graph import QUESTIONS, THRESHOLD, Recall, build_graph
 from findyfixy.triage.record import RECALL_K, Ask, TriageError
-from findyfixy.wiring import Agent, SharedRetrieval, build_agent, process_broker, stage_spans
+from findyfixy.wiring import SharedRetrieval, stage_spans
 from wyld3rness.trace.tracing import Tracing
 
 Mode = Literal["live", "fake"]
@@ -158,10 +157,6 @@ class RunRequest(BaseModel):
     stress: Stress = "none"
     # Live mode only. Run the tool step (look up deploys) before triage.
     use_tools: bool = False
-    # Live mode only (Day 7). Run the agent: investigate with its own tools,
-    # then decide. It replaces the tool step and recall, and asks for a
-    # `Decision`, so stress and the injected retry (built for `Triage`) are refused with it.
-    agent: bool = False
     # Live mode only. Repeat real runs until a reply fails validation, or until
     # this many runs have been made. None means a single run.
     hunt_max: int | None = Field(default=None, ge=1, le=HUNT_LIMIT)
@@ -180,16 +175,6 @@ class EvalRequest(BaseModel):
 
     mode: Mode
     cases: StrictInt = Field(ge=1)
-    # Which golden set a live run uses: v1 (frozen, the gate's set), or a hard
-    # set, scores only: v2, or v3 (v2 on a timeline, with a change log). Fake
-    # runs have their own invented set.
-    data: DataVersion = "v1"
-    # Live only (Day 7): run the agent, the system under test. False runs the
-    # earlier fixed path for comparison, scores only: the gate's baseline is the agent's.
-    # Unset means the mode's own system: the agent live, the scripted system in
-    # fake mode. So a request that leaves it out gets what the command line
-    # runs, never the fixed path with the gate silently off.
-    agent: bool | None = None
 
 
 class Busy(Exception):
@@ -221,7 +206,7 @@ class _Watch:
 def _rotate(question: str, banks: list[list[str]]) -> list[str]:
     """The questions a hunt cycles through, starting at `question`.
 
-    If `question` is in one of the banks (the fixed five, or the incident
+    If `question` is in one of the banks (the lesson five, or the incident
     bank), rotate that bank so the cycle starts there. Any other question
     (typed by the user) is the only one used.
     """
@@ -252,32 +237,22 @@ class RunHub:
         fake_delay: float = 0.6,
         clock: Callable[[], float] = time.perf_counter,
         live_eval: EvalSuite | None = None,
-        live_eval_hard: Mapping[DataVersion, EvalSuite] | None = None,
         baseline_path: Path = BASELINE_PATH,
         tracing: Tracing | None = None,
-        make_agent: Callable[[str, Recall], Agent] | None = None,
     ) -> None:
         """Hold the wiring. Nothing runs until `start` or `start_eval`.
 
         `live_eval` is the real eval run and its golden set's size (built in
         `main` when models are configured); None means live eval runs are
-        refused as not configured. `live_eval_hard` holds the same for each
-        hard set that could be read (v2, v3), over its cases and table; it
-        never applies the gate. Fake eval runs are always available and
+        refused as not configured. Fake eval runs are always available and
         need no model.
 
         `tracing`, when set, turns every run into a trace (findyfixy/observability/adapter.py).
         None leaves the run exactly as it was.
-
-        `make_agent(model, recall)` builds the agent's loop, its
-        instructions and the judge of its decision for a live agent run (findyfixy/wiring.py, `build_agent`);
-        None turns agent runs off.
         """
-        self._make_agent = make_agent
         self._tracing = tracing
         self._live_models = live_models
         self._live_eval = live_eval
-        self._live_eval_hard = dict(live_eval_hard or {})
         self._fake_eval = fake_eval(sleep, fake_delay)
         self._baseline_path = baseline_path
         self.incidents = incidents or []
@@ -311,23 +286,13 @@ class RunHub:
         return self._investigator is not None
 
     @property
-    def agent_available(self) -> bool:
-        """True when a live agent run can be built: models, recall and the agent builder."""
-        return self._live_models is not None and self._recall is not None and self._make_agent is not None
-
-    @property
     def live_available(self) -> bool:
         """True when `SMALL_MODEL` and `LARGE_MODEL` were configured."""
         return self._live_models is not None
 
     def eval_sizes(self) -> dict[str, int | None]:
         """How many cases each mode's eval set has. None for live when it is not configured."""
-        return {
-            "live": self._live_eval.size if self._live_eval else None,
-            # Every hard set has a key, None when it is off, so the page can grey it out.
-            **{f"live_{v}": s.size if (s := self._live_eval_hard.get(v)) else None for v in DATA_VERSIONS if v != "v1"},
-            "fake": self._fake_eval.size,
-        }
+        return {"live": self._live_eval.size if self._live_eval else None, "fake": self._fake_eval.size}
 
     def _begin(self, terminal: tuple[str, ...], *, stoppable: bool) -> int:
         """Claim the one run slot and reset the stream. Raises `Busy`. Returns the run id.
@@ -356,31 +321,19 @@ class RunHub:
         chosen set's size is a `ValueError` (422), checked before the slot is
         taken.
         """
-        agent = req.mode == "live" if req.agent is None else req.agent
-        if agent and req.mode != "live":
-            raise ValueError("the agent runs live only")
         if req.mode == "live":
             if self._live_eval is None:
                 raise NotConfigured("live eval needs SMALL_MODEL and LARGE_MODEL")
-            chosen = self._live_eval if req.data == "v1" else self._live_eval_hard.get(req.data)
-            if chosen is None:
-                raise NotConfigured(f"live {req.data} eval is not configured: its golden file could not be read")
-            suite = chosen
-        elif req.data != "v1":
-            raise ValueError(f"the {req.data} hard cases run live only; fake mode has its own invented set")
+            suite = self._live_eval
         else:
             suite = self._fake_eval
         if req.cases > suite.size:
             raise ValueError(f"cases must be between 1 and {suite.size} for {req.mode} mode")
         run_id = self._begin(_EVAL_TERMINAL, stoppable=True)
-        # The baseline is made on v1 with the agent, so a live fixed-path run is
-        # scores only. A fake run has its own scripted system and keeps showing
-        # the gate read-only, which is the point of the demo.
-        gated = req.data == "v1" and (req.mode == "fake" or agent)
-        threading.Thread(target=self._eval, args=(suite.run, req.cases, gated, agent), daemon=True).start()
+        threading.Thread(target=self._eval, args=(suite.run, req.cases), daemon=True).start()
         return run_id
 
-    def _eval(self, run: EvalRun, n: int, gated: bool = True, agent: bool = False) -> None:
+    def _eval(self, run: EvalRun, n: int) -> None:
         """The eval run thread. Always ends with exactly one terminal event.
 
         Two emitters feed one stream: the graph's events (app vocabulary) and
@@ -392,14 +345,7 @@ class RunHub:
         on_event = make_stamped_emit(self._publish, self._clock, HarnessEvent)
         try:
             run_and_judge(
-                run,
-                n,
-                emit=emit,
-                on_event=on_event,
-                should_stop=self._stop.is_set,
-                baseline_path=self._baseline_path,
-                gated=gated,
-                agent=agent,
+                run, n, emit=emit, on_event=on_event, should_stop=self._stop.is_set, baseline_path=self._baseline_path
             )
         finally:
             with self._cond:
@@ -412,8 +358,6 @@ class RunHub:
         Validation of the combination happens here, before the thread, so a
         bad request is a clean HTTP error and not a failed run.
         """
-        # The agent's loop, instructions and judge, on an agent run only.
-        built: Agent | None = None
         if req.mode == "live":
             if self._live_models is None:
                 raise NotConfigured("SMALL_MODEL and LARGE_MODEL are not set")
@@ -426,25 +370,15 @@ class RunHub:
             question = req.question.strip()
             forced = req.force_escalation
             investigator = None
-            if req.agent:
-                if self._make_agent is None or self._recall is None:
-                    raise NotConfigured("the agent needs the database and models configured")
-                if req.use_tools or req.stress != "none" or req.force_retry:
-                    raise ValueError(
-                        "the agent has its own tools and asks for a decision: no tool step, stress or retry"
-                    )
-                ask = ollama_decision_ask
-                built = self._make_agent(small, self._recall)
-                investigator = built.investigator
-            elif req.use_tools:
+            if req.use_tools:
                 if self._investigator is None:
                     raise NotConfigured("the tool step is not configured")
                 investigator = self._investigator
             if req.hunt_max is not None and (forced or req.force_retry):
                 raise ValueError("hunt cannot be combined with a forced fault")
         else:
-            if req.hunt_max is not None or req.force_retry or req.stress != "none" or req.agent:
-                raise ValueError("hunt, force_retry, stress and the agent need live mode")
+            if req.hunt_max is not None or req.force_retry or req.stress != "none":
+                raise ValueError("hunt, force_retry and stress need live mode")
             if req.scenario is None:
                 raise ValueError("fake mode needs a scenario")
             small, large = "small", "large"
@@ -455,7 +389,7 @@ class RunHub:
             if req.scenario in TOOL_HOURS:
                 investigator = build_investigator(
                     ScriptedToolModel(TOOL_HOURS[req.scenario]),
-                    guard(make_deploys_tool(), process_broker(), TOOL_STEP),
+                    make_deploys_tool(),
                 )
 
         run_id = self._begin(_HUNT_TERMINAL if req.hunt_max else _RUN_TERMINAL, stoppable=bool(req.hunt_max))
@@ -475,11 +409,8 @@ class RunHub:
             ),
             kwargs={
                 "investigator": investigator,
-                "built_agent": built,
                 "stress": req.stress,
-                # The agent searches through its own tool; a fixed recall step would add incidents it did not choose.
-                "recall": None if req.agent else self._recall_for(req.mode),
-                "agent": req.agent,
+                "recall": self._recall_for(req.mode),
             },
             daemon=True,
         ).start()
@@ -500,7 +431,7 @@ class RunHub:
             self._cond.notify_all()
 
     def _banks(self) -> list[list[str]]:
-        """The question banks a hunt can rotate: the fixed five, then incidents."""
+        """The question banks a hunt can rotate: the lesson five, then incidents."""
         return [QUESTIONS, [i.text for i in self.incidents]]
 
     def stop(self) -> bool:
@@ -529,10 +460,8 @@ class RunHub:
         force_retry: bool,
         *,
         investigator: Investigator | None = None,
-        built_agent: Agent | None = None,
         stress: Stress = "none",
         recall: Recall | None = None,
-        agent: bool = False,
     ) -> None:
         """The run thread. Always ends with exactly one terminal event.
 
@@ -573,8 +502,6 @@ class RunHub:
                 investigator,
                 stress,
                 recall,
-                agent,
-                built_agent,
             )
 
         try:
@@ -601,8 +528,6 @@ class RunHub:
         investigator: Investigator | None = None,
         stress: Stress = "none",
         recall: Recall | None = None,
-        agent: bool = False,
-        built_agent: Agent | None = None,
     ) -> Literal["finished", "failed", "error"]:
         """One graph run. Returns how it ended, after emitting its event.
 
@@ -623,7 +548,6 @@ class RunHub:
             tools=investigator is not None,
             stress=stress,
             recall=recall is not None,
-            agent=agent,
         )
         try:
             graph = build_graph(
@@ -635,9 +559,6 @@ class RunHub:
                 investigator=investigator,
                 investigate_model=small if investigator is not None and mode == "live" else None,
                 recall=recall,
-                agent=agent,
-                agent_instructions=built_agent.instructions if built_agent else agent_prompt,
-                judge=built_agent.new_judge() if built_agent else None,  # a fresh ledger per run
             )
             result = graph.invoke({"question": question})
             emit(
@@ -852,7 +773,6 @@ def make_handler(hub: RunHub, page: Path, dev_root: Path | None = None) -> type[
                         "incidents": [{"id": i.id, "title": i.title, "text": i.text} for i in hub.incidents],
                         "scenarios": list(SCENARIOS),
                         "tools_available": hub.tools_available,
-                        "agent_available": hub.agent_available,
                         "live_available": hub.live_available,
                         "threshold": THRESHOLD,
                         "hunt_default": HUNT_DEFAULT,
@@ -971,34 +891,6 @@ def parse_args(argv: list[str]) -> tuple[bool, int]:
     return reload, port
 
 
-def _hard_suites(retrieval: SharedRetrieval, tracing: Tracing | None) -> dict[DataVersion, EvalSuite]:
-    """The live eval over each hard set (v2, v3) whose data can be read. A warning for each that cannot.
-
-    A hard set is optional: a missing or invalid file turns off that choice
-    and nothing else, so v1 evals and triage still run. The session itself is
-    answers_hard.open_hard_session, the one place a hard session is wired; it
-    reads the cases each time it opens.
-    """
-    from findyfixy.evals.answers_hard import HARD_SETS, golden_path, load_hard, open_hard_session
-
-    suites: dict[DataVersion, EvalSuite] = {}
-    for version in HARD_SETS:
-        try:
-            size = len(load_hard(version))
-        except (OSError, ValueError) as err:
-            name = golden_path(version).name
-            print(f"{version} hard cases off: cannot read {name} ({type(err).__name__}: {err})", file=sys.stderr)
-            continue
-        suites[version] = live_eval(
-            partial(open_hard_session, version, retrieval=retrieval, tracing=tracing),
-            golden_path=golden_path(version),
-            repo_dir=ROOT,
-            progress=lambda msg: print(msg, file=sys.stderr, flush=True),
-            size=size,
-        )
-    return suites
-
-
 def main(argv: list[str] | None = None) -> None:
     """Read the environment, build the hub, serve until Ctrl-C.
 
@@ -1025,7 +917,7 @@ def main(argv: list[str] | None = None) -> None:
     if models:
         from langchain_ollama import ChatOllama
 
-        tool = guard(make_deploys_tool(), process_broker(), TOOL_STEP)
+        tool = make_deploys_tool()
         investigator = build_investigator(ChatOllama(model=models.small, **answer_options()).bind_tools([tool]), tool)
     # One database connection, embedder and reranker for the whole process:
     # triage recall and the eval session share it, so a live eval loads no copy.
@@ -1033,7 +925,7 @@ def main(argv: list[str] | None = None) -> None:
     # Closed last, which sends what is still queued.
     with open_tracing() as tracing:
         retrieval = SharedRetrieval(stage=stage_spans(tracing)) if models else None
-        live_eval_suite, hard_suites = None, {}
+        live_eval_suite = None
         if retrieval is not None:
             from findyfixy.evals.answers import open_live_session
             from findyfixy.evals.golden import DEFAULT_PATH as GOLDEN_PATH
@@ -1046,7 +938,6 @@ def main(argv: list[str] | None = None) -> None:
                 progress=lambda msg: print(msg, file=sys.stderr, flush=True),
                 size=len(load_golden(GOLDEN_PATH)),
             )
-            hard_suites = _hard_suites(retrieval, tracing)
         hub = RunHub(
             tracing=tracing,
             live_models=(models.small, models.large) if models else None,
@@ -1054,8 +945,6 @@ def main(argv: list[str] | None = None) -> None:
             investigator=investigator,
             recall=retrieval.recall(RECALL_K) if retrieval else None,
             live_eval=live_eval_suite,
-            live_eval_hard=hard_suites,
-            make_agent=build_agent if models else None,
         )
         dev = WORKSPACE if os.environ.get("FINDYFIXY_DEV") else None
         server = serve(hub, port=port, dev_root=dev)

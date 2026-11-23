@@ -266,20 +266,3 @@ def test_a_trace_link_is_followed_only_for_http_urls() -> None:
     out = subprocess.run(["node", "-e", script], capture_output=True, text=True, timeout=20, env=env)
     assert out.returncode == 0, out.stderr
     assert json.loads(out.stdout) == [cases[0], cases[1], None, None, None, None]
-
-
-@pytest.mark.skipif(shutil.which("node") is None, reason="needs Node")
-def test_a_hidden_agent_option_never_asks_for_the_agent() -> None:
-    """A hidden checkbox keeps its default tick; the request must follow what the page shows."""
-    page = PAGE.read_text()
-    func = re.search(r"function agentOn\(\) \{.*?\n\}\n", page, re.S).group(0)
-    cases = [(True, True), (True, False), (False, True), (False, False)]  # (hidden, checked)
-    script = (
-        "const els = {};\n"
-        "const $ = (id) => els[id];\n" + func + f"console.log(JSON.stringify({json.dumps(cases)}.map(([h, c]) => {{"
-        "els['agent-field'] = {hidden: h}; els['agent'] = {checked: c}; return agentOn(); })));"
-    )
-    env = {k: v for k, v in os.environ.items() if k != "NODE_OPTIONS"}
-    out = subprocess.run(["node", "-e", script], capture_output=True, text=True, timeout=20, env=env)
-    assert out.returncode == 0, out.stderr
-    assert json.loads(out.stdout) == [False, False, True, False]

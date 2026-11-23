@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
+import os
 from pathlib import Path
 import subprocess
 from typing import Any
@@ -107,6 +108,29 @@ def ollama_digest(model: str) -> str:
     except Exception:
         return "unknown"
     return "unknown"
+
+
+# Set by the gate at commit (wyld3rness/eval/staged.py) to the staged tree's
+# full object id. The run then happens in an exported copy that is not a git
+# checkout, so `git_info` could not tell what ran; the tree id can.
+STAGED_TREE_ENV = "WYLD3RNESS_STAGED_TREE"
+
+
+def source_info(repo: Path) -> tuple[str, bool | None]:
+    """What code ran: the staged tree when the gate runs at commit, else the commit (`git_info`).
+
+    A staged tree is exactly the content of the commit being made, before its
+    attestation is added, so it is clean by construction: ("tree-<12 hex>",
+    False). This is a process control, not a security control: anyone who can
+    set the variable can claim any tree, as anyone who can commit can edit
+    the attestation (see attest.py, "Trust model").
+    """
+    tree = os.environ.get(STAGED_TREE_ENV, "").strip()
+    if tree:
+        if len(tree) not in (40, 64) or any(ch not in "0123456789abcdef" for ch in tree):
+            raise ValueError(f"{STAGED_TREE_ENV} must be a full git object id, got {tree!r}")
+        return f"tree-{tree[:12]}", False
+    return git_info(repo)
 
 
 def git_info(repo: Path) -> tuple[str, bool | None]:

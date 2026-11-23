@@ -1,4 +1,4 @@
-"""Tests for "everything is observable" (Day 6): command traces, user, sessions, requests.
+"""Tests for "everything is observable" (Day 6, step 5): command traces, user, sessions, requests.
 
 What these tests cover
     `CommandTrace` is a no-op without tracing and one trace with steps inside

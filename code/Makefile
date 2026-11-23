@@ -10,13 +10,7 @@
 #      findyfixy.pth), each a single line naming its src/ folder.
 # On any finding, stop and read it. Do not upgrade or remove to make it pass.
 
-.PHONY: audit hooks scan up down setup ingest console triage test test-harness lint eval-retrieval eval eval-gate eval-baseline eval-freeze eval-compare eval-negative case golden data-v2 data-v3 attacks verify-attestation obs-secrets obs-up obs-down obs-prices
-
-# The data version `make eval` reads: v1 (frozen, the gate's set), v2 (Day 7's hard cases) or v3 (the hard cases on a timeline, with a change log).
-DATA ?= v1
-# FIXED=1 (or yes, true) makes `make eval` run the earlier fixed path instead of the agent, for
-# comparison. Scores only. Any other value runs the agent, the system under test.
-FIXED ?=
+.PHONY: audit hooks scan up down setup ingest console triage test test-harness lint eval-retrieval eval eval-gate eval-baseline eval-freeze eval-compare eval-negative case golden verify-attestation obs-secrets obs-up obs-down obs-prices
 
 # Memory for the Colima VM, in GB. 6 on most days, 8 on Langfuse days:
 #   make up COLIMA_MEMORY=8
@@ -134,8 +128,7 @@ eval-retrieval:
 # Answer-quality evaluation: findyfixy/evals/answers.py runs FindyFixy through the
 # harness in wyld3rness/eval/. Needs make up and Ollama. Each run takes many
 # minutes. Reports land in code/examples/findyfixy/reports/ (git-ignored).
-#   eval          run and print the scores, no gate. DATA=v2 or DATA=v3 runs a hard set (default v1, the frozen set).
-#                 FIXED=1 runs the earlier fixed path instead of the agent, for comparison.
+#   eval          run and print the scores, no gate
 #   eval-gate     the release gate: exit 1 if answers got worse vs examples/findyfixy/evals/baseline.json.
 #                 A pass of the full set on a clean tree also writes
 #                 examples/findyfixy/evals/attestation.json. Commit it: CI checks it. It does
@@ -143,7 +136,7 @@ eval-retrieval:
 #   eval-baseline freeze this run as the new baseline. Review the diff before committing.
 #   eval-negative the proof the gate works: run WITHOUT recall; it must fail
 eval:
-	$(RUN) $(if $(filter v2 v3,$(DATA)),findyfixy-eval-$(DATA),findyfixy-eval) $(if $(filter 1 yes true,$(FIXED)),--fixed)
+	$(RUN) findyfixy-eval
 
 eval-gate:
 	$(RUN) findyfixy-eval --gate
@@ -162,22 +155,23 @@ eval-negative:
 verify-attestation:
 	python3 -I src/wyld3rness/eval/attest.py verify --root . --attestation examples/findyfixy/evals/attestation.json
 
-# attacks: the live half of the injection suite. The real agent reads the 20 attacks in
-# data/v3/attacks.jsonl; the action ledger judges what it proposes. Needs make up,
-# Ollama and make ingest. Exit 1 if anything the attacker wanted got through.
-# The CI half (every proposer fully fooled) runs in make test.
-attacks:
-	$(RUN) findyfixy-attacks
+# gate-at-commit: the eval gate on exactly the staged tree, run by the
+# pre-commit hook when code/ is staged (wyld3rness/eval/staged.py). It runs
+# nothing when the committed attestation still covers that tree. Otherwise it
+# answers every case in an exported copy with its own environment, reuses the
+# attested run's score wherever the judge inputs are identical, judges the
+# rest, and adds the new attestation to the commit. A failed gate refuses the
+# commit. The links bring in what git ignores: the settings and the reports.
+STAGED := $(RUN) python -m wyld3rness.eval.staged
+GATED := --workspace code --attestation examples/findyfixy/evals/attestation.json
+gate-at-commit:
+	$(STAGED) commit $(GATED) --link examples/findyfixy/.env --link infra/langfuse/.env \
+	  --link examples/findyfixy/reports -- uv run --all-packages --frozen --no-sync findyfixy-eval --gate
 
-# data-v2: rebuild data/v2 (corpus, golden set, deploy log) from v1 plus the
-# hand-written additions in findyfixy/evals/golden_v2.py. A test pins the files.
-data-v2:
-	$(RUN) findyfixy-data-v2
-
-# data-v3: rebuild data/v3 (corpus, golden set, change log): v2's cases on a real
-# timeline, from findyfixy/evals/golden_v3.py. A test pins the files.
-data-v3:
-	$(RUN) findyfixy-data-v3
+# gate-at-push: the attestation of every commit being pushed, read from the
+# pre-push hook's stdin. A merge, rebase or cherry-pick skips pre-commit.
+gate-at-push:
+	$(STAGED) push $(GATED)
 
 # golden: print the 30 golden cases (alert, expected severity, reference) to read
 # and check by eye. Read-only.

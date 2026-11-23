@@ -517,6 +517,11 @@ def write_attestation(
         "report": {"name": report_file.name, "sha256": file_sha256(report_file)},
         "run": run_identity(report["provenance"]),
     }
+    reuse = report.get("reuse")
+    if isinstance(reuse, dict) and reuse.get("from"):
+        # Which cases' scores were judged in an earlier attested run (wyld3rness/eval/reuse.py).
+        # Read by people, not by `verify`, so CI's checks are unchanged.
+        payload["reuse"] = {"from": str(reuse["from"]), "reused": int(reuse["reused"]), "judged": int(reuse["judged"])}
     atomic_write_json(path, payload)
     return payload
 

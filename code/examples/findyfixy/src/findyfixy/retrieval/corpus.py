@@ -1,4 +1,4 @@
-"""Synthetic incident corpus for incident memory (Day 3 onward).
+"""Synthetic incident corpus for the memory lessons (Day 3 onward).
 
 What: builds 200 invented postmortems across 8 services and writes them as
 JSON Lines. Every row carries `synthetic: true`. Nothing here comes from a real
@@ -40,7 +40,7 @@ from pathlib import Path
 import random
 from typing import Literal, get_args
 
-from findyfixy.paths import data_dir
+from findyfixy.paths import DATA
 
 CorpusService = Literal[
     "auth",
@@ -715,12 +715,12 @@ def write_jsonl(incidents: list[Incident], path: Path) -> int:
 
 
 def main() -> None:
-    """Write `data/v1/incidents.jsonl` under the project root.
+    """Write `data/incidents.jsonl` under the project root.
 
     The path is resolved from this file, not from the current directory, so it
     works from any clone and any working directory.
     """
-    count = write_jsonl(build_corpus(), data_dir("v1") / "incidents.jsonl")
+    count = write_jsonl(build_corpus(), DATA / "incidents.jsonl")
     print(f"wrote {count} synthetic incidents")
 
 

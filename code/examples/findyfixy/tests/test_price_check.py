@@ -1,4 +1,4 @@
-"""Tests for FindyFixy's price table and its check of configured models (Day 6).
+"""Tests for FindyFixy's price table and its check of configured models (Day 6, step 7).
 
 The parser and the sync are the harness's, tested in the harness suite. Here:
 the committed table parses and prices the four pulled models, and

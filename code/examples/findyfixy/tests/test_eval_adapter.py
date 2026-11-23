@@ -35,6 +35,9 @@ from wyld3rness.testing import NOW, PROV, FakeJudge, embed
 # The record keys every FindyFixy report has carried since Day 5, plus `labels`
 # (the label names, stored explicitly since 2026-11-09).
 RECORD_KEYS = {
+    "proposed_action",
+    "judge_key",
+    "scores_from",
     "id",
     "group",
     "source_id",
@@ -42,7 +45,6 @@ RECORD_KEYS = {
     "recalled_ids",
     "twin_recalled",
     "model_used",
-    "confidence",
     "latency_s",
     "severity",
     "severity_match",
@@ -110,7 +112,7 @@ class FakeGraph:
 def graph_factory(severity: str = "sev2", fail_on: set[str] | None = None, use_recall: bool = True):
     """make_graph for tests. A graph fails when its question names an id in `fail_on`."""
 
-    def make_graph(recall: Any, at: Any) -> FakeGraph:
+    def make_graph(recall: Any) -> FakeGraph:
         """Compile a fake graph; it fails for questions that name an id in `fail_on`."""
         graph = FakeGraph(recall if use_recall else None, severity, False)
         original = graph.invoke
@@ -238,7 +240,6 @@ def test_a_findyfixy_record_has_exactly_the_keys_of_every_saved_report() -> None
     assert set(ok) == RECORD_KEYS and set(failed) == RECORD_KEYS
     assert ok["severity"] == "sev2" and ok["severity_match"] is False and ok["expected_severity"] == "sev1"
     assert ok["model_used"] == "small" and ok["twin_id"] == "T" and ok["labels"] == ["severity"]
-    assert ok["confidence"] == 0.9 and failed["confidence"] is None
     assert list(report["aggregates"]) == ["overall", "twin", "no_twin"]
     assert all(set(a) == AGGREGATE_KEYS for a in report["aggregates"].values())
     assert next(iter(report["aggregates"]["overall"]["scores"])) == "severity_match"
@@ -265,7 +266,7 @@ def test_a_graph_that_returns_no_triage_is_a_run_error() -> None:
             """A final state with no triage."""
             return {}
 
-    sut = FindyFixy(make_graph=lambda recall, at: Empty(), candidates=ranked(), small_model="s", large_model="l")
+    sut = FindyFixy(make_graph=lambda recall: Empty(), candidates=ranked(), small_model="s", large_model="l")
     assert run([golden("g1", "S")], sut=sut)["cases"][0]["run_error"] == "ValueError: graph returned no triage"
 
 
@@ -299,13 +300,7 @@ def test_twin_recall_rate_leaves_out_run_errors() -> None:
 
 def test_describe_names_the_settings_that_shape_an_answer() -> None:
     """Models, threshold and recall depth go into provenance."""
-    assert adapter().describe() == {
-        "system": "fixed",
-        "small_model": "s",
-        "large_model": "l",
-        "threshold": 0.7,
-        "recall_k": 3,
-    }
+    assert adapter().describe() == {"small_model": "s", "large_model": "l", "threshold": 0.7, "recall_k": 3}
 
 
 def test_to_case_carries_the_ids_in_meta_and_the_severity_as_a_label() -> None:
@@ -430,47 +425,6 @@ def test_an_unset_model_name_exits_2_through_the_real_live_session(tmp_path: Pat
     assert entry([], tmp_path) == 2
     assert "error: set the environment variable SMALL_MODEL" in capsys.readouterr().err
     assert not (tmp_path / "r").exists()  # no report for a run that never started
-
-
-class FakeRetrieval:
-    """The shared retrieval's two members the session touches before case 1."""
-
-    def __init__(self) -> None:
-        """A fixed ranking and the test embedder."""
-        self.candidates = ranked()
-        self.embed = embed
-
-
-def open_warmed(monkeypatch, small: str, large: str) -> tuple[list[str], list[str]]:
-    """Open the real live session offline. Returns the models warmed, and those warmed when it yielded."""
-    from findyfixy import llm, settings
-
-    for module in (eval_answers, settings):
-        monkeypatch.setattr(module, "load_env", lambda: None)  # a local .env must not change the models
-    monkeypatch.setattr(settings, "read_tracing", lambda *a: None)  # tracing off
-    monkeypatch.setenv("SMALL_MODEL", small)
-    monkeypatch.setenv("LARGE_MODEL", large)
-    warmed: list[str] = []
-    monkeypatch.setattr(llm, "warm_model", warmed.append)
-    retrieval = FakeRetrieval()
-    with eval_answers.open_live_session(False, retrieval=retrieval, goldens=[golden("g1", "S")]):
-        at_yield = list(warmed)
-    return warmed, at_yield
-
-
-def test_the_live_session_warms_each_model_before_the_first_case(monkeypatch) -> None:
-    """Both models load before the session is handed over, the small one last.
-
-    So a load never uses up case 1's deadline.
-    """
-    warmed, at_yield = open_warmed(monkeypatch, small="s", large="l")
-    assert at_yield == ["l", "s"] and warmed == at_yield
-
-
-def test_one_model_is_warmed_once(monkeypatch) -> None:
-    """With small == large, one model, one load."""
-    warmed, _ = open_warmed(monkeypatch, small="m", large="m")
-    assert warmed == ["m"]
 
 
 STALE = "the database is stale: run make ingest (3 chunk(s) to write, 0 to delete)"

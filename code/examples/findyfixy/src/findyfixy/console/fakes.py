@@ -16,20 +16,19 @@ system under test describes itself as `data: FAKE`, so the page marks every scor
 from such a run as fake.
 """
 
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Sequence
 from itertools import cycle
 import json
 from typing import Any, Literal, TypeVar
 
-from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage
+from langchain_core.messages import AIMessage, BaseMessage
 from pydantic import BaseModel
 
 from findyfixy.console.eval_run import EvalResult, EvalSuite
 from findyfixy.evals.adapter import FindyFixy, Invokable
 from findyfixy.events import Emit
-from findyfixy.tools.deploys import DEPLOYS_TOOL
 from findyfixy.triage.graph import Recall, build_graph
-from findyfixy.triage.record import AlertFacts, Ask, Prior
+from findyfixy.triage.record import Ask, Prior
 from wyld3rness.eval.case import Case
 from wyld3rness.eval.events import EvalEmit
 from wyld3rness.eval.metrics import ActionRating, Claims, Questions, Verdict
@@ -98,7 +97,7 @@ SCENARIOS: dict[str, dict[str, list[str]]] = {
         "large": ["not json", "still not json"],
     },
     # Scenarios with the tool step. The tool and the ToolNode are the real
-    # ones, reading data/v1/deploys.json. Only the tool-calling model is scripted.
+    # ones, reading data/deploys.json. Only the tool-calling model is scripted.
     "tool_lookup": {"small": [scripted_reply(0.9)], "large": []},
     "tool_wrong_window": {"small": [scripted_reply(0.9)], "large": []},
 }
@@ -125,29 +124,12 @@ class ScriptedToolModel:
             return AIMessage(content="done")
         self._asked = True
         call = {
-            "name": DEPLOYS_TOOL,
+            "name": "get_recent_deploys",
             "args": {"service": "auth", "hours": self._hours},
             "id": "fake-1",
             "type": "tool_call",
         }
         return AIMessage(content="", tool_calls=[call])
-
-    def stream(self, messages: list[BaseMessage], /) -> Iterator[AIMessageChunk]:
-        """The same reply as one chunk, for a loop with a deadline."""
-        yield as_chunk(self.invoke(messages))
-
-
-def as_chunk(reply: AIMessage) -> AIMessageChunk:
-    """A whole reply as one stream chunk, the way ChatOllama yields one. Pure.
-
-    Tool calls become tool call chunks with JSON arguments; joining the
-    chunks parses them back, so the loop sees the same calls either way.
-    """
-    calls = [
-        {"name": c["name"], "args": json.dumps(c["args"]), "id": c["id"], "index": i}
-        for i, c in enumerate(reply.tool_calls)
-    ]
-    return AIMessageChunk(content=reply.content, tool_call_chunks=calls, usage_metadata=reply.usage_metadata)  # type: ignore[arg-type]
 
 
 FAKE_QUESTION = "Fake run: replies are scripted, no model is called."
@@ -295,14 +277,12 @@ def fake_eval(sleep: Callable[[float], None], delay: float) -> EvalSuite:
     """
     cases = fake_cases()
 
-    def run(
-        n: int, *, emit: Emit, on_event: EvalEmit, should_stop: Callable[[], bool], agent: bool = False
-    ) -> EvalResult:
+    def run(n: int, *, emit: Emit, on_event: EvalEmit, should_stop: Callable[[], bool]) -> EvalResult:
         """Run the first `n` invented cases and return the report."""
         scenarios = cycle(FAKE_EVAL_SCENARIOS)
 
-        def make_graph(recall: Recall, alert: AlertFacts | None) -> Invokable:
-            """A graph for one case, playing the next scripted scenario. Invented cases have no clock."""
+        def make_graph(recall: Recall) -> Invokable:
+            """A graph for one case, playing the next scripted scenario."""
             return build_graph(
                 fake_ask(next(scenarios), sleep, delay),
                 small_model="small",
