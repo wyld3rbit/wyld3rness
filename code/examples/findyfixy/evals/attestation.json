@@ -1,5 +1,5 @@
 {
-  "created_utc": "2026-11-23T19:28:20+00:00",
+  "created_utc": "2026-11-23T20:00:25+00:00",
   "files": {
     "examples/findyfixy/data/deploys.json": "c1c9fa59e3c07706a618dc5d65a461b34a08c71b50491cfb537713e135e9b2f8",
     "examples/findyfixy/data/golden.jsonl": "2d005967149bbc1fc3e9572ba042a5edbac13e471f3b4ffc9cbbb4a7d1d22a1f",
@@ -40,7 +40,7 @@
     "src/wyld3rness/eval/cli.py": "138dabcdb1536620c4daa58ffa81638e088c2eed11191510a1fc689673f683f7",
     "src/wyld3rness/eval/events.py": "e052e8cdf7b01e2551216c6bc07d9058c157e58db67efaa7f3024cbf3ee5939c",
     "src/wyld3rness/eval/judge.py": "67c743438d18f43544d19d60598f5ddbec8f457732c47fb400214e62c8cd9702",
-    "src/wyld3rness/eval/metrics.py": "ca9eb1e930a9f3b4de1261fa8563478e706786338a273f1c0f6285439a131825",
+    "src/wyld3rness/eval/metrics.py": "2ab1b2de0396e20d85042c2734099d71fda145cba5dc88d9a6638094cb68ea9c",
     "src/wyld3rness/eval/provenance.py": "29797b4a1d190c3bb22682976b5aa55a6c6614cb26538e7d10d25b948ba9e64b",
     "src/wyld3rness/eval/report.py": "5285d7d31d18e21c0a4720f39e84ffc020405af771876afbd9be77c380fd0399",
     "src/wyld3rness/eval/reuse.py": "d88ac438464c0e1ceace188e87d05b18b5c3878891dda76f59edd6526f458892",
@@ -54,7 +54,7 @@
     "src/wyld3rness/trace/tracing.py": "b85dde2f79b487a49496eec541c996c5aeed8f43e6fd7c0a0132448e10a65a8d",
     "uv.lock": "f35d6470c079affe4a16139d0ae97d51249f97dd08397767c15570d61a43f977"
   },
-  "fingerprint": "a4d9a099995206c93a74e348d2ce6275bbd7a1e11a16addae3e7e3dcfc1775cd",
+  "fingerprint": "fe96d7c0d483af19701b2cdb79523d9a37b79c500a6194a73a5e938eeb118869",
   "inputs": {
     "entry_modules": [
       "findyfixy.evals.answers"
@@ -71,21 +71,16 @@
     ]
   },
   "report": {
-    "name": "eval-20261123T192820Z.json",
-    "sha256": "a6d76efad75f3cc24bb2f770e867907a88673ca6484706b6d8531db0c456b413"
-  },
-  "reuse": {
-    "from": "eval-20261123T192249Z.json",
-    "judged": 3,
-    "reused": 27
+    "name": "eval-20261123T200025Z.json",
+    "sha256": "5f015ec6a63ece9ed5d50bc7af54291f789043c5aa5d5d804aaa9986ad9cfc95"
   },
   "run": {
-    "git_sha": "tree-7bb104e8a195",
+    "git_sha": "tree-cee9e150f03a",
     "judge_digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
     "judge_model": "qwen2.5:7b",
     "large_model": "qwen3:4b-instruct",
     "small_model": "qwen3:4b-instruct",
-    "timestamp_utc": "2026-11-23T19:25:49+00:00"
+    "timestamp_utc": "2026-11-23T19:49:15+00:00"
   },
   "verdict": "pass",
   "version": 2
