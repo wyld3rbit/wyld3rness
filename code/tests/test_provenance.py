@@ -74,3 +74,24 @@ def test_git_info_runs_in_the_directory_it_is_given(tmp_path: Path, monkeypatch)
     monkeypatch.setattr(pv.subprocess, "run", fake_run)
     assert git_info(tmp_path) == ("abc1234", True)
     assert [cwd for _, cwd in calls] == [tmp_path, tmp_path]
+
+
+def test_the_staged_tree_stands_for_the_commit_being_made(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """At commit the gate runs outside any checkout; the tree id it was given is what ran, and it is clean."""
+    monkeypatch.setenv(pv.STAGED_TREE_ENV, "ab" * 20)
+    assert pv.source_info(tmp_path) == ("tree-" + "ab" * 6, False)
+
+
+@pytest.mark.parametrize("value", ["abc", "z" * 40, "AB" * 20])
+def test_a_malformed_staged_tree_id_is_refused(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, value: str) -> None:
+    """A value that is not a full lowercase object id is a mistake, not a tree."""
+    monkeypatch.setenv(pv.STAGED_TREE_ENV, value)
+    with pytest.raises(ValueError, match="full git object id"):
+        pv.source_info(tmp_path)
+
+
+def test_without_a_staged_tree_the_commit_is_used(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Outside the gate at commit, `source_info` is `git_info`."""
+    monkeypatch.delenv(pv.STAGED_TREE_ENV, raising=False)
+    monkeypatch.setattr(pv, "git_info", lambda repo: ("abc1234", False))
+    assert pv.source_info(tmp_path) == ("abc1234", False)

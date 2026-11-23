@@ -10,7 +10,7 @@ wyld3rness is being built as a harness and a set of agentic loops for agents tha
 
 | The question | The control | Status |
 |---|---|---|
-| May this change ship? | Eval gate, and a CI gate that refuses an unattested change | **Built** |
+| May this change ship? | Eval gate run at every commit on exactly what is staged, and a CI gate that refuses an unattested change | **Built** |
 | What happened, and what did it cost? | A trace per run, with a reference cost on each triage and eval model call | **Built** |
 | What may one incident spend? | A budget reserved before each call, through one gateway | Planned |
 | May this action run, and as whom? | Policy by kind of action, and a credential per action | Planned |
@@ -28,6 +28,10 @@ Cost per resolved incident is every attempt's cost, failed ones included, divide
 ![Target design: what a human sets before runtime, the harness, the agent's decision, the act-verify-undo loop and a simulated production. Solid is built, dashed is planned.](code/docs/target-design.svg)
 
 Details: [design and strategy](code/docs/design.md), and the decision behind it, [ADR 0008](code/docs/adr/0008-autonomous-operation-with-cost-as-an-invariant.md).
+
+## Research log
+
+Every measurement behind a decision, dated, with the protocol written before the run, the command that ran, the result with its spread, and what it cannot show: [research log](code/docs/research-log.md).
 
 ## Run it
 

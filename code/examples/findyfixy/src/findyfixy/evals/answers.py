@@ -72,7 +72,7 @@ from findyfixy.settings import MissingEnvironment, load_env, read_models
 from findyfixy.triage.graph import Recall
 from findyfixy.wiring import SharedRetrieval, stage_spans
 from wyld3rness.eval import cli
-from wyld3rness.eval.attest import Inputs
+from wyld3rness.eval.attest import Inputs, file_sha256
 from wyld3rness.eval.cli import AttestationSpec, ConfigError, Session, SessionFactory
 from wyld3rness.trace.scores import LangfuseScores
 from wyld3rness.trace.tracing import Tracing
@@ -131,6 +131,29 @@ def check_database() -> list[str]:
             return database_staleness(conn)
     except psycopg.Error as err:
         return [f"cannot check that the database is current ({type(err).__name__}): run make up, then make ingest"]
+
+
+def reuse_identity() -> dict[str, str]:
+    """What else decides a judge score here: the embedder response relevancy uses, and the locked libraries.
+
+    The embedder is the shared one (wiring.SharedRetrieval.embed), pinned by
+    name and revision in ingest.py, which also prepares and encodes the
+    texts; both files are hashed, so a change to how texts are embedded counts
+    even when the model pin does not move. The lock file pins every library
+    the judge and the embedder run on. Any of them changing makes every
+    earlier score ineligible for reuse (wyld3rness/eval/reuse.py).
+    """
+    import inspect
+
+    from findyfixy import wiring
+    from findyfixy.retrieval import ingest
+
+    return {
+        "embedder": f"{ingest.MODEL_NAME}@{ingest.MODEL_REVISION}",
+        # The loaded modules' own files, both already attested (they are on the eval path).
+        "embed_code_sha256": "".join(file_sha256(Path(inspect.getfile(m))) for m in (ingest, wiring)),
+        "lock_sha256": file_sha256(WORKSPACE / "uv.lock"),
+    }
 
 
 @contextmanager
@@ -220,6 +243,7 @@ def open_live_session(
             embed=shared.embed,
             tracing=tracing,
             scores=scores,
+            reuse_identity=reuse_identity(),
         )
     finally:
         try:

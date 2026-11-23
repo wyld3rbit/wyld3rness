@@ -59,16 +59,23 @@ Local models are priced at a committed reference price per token. It is a yardst
 No change that can alter an answer reaches main without a measured, attested run.
 
 ```
- change to an answer-affecting file
+ git commit with an answer-affecting file staged
       ▼
- eval run    the app answers the golden cases; a judge model scores each answer
+ export      exactly the staged tree, not the working copy, with its own environment
       ▼
- gate        fails on a measured regression against the frozen baseline
+ eval run    the app answers the golden cases; a judge model scores each answer whose
+             judge inputs changed, the rest keep the attested run's score
       ▼
- attestation the passing run's fingerprint of every answer-affecting file, committed
+ gate        fails on a measured regression against the frozen baseline → no commit
+      ▼
+ attestation the passing run's fingerprint of every answer-affecting file, added to the commit
+      ▼
+ push        every pushed commit's attestation is checked: merges and rebases skip pre-commit
       ▼
  CI          recomputes the fingerprint; no passing run covers the change → refused
 ```
+
+Why at commit, not at push or in CI. A check at push finds a commit that made answers worse only after more work is built on it, and a CPU-only CI runner would take hours. The gate runs before the commit exists, on what the commit will hold, so a regression is never committed. The cost is time at commit: the answer pass on every gated commit, and judging only for the cases whose answer, contexts or proposed action changed. A change to the judge, its prompts, the embedder or the lock changes every case's judge key, which forces a full run. A reused score names the run that judged it, and `--no-reuse` judges every case, which is how a phase closes. A remote judge or a GPU runner would let CI run the gate itself, and the commit hook would become advisory.
 
 ## How an app plugs in
 
@@ -113,7 +120,7 @@ A control counts as built only when a check fails if someone goes around it.
 
 | Invariant | Policy | Check that enforces it | Status |
 |---|---|---|---|
-| No change that can alter an answer ships without a passing, attested eval | 2, 3 | CI rehashes every answer-affecting file and fails a change no passing run covered | built |
+| No change that can alter an answer ships without a passing, attested eval | 2, 3 | The pre-commit hook gates the staged tree and refuses a failing commit; pre-push checks every pushed commit; CI rehashes every answer-affecting file and fails a change no passing run covered | built |
 | Every request, model call, tool call and decision is a trace, with its eval scores attached | 3, 6 | Tests read the spans a run emits; a run with the backend down keeps its speed | built |
 | The harness never imports the app | 4 | A test fails if the harness imports anything but the standard library, its declared dependencies and itself | built |
 | No incident spends past its budget | 6, 7 | A call whose worst case does not fit is refused, including when its cost is unknown | planned |
@@ -161,7 +168,7 @@ Trust in one developer stays open by design while there is one developer. It clo
 ```
 code/
 ├── src/wyld3rness/          the harness: never imports an app
-│   ├── eval/                runner, judge metrics, gate, attestation
+│   ├── eval/                runner, judge metrics, gate, attestation, gate at commit, score reuse
 │   └── trace/               events to spans, scores, cost
 ├── examples/findyfixy/      the agent under test
 │   └── src/findyfixy/
