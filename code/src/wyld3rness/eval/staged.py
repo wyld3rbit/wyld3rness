@@ -45,6 +45,10 @@ Refusals, with the reason
     - An import that resolves outside the export.
     - A gate command that exits non-zero, or exits 0 without writing an
       attestation that covers the export (for example a stale database).
+    - A branch switch, a commit made elsewhere, or a change to what is staged
+      while the gate runs: the attestation was made for the tree at the
+      start, and the commit would now be made somewhere else, from other
+      files. Found when a branch was switched during a live gate run.
     - Unstaged edits to the attestation file: the gate writes that file and
       stages it, which would discard them. A commit aborted after the hook
       (an empty message) leaves the new attestation staged; it covers the
@@ -202,6 +206,13 @@ def _uv(exported: Path, env_dir: Path, args: Sequence[str], environ: Mapping[str
     return done.stdout
 
 
+def _head(repo: Path, run: Runner) -> tuple[str, str]:
+    """(the branch HEAD names, or "HEAD" when detached; the commit, or "" before the first one)."""
+    name = run(["git", "rev-parse", "--symbolic-full-name", "HEAD"], cwd=repo, capture_output=True, text=True)
+    sha = run(["git", "rev-parse", "-q", "--verify", "HEAD"], cwd=repo, capture_output=True, text=True)
+    return name.stdout.strip(), sha.stdout.strip()
+
+
 def gate_commit(
     repo: Path,
     workspace: str,
@@ -219,6 +230,7 @@ def gate_commit(
     if _git(repo, "diff", "--name-only", "--", staged_path, run=run):
         raise Refused(f"{staged_path} has unstaged edits, which the gate would overwrite. Stage or discard them first.")
     tree = _git(repo, "write-tree", run=run)
+    head = _head(repo, run)
     source = repo / workspace
     gate_dir = source / GATE_DIR
     exported = export_tree(repo, tree, workspace, gate_dir / "tree")
@@ -250,6 +262,11 @@ def gate_commit(
     after = attestation_problems(exported, attestation)
     if after:
         raise Refused("the gate exited 0 but wrote no attestation that covers the staged tree: " + after[0])
+    if _head(repo, run) != head or _git(repo, "write-tree", run=run) != tree:
+        raise Refused(
+            "the branch, its commit or the staged files changed while the gate ran, so its attestation "
+            "is for another tree. Leave the repository alone during the gate and commit again."
+        )
     shutil.copyfile(exported / attestation, source / attestation)
     _git(repo, "add", "--", staged_path, run=run)
     say(f"gate at commit: attestation for tree {tree[:12]} added to this commit")

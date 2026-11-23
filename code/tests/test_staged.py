@@ -85,9 +85,14 @@ def repo(tmp_path: Path) -> Path:
 class FakeTools:
     """A `subprocess.run` stand-in: git for real, `uv` and the gate faked and recorded."""
 
-    def __init__(self, gate_exit: int = 0, writes: bool = True, escape: bool = False) -> None:
-        """`gate_exit`: the gate's exit code. `writes`: it writes an attestation. `escape`: a stray import."""
-        self.gate_exit, self.writes, self.escape = gate_exit, writes, escape
+    def __init__(
+        self, gate_exit: int = 0, writes: bool = True, escape: bool = False, during: Path | None = None
+    ) -> None:
+        """`gate_exit`: the gate's exit code. `writes`: it writes an attestation. `escape`: a stray import.
+
+        `during`: a repository whose branch is switched while the fake gate runs.
+        """
+        self.gate_exit, self.writes, self.escape, self.during = gate_exit, writes, escape, during
         self.calls: list[tuple[list[str], dict[str, str] | None]] = []
 
     def __call__(self, cmd: Sequence[str], **kw: Any) -> subprocess.CompletedProcess[str]:
@@ -107,6 +112,8 @@ class FakeTools:
         if cmd[0] == "fake-gate":
             if self.writes:
                 attest(cwd)
+            if self.during is not None:
+                git(self.during, "switch", "-q", "-c", "elsewhere")
             return subprocess.CompletedProcess(cmd, self.gate_exit, "", "")
         raise AssertionError(f"unexpected command {cmd}")
 
@@ -241,6 +248,15 @@ def test_unstaged_edits_to_the_attestation_are_never_overwritten(repo: Path) -> 
     with pytest.raises(Refused, match="unstaged edits"):
         commit_gate(repo, tools)
     assert tools.calls == [] and (repo / WS / ATTESTATION).read_text() == "{}\n"
+
+
+def test_a_branch_switch_during_the_gate_refuses_the_commit(repo: Path) -> None:
+    """The attestation was made for the tree at the start; the commit would land on another branch."""
+    (repo / WS / "src" / "pkg" / "core.py").write_text("X = 2\n")
+    git(repo, "add", "-A")
+    with pytest.raises(Refused, match="changed while the gate ran"):
+        commit_gate(repo, FakeTools(during=repo))
+    assert f"{WS}/{ATTESTATION}" not in staged_names(repo)
 
 
 def test_ignored_inputs_reach_the_gate(repo: Path) -> None:
