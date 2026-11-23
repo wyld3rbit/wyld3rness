@@ -55,3 +55,27 @@ The three that differed were g17, g26 and g28, the same three for answer and act
 The bar: each run behaves as predicted. A run that does not is reported as a miss, with its output.
 
 **Ran.** Not yet.
+
+---
+
+## 003. The gate at commit (results of 002)
+
+**Question.** As entry 002.
+
+**Ran.** Four real commits through the pre-commit hook on 2026-11-23, `qwen3:4b-instruct` answering, `qwen2.5:7b` judging, one worker. Reports are in the reports folder on the machine that ran them, named in each commit's attestation.
+
+| Run | Commit | Change | Gate | Scores reused | Judged | Wall time | Prediction met |
+|---|---|---|---|---|---|---|---|
+| A | `1107cb8` | The gate at commit itself | pass | 0 (the attested report had no judge keys) | 30 | 667 s (87 s answering, 580 s judging) | yes |
+| B | `d364a60` | Comment-only edits to six attested files | pass | 27 | 3 | 150 s (87 s answering, 63 s judging) | yes (at least 24) |
+| C | none | Answer prompt told to always say sev4 and "investigate" | fail: severity match 0.00 and action quality 0.00 against floors 0.72 and 0.87; faithfulness 0.04; commit refused, nothing staged | 0 | 30 | 448 s | yes |
+| D | `c4992d7` | A comment in the judge's code | pass | 0 of 27 eligible: every judge key changed | 30 | 669 s (88 s answering, 581 s judging) | yes |
+
+Two observations the protocol did not ask for:
+
+- **Answers repeated exactly.** Runs A, B and D gave the same answer, contexts and proposed action for all 30 cases, including after the model server was restarted between B and D. Entry 001 saw 27 of 30 in an exploratory pair of passes.
+- **The judge repeated itself exactly.** On identical inputs, run D's judge reproduced all 120 of run A's metric scores. The three cases B judged were not changed answers: the judge fails response relevancy on them in every run (it writes four questions where the metric asks for three), and a failed metric is never reused.
+
+**Deviations.** Run D was first started and then stopped after about two minutes, before any case was answered, because the checkout was switched to another branch while the hook ran; the commit would have landed on that branch with an attestation for a different tree. The hook now refuses a commit when the branch, its commit or the staged files change during the gate (`599ede8`). Run D was then repeated from the start.
+
+**Meaning.** A commit that leaves the answers unchanged costs about 2.5 minutes of gate time instead of about 11, and a commit that makes the answers worse cannot be made. A change to the judge forces a full run without any special case. What this cannot show: other models, parallel workers, how often answers differ over weeks of model-server use, or a machine other than this one. Every gate run records its reuse counts in its attestation, so the rate keeps being measured.

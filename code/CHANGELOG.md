@@ -42,6 +42,7 @@ Notable changes to wyld3rness and its example app. The format follows [Keep a Ch
 - With one model configured, an answer that stays invalid after its retry leaves no record, and the console and `make triage` fail on it.
 - The shared database connection is never replaced, so a database restart fails the rest of a run.
 - The judge can reject a claim its own context supports (ADR 0008), so a faithfulness score alone does not show a wrong answer.
+- On some golden cases the judge writes four questions where response relevancy asks for three, on every run, so that metric fails there (research log, entry 003).
 - The direct and MCP tool runs record tokens without a model name, so Langfuse puts no cost on those calls.
 - Nothing enforces a cost limit. Cost is computed after the fact, on the trace.
 
