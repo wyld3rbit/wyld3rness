@@ -56,9 +56,13 @@ def test_a_frozen_record_is_never_drawn_from_the_page() -> None:
 
 
 def test_every_record_maps_to_a_known_phase() -> None:
-    """Each ADR picture shows a phase that exists, and the newest ADR shows the latest phase."""
+    """Each ADR picture shows a phase that exists, and the newest ADR shows the latest closed phase."""
     assert set(snap.RECORDS.values()) <= set(snap.PHASES)
-    assert snap.RECORDS[max(snap.RECORDS)] == max(snap.PHASES)
+    latest = max(snap.PHASES)
+    if snap.OPEN_PHASE is not None:
+        assert snap.OPEN_PHASE == latest, "only the latest phase can be open"
+        latest -= 1
+    assert snap.RECORDS[max(snap.RECORDS)] == latest
 
 
 def test_phase_five_draws_both_lanes_and_the_loop_between_them() -> None:

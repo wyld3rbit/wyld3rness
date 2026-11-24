@@ -1,0 +1,88 @@
+# simprod: a small simulated production. Start with `make sim-up` from code/.
+#
+#   host 127.0.0.1:8100 ─► edge ─┬─ prod network (internal: no route out) ─┬─ gateway ─► ledger
+#                                │                                          │     └────► notifications
+#                                └─ outside network (publishes the port)    └─ loadgen (profile "load")
+#
+# Network. `prod` is internal: its containers cannot reach the internet, and
+# Docker will not publish a port from them. Only `edge` joins both networks, and
+# it forwards an allow-list (src/simprod/edge.py). The fault controls listen on
+# port 9000 of each service, which nothing publishes and the edge never forwards.
+#
+# Hardening, the same for every service: read-only root filesystem, no Linux
+# capabilities, no privilege escalation, a non-root user (Dockerfile), and an init
+# process as PID 1 that reaps orphans (research log, entry 004).
+#
+# Restart policy. `unless-stopped` restarts a service whatever its exit code,
+# which is how the restart action works: the service exits itself, Docker starts
+# it fresh. `make down` stops everything for good.
+
+name: simprod
+
+x-service: &service
+  build: .
+  image: simprod:local
+  init: true
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  restart: unless-stopped
+  networks: [prod]
+  healthcheck:
+    test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2)"]
+    interval: 5s
+    timeout: 3s
+    retries: 10
+
+services:
+  ledger:
+    <<: *service
+    command: ["python", "-m", "simprod.ledger"]
+    environment:
+      # Capacity per shard = LEDGER_WORKERS / LEDGER_SERVICE_MS. The load test sets
+      # these per phase; the defaults are the operating point chosen from it.
+      LEDGER_SHARDS: ${LEDGER_SHARDS:-4}
+      LEDGER_WORKERS: ${LEDGER_WORKERS:-1}
+      LEDGER_SERVICE_MS: ${LEDGER_SERVICE_MS:-20}
+      LEDGER_QUEUE_LIMIT: ${LEDGER_QUEUE_LIMIT:-100}
+
+  notifications:
+    <<: *service
+    command: ["python", "-m", "simprod.notifications"]
+    environment:
+      NOTIFY_SERVICE_MS: ${NOTIFY_SERVICE_MS:-5}
+
+  gateway:
+    <<: *service
+    command: ["python", "-m", "simprod.gateway"]
+    environment:
+      GATEWAY_TIMEOUT_MS: ${GATEWAY_TIMEOUT_MS:-500}
+      GATEWAY_RETRIES: ${GATEWAY_RETRIES:-3}
+    depends_on:
+      ledger: {condition: service_healthy}
+      notifications: {condition: service_healthy}
+
+  edge:
+    <<: *service
+    command: ["python", "-m", "simprod.edge"]
+    networks: [prod, outside]
+    ports:
+      - "127.0.0.1:8100:8000"
+    depends_on:
+      gateway: {condition: service_healthy}
+
+  # Customers. Not started by `up`: the load test runs it once per phase with
+  # `docker compose run --rm loadgen python -m simprod.loadgen --rate R --seconds S`.
+  loadgen:
+    <<: *service
+    profiles: [load]
+    restart: "no"
+    healthcheck: {disable: true}
+    command: ["python", "-m", "simprod.loadgen", "--help"]
+    depends_on:
+      gateway: {condition: service_healthy}
+
+networks:
+  prod:
+    internal: true
+  outside: {}

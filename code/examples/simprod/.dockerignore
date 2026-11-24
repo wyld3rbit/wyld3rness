@@ -1,0 +1,8 @@
+# Only src/simprod enters the image. Without this, caches written by local test
+# runs and saved results would change the build context, and so the image ID,
+# with no change to the code.
+**/__pycache__
+**/*.pyc
+results/
+tests/
+.pytest_cache/

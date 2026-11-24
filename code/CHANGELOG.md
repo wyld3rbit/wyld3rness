@@ -25,9 +25,14 @@ Notable changes to wyld3rness and its example app. The format follows [Keep a Ch
 - **Console.** A local page that runs a triage or an eval and shows each step on the live architecture diagram.
 - **Nothing that kills an unattended run.** With one model configured, an answer still invalid after its retry is a typed `TriageError`, recorded by the eval, the console and `make triage`, which goes on to the next question. A query that loses its database connection reconnects with backoff for up to 60 s and retries, and logs both events. The database container runs an init process as PID 1, so an orphaned health check can no longer make Postgres restart itself. (research log, entry 004)
 
+### Simulated production: simprod
+
+- **Three services under real load, open to inspection.** A gateway writes each payment to a 4-shard ledger with fixed capacity per shard, with retries that fire at once as shipped, then notifies; an open-loop generator sends Poisson arrivals and counts latency from the scheduled time. Every service serves health, Prometheus-text metrics, an OpenAPI spec and JSON logs; the service that executes an action logs it with its actor. The services sit on a Docker network with no route out; an edge proxy publishes an allow-list on 127.0.0.1:8100 and never forwards the fault controls. Three typed actions: retry backoff with jitter and a retry budget, a per-key rate cap, each with an undo, and a restart with none. Standard library only, read-only and unprivileged containers. `make sim-up`, `make load-test`, inspection guide in `code/examples/simprod/README.md`. (research log, entry 006)
+
 ### Tooling and security
 
 - Locked dependencies with a 7-day release cooldown, `make audit` for known vulnerabilities and unexpected startup hooks, and container images pinned by digest and scanned with Grype before first use.
+- simprod's base image, `python:3.13.18-slim-trixie` pinned by digest, scanned with Grype v0.120.1: no Critical, 84 High, of which 5 had a Debian fix (CVE-2026-85091 in zlib1g, CVE-2026-19499 and CVE-2026-5435 in libc6 and libc-bin). The image installs those fixes at pinned versions, whose changelogs are dated 2026-10-10 and 2026-11-01; the built image scans with 0 fixable High. The other 79 High matches (25 bugs: 8 in OpenSSL not yet fixed, 17 Debian will not fix) sit in code the services do not run: no TLS, no mount tools, no Perl.
 - A privacy scanner in the pre-commit and pre-push hooks blocks personal data and secrets in files and commit metadata.
 - Ruff and mypy in the hooks and in CI. CI runs with a read-only token and no secrets, with actions pinned by commit.
 - `make check` covers documentation drift, the repository tools' tests and the privacy scan.

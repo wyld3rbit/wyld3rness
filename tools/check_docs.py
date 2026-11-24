@@ -32,6 +32,7 @@ DOCS = (
     "code/examples/findyfixy/tests/README.md",
     "code/examples/findyfixy/data/README.md",
     "code/examples/findyfixy/evals/README.md",
+    "code/examples/simprod/README.md",
     "code/docs/README.md",
     "code/docs/adr/README.md",
 )
@@ -39,7 +40,7 @@ DOCS = (
 # Paths a doc may name that are absent from a fresh clone on purpose: secrets
 # the user creates, and generated output that is git-ignored.
 ALLOWED_MISSING = ("code/examples/findyfixy/.env", "code/infra/langfuse/.env", "code/.venv", ".audit-req.txt", "reports/",
-                   "code/examples/findyfixy/reports/", "internal/", "CLAUDE.md")
+                   "code/examples/findyfixy/reports/", "results/", "code/examples/simprod/results/", "internal/", "CLAUDE.md")
 
 # Targets the docs name before they exist, on purpose. Remove an entry when the
 # target is built; the check then covers it like any other.
@@ -52,8 +53,10 @@ _FILE_SUFFIXES = (
     ".md", ".py", ".js", ".css", ".txt", ".json", ".jsonl", ".html", ".toml", ".lock", ".yml", ".yaml", ".sh",
 )
 # Placeholders and things that are not repository paths: templates (dNN.md,
-# dayN.md), slash commands (/code-review), URLs, and a bare suffix (.md).
-_PLACEHOLDER = re.compile(r"[<>*$~{}=]|^https?:|^\.\.|^/|NN|dayN")
+# dayN.md), slash commands (/code-review), URLs, a host:port address
+# (127.0.0.1:8100/x), a quoted shell fragment ('Content-Type: application/json'),
+# and a bare suffix (.md).
+_PLACEHOLDER = re.compile(r"[<>*$~{}=]|^https?:|://|['\"]|^\d+\.\d+\.\d+\.\d+:|^\.\.|^/|NN|dayN")
 _COUNT = re.compile(r"\b\d{2,}\s+(?:tests|passed)\b")
 
 
