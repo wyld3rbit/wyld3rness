@@ -133,3 +133,30 @@ The bar: all three soaks pass. Expected from the exploratory runs below: every r
 **Limits.** One VM on one machine, with Langfuse idle rather than ingesting traces. Sleep-based service times stand in for database work, so ledger CPU is not representative of a real database. The ramp's 60 s phases show sustained throughput, not behaviour over hours.
 
 **Ran.** Not yet.
+
+---
+
+## 007. Does the simulated production fit in the container VM, and at what rate does it run? (results of 006)
+
+**Ran.** On 2026-11-24 from 02:08 to 02:32 UTC, `make load-test` at commit `07574fc` (the code of `83a4d1f`; the image's files were checked equal to that commit's before the run), with Langfuse, Postgres and Adminer running. Results file SHA-256 `f91681778a33c042…`.
+
+| Phase | Rate/s | Requests | Failed | Late sends | p50 ms | p99 ms | VM CPU mean (max) | VM memory available, lowest | Bar |
+|---|---|---|---|---|---|---|---|---|---|
+| Ramp | 25 | 1,476 | 0 | 0 | 8.7 | 89.5 | 21.6% (33.7%) | 2,573 MiB | pass |
+| Ramp | 50 | 2,998 | 0 | 0 | 8.9 | 90.4 | 21.8% (37.9%) | 2,533 MiB | pass |
+| Ramp | 100 | 5,981 | 0 | 0 | 8.5 | 89.8 | 26.4% (42.3%) | 2,537 MiB | pass |
+| Ramp | 200 | 12,071 | 0 | 0 | 7.7 | 88.4 | 27.1% (40.7%) | 2,587 MiB | pass |
+| Ramp | 400 | 23,815 | 0 | 0 | 7.7 | 55.1 | 37.5% (59.7%) | 2,545 MiB | pass |
+| Ramp | 800 | 48,298 | 0 | 0 | 7.4 | 49.7 | 44.3% (55.2%) | 2,542 MiB | pass |
+| Ramp | 1600 | 95,689 | 12,604 (11,081 timeouts, 1,523 connection errors) | 745 | 10.0 | 546.2 | 81.6% (89.8%) | 2,199 MiB | fail: failures, p99, CPU |
+| Soak 1 | 200 | 59,587 | 0 | 0 | 19.1 | 57.8 | 29.6% (45.6%) | 2,430 MiB | pass |
+| Soak 2 | 200 | 59,933 | 0 | 0 | 19.6 | 58.4 | 30.8% (49.2%) | 2,392 MiB | pass |
+| Soak 3 | 200 | 59,719 | 0 | 0 | 19.4 | 57.5 | 31.2% (46.1%) | 2,412 MiB | pass |
+
+C = 800/s, measured, not a lower bound: 1600/s failed. R = 200/s, since 4 × 200 = 800 ≤ C. All three soaks pass, so the bar is met. No phase lost a VM sample (27 to 28 per ramp phase, 144 per soak). The 200/s prediction of the exploratory runs held, and the expectation in 006 (every rate to at least 400 passes) was exceeded: 800 passed.
+
+**What saturated.** Per-container CPU from `docker stats` (100% is one core): at 800/s the gateway used 29%, the generator 14%, notifications 13%, the ledger 12%; at 1600/s the gateway used 81%, the generator 23%. A Python process runs one thread at a time, so one process tops out near one core: the knee is the gateway's, not the generator's (745 late sends, 0.8%, stayed under the 1% bar). The VM itself idles at about 21% with Langfuse and Postgres up, the floor under every phase.
+
+**Deviations.** None from the protocol. `make load-test` reinstalled the simprod package in the worktree's environment first (uv's editable install of a changed member); the image, which serves the requests, was unchanged.
+
+**Meaning.** Storms run at 200 customer requests a second, the ledger at one slot per shard holding each write 10 ms (capacity 400/s, half busy), and a storm that quadruples the gateway's load to the ledger still sits at the rate the VM served without a failure. A retry storm's numbers will therefore measure the storm, not the VM. Customer minutes in step 6 convert at 12,000 requests a minute. Unexplained and left so: below 400/s p99 is about 90 ms, above it about 50 ms; one guess is CPU frequency scaling at low load, not tested. What this cannot show: behaviour while Langfuse ingests traces (it was idle), a gateway with more than one process, or anything over hours.
