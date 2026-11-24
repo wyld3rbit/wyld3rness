@@ -111,3 +111,25 @@ The bar: both behave as predicted. The 2026-11-21 loss is the reference, with th
 **Deviations.** The first attempt at the step 1 commit, before E and F, stopped because the container VM had shut down: its host agent received a termination signal at 12:16:36, from a cause not found. With no database, the gate failed within seconds, as the fail-fast rule in 004's change intends, and the commit was refused. It was repeated once the VM was back.
 
 **Meaning.** A database restart now costs the case in flight a few seconds instead of costing the rest of the run, and the restarts seen on 2026-11-21 lose their trigger. What this cannot show: a restart longer than the 60 s deadline (the case in flight fails and the next one tries again, by design, and is covered by tests with fakes only), a network path that drops silently (keepalives, also tested only with fakes), or behaviour under memory pressure, where the 2026-11-21 restarts began.
+
+---
+
+## 006. Does the simulated production fit in the container VM, and at what rate does it run? (protocol)
+
+**Question.** Steps 2 to 6 run a small production (gateway, ledger, notifications, behind an allow-list proxy, code in `code/examples/simprod/`) under synthetic load, in the same container VM as Langfuse and Postgres: 2 CPUs and 5.77 GiB, of which about 2.7 GiB was available before it started. If the services under load leave no room, a storm's numbers would measure the VM, not the system, so this is checked before anything is built on them. The test also fixes the load rate R that every storm runs at, which sets the ledger's capacity and converts failed requests into customer minutes in step 6.
+
+**Protocol.** `make load-test` at commit `83a4d1f` (`simprod/loadtest.py`, whose constants are these numbers), with Langfuse and Postgres running. Customers are an open-loop generator: Poisson arrivals at the rate, each request sent at its time whether or not earlier ones answered, latency counted from the scheduled time, customer timeout 3 s. VM CPU and memory are read from `/proc/stat` and `/proc/meminfo` inside a container, which show the whole VM; the generator's own CPU counts, as it will in the storms.
+
+| Part | What runs | Bar for each phase |
+|---|---|---|
+| Ramp | 25, 50, 100, 200, 400, 800, 1600 requests/s, 60 s each, ledger capacity far above the load (64 slots of 1 ms per shard), stopping at the first rate that fails | 0 failed requests, p99 ≤ 250 ms (half the gateway's 500 ms timeout), VM CPU mean ≤ 80%, late sends (more than 100 ms behind schedule) ≤ 1% |
+| Rate | C = the highest ramp rate passing before the first failure (a lower bound if all pass). R = the highest ramp rate with 4 × R ≤ C: a retry storm sends each request up to 4 times, and must still fit in what the VM can serve | No R: stop and resize the VM before building on it |
+| Soak | 3 runs of 300 s at R (seeds 1 to 3), the ledger as it will run in storms: 1 slot per shard, each write held 2000 / R ms, so capacity is 2 × R and the shards are half busy | The ramp's bar with VM CPU mean ≤ 60%, and VM memory available ≥ 1024 MiB at its lowest |
+
+The bar: all three soaks pass. Expected from the exploratory runs below: every ramp rate up to at least 400 passes, so R is 100 or more.
+
+**Exploratory runs before this entry** (2026-11-23, evidence kept, no bar): 10 s at 50/s, 499 of 499 ok, p99 133 ms, ledger at its default 20 ms per write. 15 s each at 200/s and 400/s with the ledger unconstrained: all 3,020 and 6,031 ok, p99 48 and 88 ms, VM CPU over each run 28% and 33%. They changed the design in three ways before this entry: the ramp gained 1600/s because 400/s left most of the CPU idle; the generator's thread pool is sized from the rate (rate × 3 s × 1.5, since a storm keeps up to rate × 3 s requests waiting), because the fixed 256 threads would have sent late during a storm and quietly lowered the load on the system it measures; and late sends became part of the bar.
+
+**Limits.** One VM on one machine, with Langfuse idle rather than ingesting traces. Sleep-based service times stand in for database work, so ledger CPU is not representative of a real database. The ramp's 60 s phases show sustained throughput, not behaviour over hours.
+
+**Ran.** Not yet.
