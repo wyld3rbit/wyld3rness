@@ -27,6 +27,14 @@ x-service: &service
   cap_drop: [ALL]
   security_opt: ["no-new-privileges:true"]
   restart: unless-stopped
+  # Open files (sockets included). The container default is 1,024. Each gateway
+  # thread holds up to three sockets (its customer, the ledger, notifications),
+  # so a burst after a 2 s stall of the customers took it past 1,024: every new
+  # ledger connection then failed at once, and the gateway never recovered
+  # (research log, entry 009). Production services raise this limit as a matter
+  # of course.
+  ulimits:
+    nofile: {soft: 65536, hard: 65536}
   networks: [prod]
   healthcheck:
     test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2)"]
