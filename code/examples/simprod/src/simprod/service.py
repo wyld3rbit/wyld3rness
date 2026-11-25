@@ -94,12 +94,21 @@ def _escape(value: str) -> str:
     return value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
 
 
+def _value(value: float) -> str:
+    """A sample value, exact: a counter past 1e6 must not print as 1.00001e+06,
+    or a scraper's per-second deltas round to 10 and then to 100."""
+    v = float(value)
+    if math.isinf(v):
+        return "+Inf" if v > 0 else "-Inf"
+    return str(int(v)) if v.is_integer() else repr(v)
+
+
 def _fmt(name: str, labels: Labels, value: float) -> str:
     """One sample line in the Prometheus text format."""
     if labels:
         inner = ",".join(f'{k}="{_escape(v)}"' for k, v in labels)
-        return f"{name}{{{inner}}} {value:g}"
-    return f"{name} {value:g}"
+        return f"{name}{{{inner}}} {_value(value)}"
+    return f"{name} {_value(value)}"
 
 
 @dataclass
@@ -481,3 +490,11 @@ def env_addr(name: str, default: str) -> tuple[str, int]:
 def env_float(name: str, default: float) -> float:
     """A number from the environment."""
     return float(os.environ.get(name, default))
+
+
+def env_flag(name: str, default: bool = False) -> bool:
+    """A switch from the environment: "1" or "0", anything else refused at start, not guessed."""
+    value = os.environ.get(name, "1" if default else "0")
+    if value not in ("0", "1"):
+        raise ValueError(f"{name} must be 0 or 1, not {value!r}")
+    return value == "1"

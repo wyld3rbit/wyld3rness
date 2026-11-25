@@ -10,7 +10,7 @@
 #      findyfixy.pth and simprod.pth), each a single line naming its src/ folder.
 # On any finding, stop and read it. Do not upgrade or remove to make it pass.
 
-.PHONY: audit hooks scan up down sim-up load-test setup ingest console triage test test-harness lint eval-retrieval eval eval-gate eval-baseline eval-freeze eval-compare eval-negative case golden verify-attestation obs-secrets obs-up obs-down obs-prices
+.PHONY: audit hooks scan up down sim-up load-test controls-pilot controls setup ingest console triage test test-harness lint eval-retrieval eval eval-gate eval-baseline eval-freeze eval-compare eval-negative case golden verify-attestation obs-secrets obs-up obs-down obs-prices
 
 # Memory for the Colima VM, in GB. 6 on most days, 8 on Langfuse days:
 #   make up COLIMA_MEMORY=8
@@ -41,7 +41,7 @@ up:
 # The compose step runs only while the VM is up. If it fails then, the make
 # stops there, so a half-stopped system is never reported as clean.
 down:
-	@if colima status >/dev/null 2>&1; then docker compose -f $(SIM_COMPOSE) --profile load down && docker compose -f $(APP_COMPOSE) down; fi
+	@if colima status >/dev/null 2>&1; then docker compose -f $(SIM_COMPOSE) --profile load --profile storm --profile chaos down && docker compose -f $(APP_COMPOSE) down; fi
 	colima stop
 	@if colima status >/dev/null 2>&1; then echo "FAILED: Colima is still running"; exit 1; fi
 	@echo "Colima is stopped."
@@ -58,6 +58,16 @@ sim-up:
 # writes examples/simprod/results/loadtest-<UTC>.json.
 load-test:
 	$(RUN) simprod-loadtest
+
+# controls-pilot / controls: research log entry 008. The pilot (about 45 minutes)
+# measures recovery times and sets WAIT and HOLD; the controls (about 2 hours) run
+# 21 storms x 3 arms (nobody, scripted fix, wrong fix undone) against their bars.
+# Need `make up` and `make sim-up`. Results in examples/simprod/results/.
+controls-pilot:
+	$(RUN) simprod-controls pilot
+
+controls:
+	$(RUN) simprod-controls run
 
 audit:
 	uv export --frozen --all-packages --format requirements-txt --no-emit-workspace -o .audit-req.txt > /dev/null

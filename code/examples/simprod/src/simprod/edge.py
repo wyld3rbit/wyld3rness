@@ -1,6 +1,7 @@
 """The edge: the only door from the host into the simulated production.
 
     host 127.0.0.1:8100 ──► edge ──► GET  /<service>/healthz | /metrics | /openapi.json
+                                     GET  /customers/healthz | /metrics | /openapi.json
                                      POST /gateway/pay
                                      POST /gateway/actions/backoff | /gateway/actions/rate-cap
                                      POST /<service>/actions/restart
@@ -37,6 +38,9 @@ from simprod.service import (
 
 NAME = "edge"
 SERVICES = ("gateway", "ledger", "notifications")
+# Read-only: what customers saw, the signal synthetic monitoring gives an operator.
+# Its fault port (the runaway client) is sealed like the ledger's.
+CUSTOMERS = "customers"
 FORWARD_TIMEOUT_S = 10.0
 # Only these request headers pass through: the body's type and who is acting.
 FORWARDED_HEADERS = ("Content-Type", "X-Actor")
@@ -57,6 +61,10 @@ ALLOW: tuple[Allowed, ...] = (
         Allowed("GET", s, p, f"{s}: {what}")
         for s in SERVICES
         for p, what in (("/healthz", "liveness"), ("/metrics", "Prometheus metrics"), ("/openapi.json", "OpenAPI spec"))
+    ),
+    *(
+        Allowed("GET", CUSTOMERS, p, f"customers: {what}")
+        for p, what in (("/healthz", "liveness"), ("/metrics", "what customers saw"), ("/openapi.json", "OpenAPI spec"))
     ),
     Allowed("POST", "gateway", "/pay", "gateway: take one payment"),
     Allowed("POST", "gateway", "/actions/backoff", "gateway: turn retry backoff on or off"),
@@ -136,7 +144,7 @@ def build(edge: Edge, public_url: str = "http://127.0.0.1:8100") -> Service:
 def main() -> None:
     """Container entry point."""
     port = int(env_float("UPSTREAM_PORT", 8000))
-    edge = Edge({s: Upstream(s, port) for s in SERVICES}, Metrics())
+    edge = Edge({s: Upstream(s, port) for s in (*SERVICES, CUSTOMERS)}, Metrics())
     log(NAME, "allow_list", entries=[f"{a.method} /{a.service}{a.path}" for a in ALLOW])
     run((build(edge), 8000))
 

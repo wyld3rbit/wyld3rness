@@ -127,3 +127,29 @@ def test_booleans_infinity_and_odd_keys_are_refused() -> None:
     assert gw.set_rate_cap(Request({"key": 'a"b', "rps": 1}, {})).status == 400
     assert gw.pay(Request({"key": "k", "amount_cents": True}, {})).status == 400
     assert fake.calls == 0
+
+
+def test_top_keys_show_the_noisy_tenant_and_forget_old_traffic() -> None:
+    now = [100.0]
+    gw, _, _ = gateway([], now=lambda: now[0])
+    for _ in range(50):
+        pay(gw, "acct-noisy")
+    for i in range(10):
+        pay(gw, f"acct-{i:04d}")
+    assert gw.top.top() == []  # the second in progress is not counted yet
+    now[0] = 101.0
+    top = gw.top.top()
+    assert top[0] == ("acct-noisy", 5.0)  # 50 requests over a 10 s window
+    assert 'gateway_top_keys_rps{key="acct-noisy"} 5' in gw.metrics.render()
+    now[0] = 111.0
+    assert gw.top.top() == []  # the window moved past them
+
+
+def test_a_capped_key_still_shows_in_top_keys() -> None:
+    now = [0.0]
+    gw, _, _ = gateway([], now=lambda: now[0])
+    gw.set_rate_cap(Request({"key": "acct-hot", "rps": 1}, {}))
+    for _ in range(20):
+        pay(gw, "acct-hot")
+    now[0] = 1.0
+    assert gw.top.top()[0][0] == "acct-hot"

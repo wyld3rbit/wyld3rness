@@ -8,7 +8,8 @@
                    ▼
                  200 {id, shard, attempts} | 503 shed | 504 timed out
 
-As shipped, retries fire at once: the misconfiguration behind the retry storm.
+As shipped (GATEWAY_BACKOFF=0), retries fire at once: the misconfiguration
+behind the retry storm.
 A slow ledger makes a write time out, the gateway sends it again at once, and
 each customer request becomes up to 1 + RETRIES ledger writes exactly when the
 ledger has the least room. The ledger also finishes every abandoned write
@@ -30,6 +31,7 @@ per key: requests over it get 429 at once and never reach the ledger.
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 import random
@@ -49,6 +51,7 @@ from simprod.service import (
     Upstream,
     count,
     env_addr,
+    env_flag,
     env_float,
     is_key,
     log,
@@ -63,6 +66,47 @@ BACKOFF_CAP_S = 1.0
 BUDGET_RATIO = 0.1  # retries earned per request
 BUDGET_MAX = 10.0  # retries that can be saved up for a burst
 NOTIFY_TIMEOUT_S = 0.5
+TOP_WINDOW_S = 10  # the top-keys gauge covers the last this many seconds
+TOP_N = 5
+
+
+class TopKeys:
+    """Requests per key over the last TOP_WINDOW_S whole seconds, in one-second buckets. Thread-safe.
+
+    The second in progress is left out, since it is still filling and would read
+    low. For the first TOP_WINDOW_S seconds after a restart it also reads low.
+
+    The signal an operator uses to find a noisy tenant: without it, the right key
+    to cap in a hot shard could only be guessed. Memory grows with the distinct
+    keys seen in the window: bounded here, where customers use KEYS keys and the
+    runaway one, but a client sending a fresh key on every request would grow it
+    with traffic, and each scrape sums it under the lock `pay` takes. A
+    production gateway keeps a fixed-size summary instead (a count-min sketch or
+    space-saving counters); simprod does not need one at its rates.
+    """
+
+    def __init__(self, clock: Callable[[], float], window_s: int = TOP_WINDOW_S) -> None:
+        self.clock, self.window_s = clock, window_s
+        self.buckets: dict[int, Counter[str]] = {}
+        self.lock = threading.Lock()
+
+    def record(self, key: str) -> None:
+        """Count one request for `key` in the current second."""
+        now = int(self.clock())
+        with self.lock:
+            self.buckets.setdefault(now, Counter())[key] += 1
+            for old in [s for s in self.buckets if s < now - self.window_s]:
+                del self.buckets[old]
+
+    def top(self, n: int = TOP_N) -> list[tuple[str, float]]:
+        """The `n` busiest keys and their requests a second over the window."""
+        now = int(self.clock())
+        total: Counter[str] = Counter()
+        with self.lock:
+            for second, counts in self.buckets.items():
+                if now - self.window_s <= second < now:  # whole seconds only: the current one is still filling
+                    total.update(counts)
+        return [(k, round(c / self.window_s, 2)) for k, c in total.most_common(n)]
 
 
 class TokenBucket:
@@ -137,6 +181,7 @@ class Gateway:
         self.rng = rng or random.Random()
         self.budget = RetryBudget()
         self.caps: dict[str, TokenBucket] = {}
+        self.top = TopKeys(clock)
         self.lock = threading.Lock()
         metrics.counter("gateway_payments_total", "Customer payments, by outcome (ok, throttled, shed, timeout, bad)")
         metrics.counter("gateway_ledger_attempts_total", "Ledger writes tried, by outcome (ok, shed, timeout, error)")
@@ -146,6 +191,9 @@ class Gateway:
         metrics.histogram("gateway_payment_ms", "Time to answer a payment, by outcome")
         metrics.gauge("gateway_backoff_enabled", "1 when retries back off with jitter and a budget", self._backoff)
         metrics.gauge("gateway_rate_caps", "Requests a second allowed per capped key", self._caps)
+        metrics.gauge(
+            "gateway_top_keys_rps", f"The {TOP_N} busiest keys, requests a second over {TOP_WINDOW_S} s", self._top
+        )
 
     def _backoff(self) -> Mapping[Labels, float]:
         """1 when backoff is on, read at scrape time."""
@@ -156,6 +204,10 @@ class Gateway:
         with self.lock:
             return {(("key", k),): b.rate for k, b in self.caps.items()}
 
+    def _top(self) -> Mapping[Labels, float]:
+        """The busiest keys, read at scrape time."""
+        return {(("key", k),): rps for k, rps in self.top.top()}
+
     def pay(self, req: Request) -> Response:
         """POST /pay: cap, write with retries, notify."""
         started = self.clock()
@@ -163,6 +215,7 @@ class Gateway:
         cents = count(amount)
         if not is_key(key) or cents is None or cents <= 0:
             return self._done(started, "bad", Response(400, {"error": "need key and a positive amount_cents"}))
+        self.top.record(key)  # counted before the cap: a capped key still shows how hard it pushes
         with self.lock:
             cap = self.caps.get(key)
         if cap is not None and not cap.take():
@@ -302,7 +355,15 @@ def main() -> None:
     """Container entry point."""
     ledger = Upstream(*env_addr("LEDGER_ADDR", "ledger:8000"))
     notify = Upstream(*env_addr("NOTIFY_ADDR", "notifications:8000"))
-    policy = Policy(timeout_s=env_float("GATEWAY_TIMEOUT_MS", 500) / 1000, retries=int(env_float("GATEWAY_RETRIES", 3)))
+    # GATEWAY_BACKOFF is how the gateway is deployed: off as shipped (the
+    # retry-storm misconfiguration), on for a well-configured deployment (the
+    # hot-shard storms start from it, src/simprod/faults.py). The backoff action
+    # changes it at run time; a restart returns to the deployed value.
+    policy = Policy(
+        timeout_s=env_float("GATEWAY_TIMEOUT_MS", 500) / 1000,
+        retries=int(env_float("GATEWAY_RETRIES", 3)),
+        backoff=env_flag("GATEWAY_BACKOFF"),
+    )
     gw = Gateway(ledger.call, notify.call, policy, Metrics())
     log(NAME, "config", timeout_ms=policy.timeout_s * 1000, retries=policy.retries, backoff=policy.backoff)
     run((build(gw), 8000))

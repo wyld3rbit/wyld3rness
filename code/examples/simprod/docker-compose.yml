@@ -40,10 +40,12 @@ services:
     command: ["python", "-m", "simprod.ledger"]
     environment:
       # Capacity per shard = LEDGER_WORKERS / LEDGER_SERVICE_MS. The load test sets
-      # these per phase; the defaults are the operating point chosen from it.
+      # these per phase; the defaults are the operating point it chose (research
+      # log entry 007): R = 200 customer requests a second, each shard 100 writes
+      # a second, half busy.
       LEDGER_SHARDS: ${LEDGER_SHARDS:-4}
       LEDGER_WORKERS: ${LEDGER_WORKERS:-1}
-      LEDGER_SERVICE_MS: ${LEDGER_SERVICE_MS:-20}
+      LEDGER_SERVICE_MS: ${LEDGER_SERVICE_MS:-10}
       LEDGER_QUEUE_LIMIT: ${LEDGER_QUEUE_LIMIT:-100}
 
   notifications:
@@ -58,6 +60,8 @@ services:
     environment:
       GATEWAY_TIMEOUT_MS: ${GATEWAY_TIMEOUT_MS:-500}
       GATEWAY_RETRIES: ${GATEWAY_RETRIES:-3}
+      # 0: retries fire at once, as shipped. A hot-shard storm deploys it at 1.
+      GATEWAY_BACKOFF: ${GATEWAY_BACKOFF:-0}
     depends_on:
       ledger: {condition: service_healthy}
       notifications: {condition: service_healthy}
@@ -71,7 +75,29 @@ services:
     depends_on:
       gateway: {condition: service_healthy}
 
-  # Customers. Not started by `up`: the load test runs it once per phase with
+  # Customers all the time, for storms (src/simprod/customers.py), and the
+  # runaway client of the hot-shard fault on its sealed port 9000. Profile
+  # "storm": the controls start it; `up` does not.
+  customers:
+    <<: *service
+    profiles: [storm]
+    command: ["python", "-m", "simprod.customers"]
+    environment:
+      CUSTOMER_RATE: ${CUSTOMER_RATE:-200}
+      CUSTOMER_SEED: ${CUSTOMER_SEED:-1}
+    depends_on:
+      gateway: {condition: service_healthy}
+
+  # The fault driver (src/simprod/faults.py): one-shot, on the prod network
+  # only, so it reaches the sealed admin ports that nothing on the host can.
+  chaos:
+    <<: *service
+    profiles: [chaos]
+    restart: "no"
+    healthcheck: {disable: true}
+    command: ["python", "-m", "simprod.faults", "--help"]
+
+  # Customers for one phase. Not started by `up`: the load test runs it once per phase with
   # `docker compose run --rm loadgen python -m simprod.loadgen --rate R --seconds S`.
   loadgen:
     <<: *service

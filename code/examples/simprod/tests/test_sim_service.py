@@ -2,7 +2,9 @@
 
 import json
 
-from simprod.service import BUCKETS_MS, Metrics, Request, Response, Route, Service, restart_route
+import pytest
+
+from simprod.service import BUCKETS_MS, Metrics, Request, Response, Route, Service, env_flag, restart_route
 
 
 def echo(req: Request) -> Response:
@@ -95,3 +97,24 @@ def test_numbers_counts_and_keys() -> None:
     assert number(True) is None and number(float("inf")) is None and number(2) == 2.0
     assert count(True) is None and count(3) == 3 and count(3.0) is None
     assert is_key("acct-0001") and not is_key('a"b') and not is_key("") and not is_key("x" * 65)
+
+
+def test_a_switch_is_0_or_1_and_nothing_else(monkeypatch) -> None:
+    monkeypatch.delenv("SIM_FLAG", raising=False)
+    assert env_flag("SIM_FLAG") is False and env_flag("SIM_FLAG", default=True) is True
+    monkeypatch.setenv("SIM_FLAG", "1")
+    assert env_flag("SIM_FLAG") is True
+    for bad in ("true", "yes", "", "2"):
+        monkeypatch.setenv("SIM_FLAG", bad)
+        with pytest.raises(ValueError):
+            env_flag("SIM_FLAG")
+
+
+def test_counter_values_print_exactly_past_a_million() -> None:
+    """With {:g}, 1000001 printed as 1e+06 and a scraper's per-second deltas read 0."""
+    m = Metrics()
+    m.counter("big_total", "A big counter")
+    m.inc("big_total", by=1_000_001)
+    assert "big_total 1000001\n" in m.render()
+    m.inc("big_total", by=0.5)
+    assert "big_total 1000001.5\n" in m.render()

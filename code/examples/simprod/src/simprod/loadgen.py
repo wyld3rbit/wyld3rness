@@ -91,6 +91,27 @@ def outcome_of(status: int) -> str:
 Send = Callable[[str, float], int]  # (key, timeout_s) -> status; raises OSError on failure or timeout
 
 
+def attempt(send: Send, key: str, due: float, clock: Callable[[], float]) -> tuple[str, float, bool]:
+    """One request scheduled at `due`: (outcome, latency ms from `due`, sent late). Never raises.
+
+    The one classification of what a customer saw, shared by the load test and the storms.
+    """
+    behind = clock() - due
+    left = CUSTOMER_TIMEOUT_S - behind
+    if left <= 0:
+        outcome = "timeout"  # the generator itself was too busy to send it in time
+    else:
+        try:
+            outcome = outcome_of(send(key, left))
+        except OSError:
+            outcome = "timeout" if clock() - due >= CUSTOMER_TIMEOUT_S - 0.01 else "conn_error"
+        # A socket timeout bounds each read, not the whole request, so an answer
+        # can arrive after the customer gave up. It is a timeout all the same.
+        if clock() - due > CUSTOMER_TIMEOUT_S:
+            outcome = "timeout"
+    return outcome, (clock() - due) * 1000, behind > LATE_S
+
+
 def run(
     send: Send,
     rate: float,
@@ -108,24 +129,10 @@ def run(
     start = clock()
 
     def one(at: float, key: str) -> None:
-        """One customer's request: send it if there is time left, classify what the customer saw."""
-        due = start + at
-        behind = clock() - due
-        left = CUSTOMER_TIMEOUT_S - behind
-        if left <= 0:
-            outcome = "timeout"  # the generator itself was too busy to send it in time
-        else:
-            try:
-                outcome = outcome_of(send(key, left))
-            except OSError:
-                outcome = "timeout" if clock() - due >= CUSTOMER_TIMEOUT_S - 0.01 else "conn_error"
-            # A socket timeout bounds each read, not the whole request, so an answer
-            # can arrive after the customer gave up. It is a timeout all the same.
-            if clock() - due > CUSTOMER_TIMEOUT_S:
-                outcome = "timeout"
-        ms = (clock() - due) * 1000
+        """One customer's request, classified by `attempt`."""
+        outcome, ms, late = attempt(send, key, start + at, clock)
         with lock:
-            results.append((int(at), outcome, ms, behind > LATE_S))
+            results.append((int(at), outcome, ms, late))
 
     with ThreadPoolExecutor(max_workers=workers or pool_size(rate), thread_name_prefix="customer") as pool:
         for at, key in zip(times, accounts, strict=True):

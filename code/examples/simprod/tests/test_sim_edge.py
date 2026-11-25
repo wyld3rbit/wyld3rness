@@ -2,7 +2,7 @@
 
 import pytest
 
-from simprod.edge import ALLOW, SERVICES, Edge, build, openapi, route
+from simprod.edge import ALLOW, CUSTOMERS, SERVICES, Edge, build, openapi, route
 from simprod.service import Metrics
 
 
@@ -16,7 +16,7 @@ class FakeUpstream:
 
 
 def edge() -> tuple[Edge, dict[str, FakeUpstream]]:
-    ups = {s: FakeUpstream() for s in SERVICES}
+    ups = {s: FakeUpstream() for s in (*SERVICES, CUSTOMERS)}
     return Edge(ups, Metrics()), ups  # type: ignore[arg-type]
 
 
@@ -34,6 +34,9 @@ def edge() -> tuple[Edge, dict[str, FakeUpstream]]:
         ("GET", "/gateway/pay"),
         ("DELETE", "/gateway/healthz"),
         ("GET", "/loadgen/metrics"),
+        ("GET", "/customers/fault"),
+        ("POST", "/customers/fault"),
+        ("POST", "/customers/actions/restart"),
         ("GET", "/"),
     ],
 )
@@ -83,3 +86,8 @@ def test_the_spec_lists_exactly_the_allow_list() -> None:
     spec = openapi("http://127.0.0.1:8100")
     listed = {(m.upper(), p) for p, ops in spec["paths"].items() for m in ops}
     assert listed == {(a.method, f"/{a.service}{a.path}") for a in ALLOW}
+
+
+def test_customers_can_be_read_but_not_driven() -> None:
+    assert route("GET", "/customers/metrics") is not None
+    assert all(a.method == "GET" for a in ALLOW if a.service == CUSTOMERS)

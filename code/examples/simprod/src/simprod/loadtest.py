@@ -50,7 +50,7 @@ RAMP_CPU_BAR = 80.0  # percent of the whole VM (all CPUs)
 GATEWAY_RETRIES = 3
 STORM_FACTOR = 1 + GATEWAY_RETRIES  # a storm sends each request at most this many times
 # Pinned for every phase, so a value exported in the shell cannot change what is measured.
-PINNED = {"GATEWAY_RETRIES": str(GATEWAY_RETRIES), "GATEWAY_TIMEOUT_MS": "500"}
+PINNED = {"GATEWAY_RETRIES": str(GATEWAY_RETRIES), "GATEWAY_TIMEOUT_MS": "500", "GATEWAY_BACKOFF": "0"}
 SOAK_SECONDS = 300
 SOAK_REPEATS = 3
 SOAK_CPU_BAR = 60.0
