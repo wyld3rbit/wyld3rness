@@ -73,9 +73,11 @@ DETECT_S = 15
 VERIFY_S = 5  # at the end of WAIT, the last this many seconds must all be good to call it verified
 PILOT_SEED, PILOT_STORMS, PILOT_OBSERVE_S = 3, 9, 90  # 3 of each kind
 CONTROLS_SEED, CONTROLS_STORMS = 7, 21  # 7 of each kind
-# From the pilot (entry 008), written before the controls run. None: `make controls` refuses.
-WAIT_S: int | None = None
-HOLD_S: int | None = None
+# From the pilot (entry 008, re-run after entry 009 on 2026-11-25), written before the
+# controls run. Slowest scripted recovery 8.6 s, so WAIT = 2 x 8.6 rounded up to 5;
+# no good second under nobody, so HOLD is its 30 s floor. None: `make controls` refuses.
+WAIT_S: int | None = 20
+HOLD_S: int | None = 30
 MAX_GAP_S = 2.5  # longest allowed time between two scrapes after the fault: one fast-failing scrape at most
 # Every compose setting the storm arithmetic rests on (faults.py), pinned so a value
 # exported in the shell cannot change the storms. The compose defaults match (tests check).
