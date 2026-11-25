@@ -3,7 +3,7 @@
 Why a module of its own: the call and its settings are infrastructure, the triage
 record and its rules are domain. `findyfixy.triage.record` knows nothing about Ollama, so it
 can be tested and reused without it. Everything that builds an answering model
-(the router, the stress variants, the investigator) takes its settings from here,
+(the router, the stress variants, the investigator, the on-call decider) takes its settings from here,
 so a change to temperature or timeout is made once.
 
 Nothing runs at import time except importing the client library.
@@ -12,6 +12,7 @@ Nothing runs at import time except importing the client library.
 from typing import Any
 
 from langchain_ollama import ChatOllama
+from pydantic import BaseModel
 
 from findyfixy.triage.record import Reply, Triage
 
@@ -67,7 +68,17 @@ def ollama_ask(model: str, prompt: str) -> str:
     Fails when: Ollama is not running (connection error), the model is not
     pulled (404), or the server stalls past the timeout. Nothing here retries.
     """
-    llm = ChatOllama(model=model, format=Triage.model_json_schema(), **answer_options())
+    return ollama_reply(model, prompt, Triage)
+
+
+def ollama_reply(model: str, prompt: str, schema: type[BaseModel]) -> Reply:
+    """One greedy, constrained call: a reply shaped as `schema`'s JSON, not yet validated.
+
+    Shared by triage (`ollama_ask`) and the on-call decider
+    (`findyfixy.oncall.decide`), so every answering call has the same
+    temperature, thinking setting and timeout. Fails as `ollama_ask` does.
+    """
+    llm = ChatOllama(model=model, format=schema.model_json_schema(), **answer_options())
     return reply_from(llm.invoke(prompt))
 
 

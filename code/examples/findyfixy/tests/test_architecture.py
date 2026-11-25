@@ -119,6 +119,7 @@ ENTRY_POINTS = {
         "retrieval.search",
         "mcp.server",
         "observability.prices",
+        "oncall.cli",
     )
 }
 # The composition root and the configuration it reads.

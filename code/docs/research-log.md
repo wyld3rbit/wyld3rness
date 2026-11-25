@@ -322,3 +322,52 @@ Recovery after the scripted fix, by the checker: retry storm 8.5 to 8.8 s, hot s
 **Deviations.** None from the protocol. The run took 2 h 3 min, not the 5 h 20 min expected from entry 010's 5 h 6 min on the same machine and conditions. Why entry 010 ran slower is not known.
 
 **Meaning.** The storms are real (none ends by itself), fixable (the correct set of actions ends every one, in about 10 s), and judged fairly (every wrong fix is caught and undone, with the system put back as it was). The environment can be won, so an agent's result in it means something. The spread is tight: within a kind and arm, customer minutes vary by at most about 0.03 (2% in retry storms, up to 20% in the small scripted numbers). Step 6 sizes N from it. These windows and rules are now fixed for steps 3 to 6.
+
+---
+
+## 013. Does the loop run a storm end to end with no person in it? (exploratory)
+
+**Question.** Step 3 puts the harness's loop between a model and simprod: the model proposes 1 or 2 typed actions, code applies them, waits WAIT, verifies, holds HOLD, then keeps them, or undoes them last first and tries again (3 tries at most), or ends in the safe state. Two things must hold before step 6 compares arms on it: the loop's verdict must be the controls' verdict, and the loop must run a real storm to an end on every path. This decides whether step 6 can use the loop as one of its arms.
+
+**Protocol.** None: exploratory runs, before the step 6 protocol. Seed 3, the pilot's storms, one of each kind; never the held-out seed.
+
+**Ran.** On 2026-11-25, on branch `day7-step3` over `7c34140`, with the step's code not yet committed (each result file records `7c34140`). WAIT 30 s, HOLD 30 s from entry 011, `qwen3:4b-instruct` deciding at temperature 0, Langfuse, Postgres and Adminer running as in entry 012.
+
+| Run | What | Code | Results file SHA-256 |
+|---|---|---|---|
+| R | The 63 runs of entry 012 re-scored with the verdict moved into the harness | the step's tree | (read only) `37ff3e62402fe8a2…` |
+| 1 | `make oncall`, 22:25 UTC | before two fixes below | `40301062f2d84a23…` |
+| 2 | `make oncall`, 22:33 UTC | a restart's 202 counted as carried out | `a09ce466c3ef4b1c…` |
+| 3 | `make oncall`, 22:40 UTC | the final tree: no source file changed after 22:37:04 UTC | `18fc94238a221a9f…` |
+
+**Result: the re-score.** 252 verdict fields (recovered at, longest good stretch, customer minutes, verified, for each of 63 runs): 0 changed. The bars re-score to 21, 21 and 21 of 21.
+
+**Result: the storms.** One model call per storm in every run, every reply valid on the first try, 709 to 777 input and 150 to 180 output tokens.
+
+| Storm | Run | Model's actions | Loop | Customer minutes |
+|---|---|---|---|---|
+| s3-00 retry storm | 1 | backoff on, cap acct-0070 at 1/s | resolved, try 1 | 0.424 |
+| | 2 | backoff on, cap acct-0673 at 1/s | resolved, try 1 | 0.380 |
+| | 3 | backoff on, cap acct-0774 at 0.5/s | resolved, try 1 | 0.382 |
+| s3-01 hot shard (runaway acct-0640) | 1 | cap acct-0640 at 10/s, restart the gateway | safe state: the restart's 202 counted as a failed action | 0.343 |
+| | 2 | the same | not verified; a restart has no undo, so no retry: safe state | 0.341 |
+| | 3 | the same | the same as run 2 | 0.339 |
+| s3-02 compound (runaway acct-0930) | 1, 2, 3 | backoff on, cap acct-0930 at 10/s | resolved, try 1 | 0.103, 0.103, 0.103 |
+
+The storm driver's own verdict, computed from the same series from the last try's action, agreed with the loop's in 9 of 9 runs. Every run was judged: warm-ups good, no counter reset, no scrape gap, no late sends past the bar.
+
+Against entry 012 (median customer minutes): scripted 0.281, 0.074 and 0.080; nobody 1.248, 0.317 and 0.320.
+
+**Why the loop lost more customer minutes than the scripted fix.** The scripted arm acts 15 s after the fault. The loop's last action landed 21.3 to 21.8 s after it in run 3: reading the metrics and one model call cost 6.3 to 6.8 s. An unfixed retry storm loses about 0.0166 customer minutes a second (1.248 over 75 s, entry 012), so 6.8 s adds about 0.113: 0.281 + 0.113 = 0.394, against 0.382 measured. For the compound storm, 0.00427 a second over 6.4 s adds 0.027: 0.107 expected, 0.103 measured.
+
+**Why s3-01 ended in the safe state.** The cap was the right fix, and the restart of the gateway, applied after it in the same decision, most likely undid it: a restart returns the gateway to its deployed settings, which have no cap (`gateway.py`). That is read from the code, not measured in these runs: the gateway's log of the restart was gone with the next storm's reset. The restart has no undo, so the loop did not retry. In run 1 the loop stopped one step earlier, on a fault in FindyFixy's environment: it counted only status 200 as carried out, and a restart answers 202 Accepted.
+
+**Deviations.** Runs 1 and 2 ran on code that was then changed: the 202 fix after run 1, and after run 2 four fixes from the code review (an apply that raises after its request went out is kept as possibly in force; the action time is taken after the last apply, so a slow apply cannot shorten the recovery window; account keys are matched whole; a decider that returns no sequence is the decider's failure). None of the four changes a path these storms took. All three runs are kept.
+
+**Meaning.** The loop's verdict is the controls' verdict, measured: the move changed none of 252. The loop runs a storm to an end with no person in it, on two paths: resolved on the first try, and the safe state after an action with no undo. The retry path (undo, then a second try) did not occur live; it is covered by the tests with fakes only. Three findings feed step 4 and step 6:
+
+- The model kept a needless change in every resolved retry storm: a cap of 0.5 to 1 request a second on a customer's key that was not the cause. The verdict asks whether customers recovered, not whether every action was needed, so the loop kept it. Production meaning: a customer is throttled for no reason after the incident is closed. A precondition on caps belongs in step 4's policy; step 6 counts these as needless changes kept.
+- An action can cancel another in the same decision (a gateway restart clears a cap). The loop's record still lists the cap as kept. Step 4's policy decides whether a restart may share a decision.
+- Time to decide is paid in customer minutes: about 6.5 s here, about 40% of the scripted arm's loss in a retry storm.
+
+It cannot show anything about a held-out storm, another model, or the spread: three storms from a seed used in development, one model, temperature 0 (the same storm gave the same decision in all three runs, apart from which innocent key was capped). These are anecdotes, not a result; step 6 measures.

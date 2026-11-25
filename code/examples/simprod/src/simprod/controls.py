@@ -39,8 +39,9 @@ without them.
 from __future__ import annotations
 
 import argparse
-from collections.abc import Mapping
-from dataclasses import asdict
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
+from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 import json
 import math
@@ -54,25 +55,23 @@ import urllib.error
 import urllib.request
 
 from simprod import loadtest
-from simprod.checker import (
-    Scraper,
+from simprod.checker import Scraper, late_share, max_gap
+from simprod.faults import FAULTS_VERSION, Storm, storms
+from wyld3rness.loop.verdict import (
     Second,
     customer_minutes,
     judged,
-    late_share,
     longest_good_stretch,
-    max_gap,
     recovered_at,
     resets,
+    verified,
 )
-from simprod.faults import FAULTS_VERSION, Storm, storms
 
 JSON = dict[str, Any]
 
 RATE = 200  # R, set by research log entry 007 (C = 800/s, R = C / 4); the compose defaults match (tests check)
 WARM_S = 20
 DETECT_S = 15
-VERIFY_S = 5  # at the end of WAIT, the last this many seconds must all be good to call it verified
 PILOT_SEED, PILOT_STORMS, PILOT_OBSERVE_S = 3, 9, 90  # 3 of each kind
 # 7 of each kind. Seed 7 ran under entry 008's rules (entry 010); 11 is fresh for entry 011,
 # so the amended rules are not judged on the storms that prompted them.
@@ -133,13 +132,16 @@ def chaos(*args: str) -> JSON:
     return result
 
 
-def act(path: str, body: Mapping[str, object]) -> JSON:
-    """One typed action through the edge, as the agent will send it. Never raises: a failure is status 0."""
+def act(path: str, body: Mapping[str, object], actor: str = ACTOR) -> JSON:
+    """One typed action through the edge, as the agent sends it, logged by the service under `actor`.
+
+    Never raises: a failure is status 0.
+    """
     req = urllib.request.Request(
         EDGE + path,
         data=json.dumps(body).encode(),
         method="POST",
-        headers={"Content-Type": "application/json", "X-Actor": ACTOR},
+        headers={"Content-Type": "application/json", "X-Actor": actor},
     )
     try:
         with urllib.request.urlopen(req, timeout=10) as r:
@@ -173,17 +175,47 @@ def read_settings() -> JSON:
         return {"error": f"{type(e).__name__}: {e}"}
 
 
-def verified(series: list[Second], at: float) -> bool:
-    """Every second in the VERIFY_S before `at` was good. Pure."""
-    window = [s for s in series if at - VERIFY_S < s.t <= at]
-    return len(window) >= VERIFY_S - 1 and all(s.good for s in window)
-
-
 # ---- One storm ------------------------------------------------------------------------------
 
 
-def run_storm(storm: Storm, arm: str, rate: int, wait_s: float, hold_s: float) -> JSON:
-    """Run `storm` under `arm` (nobody, scripted or wrong) and return everything that happened."""
+@dataclass
+class Live:
+    """A storm in force: its scraper, its record so far, and when the fault came and the arm may act.
+
+    `judge_from` is the action the storm's verdict is measured from: the first
+    (and only) one for the controls' arms, the last try's for a loop that tried
+    more than once. The arm sets it; the default is `t_act`.
+    """
+
+    storm: Storm
+    scraper: Scraper
+    record: JSON
+    before: JSON = field(default_factory=dict)
+    t_fault: float = 0.0
+    t_act: float = 0.0
+    judge_from: float | None = None
+
+    def now(self) -> float:
+        """Seconds since the storm's scraper started: the clock every time in the record is on."""
+        return time.monotonic() - self.scraper.start
+
+    def cover(self, end: float) -> None:
+        """Wait until the series reaches `end`, however late recovery came, with 30 s of grace at most."""
+        while (self.scraper.scrapes[-1][0] if self.scraper.scrapes else 0.0) < end and self.now() < end + 30:
+            time.sleep(0.5)
+
+
+@contextmanager
+def live_storm(storm: Storm, arm: str, rate: int, wait_s: float, hold_s: float) -> Iterator[Live]:
+    """One storm for any arm: fresh services, warm-up, the fault, DETECT_S; then the arm acts; then the verdict.
+
+        reset ─► scrape every second ─► warm WARM_S ─► inject ─► DETECT_S ─► yield: the arm acts
+              ─► clear the faults (always) ─► measure: recovered, customer minutes, judged or not
+
+    One sequence for every arm, so arms differ only in what they do between
+    `t_act` and the end. The faults are cleared even when the arm raises; the
+    measurement is added only when it did not, because a run cut short has no verdict.
+    """
     reset(storm, rate)
     scraper = Scraper(EDGE + "/customers/metrics")
     stop = threading.Event()
@@ -197,39 +229,32 @@ def run_storm(storm: Storm, arm: str, rate: int, wait_s: float, hold_s: float) -
                 scraper.errors += 1
 
     threading.Thread(target=loop, daemon=True).start()
-    record: JSON = {
-        "storm": asdict(storm),
-        "arm": arm,
-        "rate": rate,
-        "env": storm_env(storm, rate),
-        "wait_s": wait_s,
-        "hold_s": hold_s,
-        "actions": [],
-        "undos": [],
-        "faults_version": FAULTS_VERSION,
-    }
+    live = Live(
+        storm,
+        scraper,
+        {
+            "storm": asdict(storm),
+            "arm": arm,
+            "rate": rate,
+            "env": storm_env(storm, rate),
+            "wait_s": wait_s,
+            "hold_s": hold_s,
+            "actions": [],
+            "undos": [],
+            "faults_version": FAULTS_VERSION,
+        },
+    )
+    record = live.record
     try:
-        before = read_settings()
+        live.before = read_settings()
         time.sleep(WARM_S)
         warm = judged(scraper.series())
         record["warm_ok"] = bool(warm) and all(s.good for s in warm)
-        t_fault = time.monotonic() - scraper.start
+        live.t_fault = live.now()
         record["injected"] = chaos("inject", json.dumps(asdict(storm)))
         time.sleep(DETECT_S)
-        t_act = time.monotonic() - scraper.start
-        chosen = storm.fix(rate) if arm == "scripted" else storm.wrong(rate) if arm == "wrong" else []
-        record["actions"] = [act(*a) for a in chosen]
-        time.sleep(wait_s)
-        t_verify = time.monotonic() - scraper.start
-        record["verified"] = verified(judged(scraper.series()), t_verify)
-        if arm == "wrong" and not record["verified"]:
-            record["undos"] = [act(*a) for a in storm.undo_of_wrong()]
-            record["restored"] = read_settings() == before
-        end = t_act + wait_s + hold_s + 2  # scrape until the hold window is covered, however late recovery came
-        while (
-            scraper.scrapes[-1][0] if scraper.scrapes else 0.0
-        ) < end and time.monotonic() - scraper.start < end + 30:
-            time.sleep(0.5)
+        live.t_act = live.now()
+        yield live
     finally:
         stop.set()
         try:
@@ -238,22 +263,38 @@ def run_storm(storm: Storm, arm: str, rate: int, wait_s: float, hold_s: float) -
             record["clear_error"] = f"{type(exc).__name__}: {exc}"
     series = scraper.series()
     verdict = judged(series)
+    judge_from = live.t_act if live.judge_from is None else live.judge_from
     record.update(
-        t_fault=round(t_fault, 2),
-        t_act=round(t_act, 2),
-        t_verify=round(t_verify, 2),
-        recovered_at=recovered_at(verdict, t_act, wait_s, hold_s),
-        longest_good_after_act_s=longest_good_stretch(verdict, t_act),
-        customer_minutes=customer_minutes(series, t_fault, rate),
+        t_fault=round(live.t_fault, 2),
+        t_act=round(live.t_act, 2),
+        recovered_at=recovered_at(verdict, judge_from, wait_s, hold_s),
+        longest_good_after_act_s=longest_good_stretch(verdict, live.t_act),
+        customer_minutes=customer_minutes(series, live.t_fault, rate),
         scrape_errors=scraper.errors,
         counter_resets=resets(scraper.scrapes),
-        late_share=late_share(scraper.late, t_fault),
-        max_gap_s=max_gap(scraper.scrapes, t_fault),
+        late_share=late_share(scraper.late, live.t_fault),
+        max_gap_s=max_gap(scraper.scrapes, live.t_fault),
         series=[[s.t, s.ok, s.failed] for s in series],
     )
     record["recovered"] = record["recovered_at"] is not None
     record["invalid"] = invalid(record)
-    return record
+
+
+def run_storm(storm: Storm, arm: str, rate: int, wait_s: float, hold_s: float) -> JSON:
+    """Run `storm` under `arm` (nobody, scripted or wrong) and return everything that happened."""
+    with live_storm(storm, arm, rate, wait_s, hold_s) as live:
+        record = live.record
+        chosen = storm.fix(rate) if arm == "scripted" else storm.wrong(rate) if arm == "wrong" else []
+        record["actions"] = [act(*a) for a in chosen]
+        time.sleep(wait_s)
+        t_verify = live.now()
+        record["t_verify"] = round(t_verify, 2)
+        record["verified"] = verified(judged(live.scraper.series()), t_verify)
+        if arm == "wrong" and not record["verified"]:
+            record["undos"] = [act(*a) for a in storm.undo_of_wrong()]
+            record["restored"] = read_settings() == live.before
+        live.cover(live.t_act + wait_s + hold_s + 2)  # the hold window covered, however late recovery came
+    return live.record
 
 
 def invalid(r: JSON) -> list[str]:

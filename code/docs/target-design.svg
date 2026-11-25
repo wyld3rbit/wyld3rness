@@ -50,16 +50,16 @@ text { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-se
 <path id="p_rec_policy" class="edge planned" d="M880,292 L880,519"/>
 <path id="p_policy_identity" class="edge planned" d="M796,552 L759,552"/>
 <path id="p_identity_act" class="edge planned" d="M628,552 L591,552"/>
-<path id="p_act_verify" class="edge planned" d="M460,552 L423,552"/>
-<path id="p_verify_undo" class="edge planned" d="M292,552 L255,552"/>
-<path id="p_verify_safe" class="edge planned" d="M300,584 L300,618 L40,618 L40,585"/>
-<path id="p_undo_safe" class="edge planned" d="M124,552 L87,552"/>
-<path id="p_undo_again" class="edge planned" d="M189,520 L189,442 L80,442 L80,293"/>
+<path id="p_act_verify" class="edge" d="M460,552 L423,552"/>
+<path id="p_verify_undo" class="edge" d="M292,552 L255,552"/>
+<path id="p_verify_safe" class="edge" d="M300,584 L300,618 L40,618 L40,585"/>
+<path id="p_undo_safe" class="edge" d="M124,552 L87,552"/>
+<path id="p_undo_again" class="edge" d="M189,520 L189,442 L80,442 L80,293"/>
 <path id="p_verify_score" class="edge planned" d="M357,584 L357,627"/>
 <path id="p_safe_score" class="edge planned" d="M21,584 L21,660 L291,660"/>
 <path id="p_kill_policy" class="edge planned" d="M861,628 L861,585"/>
-<path id="p_act_services" class="edge planned" d="M525,584 L525,761"/>
-<path id="p_services_verify" class="edge planned" d="M470,762 L470,722 L436,722 L436,570 L423,570"/>
+<path id="p_act_services" class="edge" d="M525,584 L525,761"/>
+<path id="p_services_verify" class="edge" d="M470,762 L470,722 L436,722 L436,570 L423,570"/>
 <path id="p_services_alerts" class="edge planned" d="M460,794 L255,794"/>
 <path id="p_faults_services" class="edge planned" d="M796,794 L591,794"/>
 <path id="p_alerts_question" class="edge planned" d="M124,794 L-48,794 L-48,310 L30,310 L30,293"/>
@@ -198,25 +198,25 @@ text { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-se
         <text class="t" x="693" y="546">Identity</text>
         <text class="s" x="693" y="564">this action only</text>
       </g>
-<g class="node" data-status="planned">
+<g class="node" data-status="built">
         <rect x="460" y="520" width="130" height="64" rx="8"/>
         <polygon class="i" transform="translate(465 524) scale(.56)" points="6 3 20 12 6 21 6 3"/>
         <text class="t" x="525" y="546">Act</text>
         <text class="s" x="525" y="564">typed, one at a time</text>
       </g>
-<g class="node" data-status="planned">
+<g class="node" data-status="built">
         <rect x="292" y="520" width="130" height="64" rx="8"/>
         <path class="i" transform="translate(297 524) scale(.56)" d="m12 14 4-4"/><path class="i" transform="translate(297 524) scale(.56)" d="M3.34 19a10 10 0 1 1 17.32 0"/>
         <text class="t" x="357" y="546">Verify</text>
         <text class="s" x="357" y="564">did it recover?</text>
       </g>
-<g class="node" data-status="planned">
+<g class="node" data-status="built">
         <rect x="124" y="520" width="130" height="64" rx="8"/>
         <circle class="i" transform="translate(129 524) scale(.56)" cx="18" cy="18" r="3"/><circle class="i" transform="translate(129 524) scale(.56)" cx="6" cy="6" r="3"/><path class="i" transform="translate(129 524) scale(.56)" d="M6 21V9a9 9 0 0 0 9 9"/>
         <text class="t" x="189" y="546">Undo</text>
         <text class="s" x="189" y="564">then try again</text>
       </g>
-<g class="node" data-status="planned">
+<g class="node" data-status="built">
         <rect x="-44" y="520" width="130" height="64" rx="8"/>
         <path class="i" transform="translate(-39 524) scale(.56)" d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path class="i" transform="translate(-39 524) scale(.56)" d="m9 12 2 2 4-4"/>
         <text class="t" x="21" y="546">Safe state</text>

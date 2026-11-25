@@ -1,5 +1,5 @@
 {
-  "created_utc": "2026-11-24T02:03:39+00:00",
+  "created_utc": "2026-11-25T23:02:35+00:00",
   "files": {
     "examples/findyfixy/data/deploys.json": "c1c9fa59e3c07706a618dc5d65a461b34a08c71b50491cfb537713e135e9b2f8",
     "examples/findyfixy/data/golden.jsonl": "2d005967149bbc1fc3e9572ba042a5edbac13e471f3b4ffc9cbbb4a7d1d22a1f",
@@ -14,7 +14,7 @@
     "examples/findyfixy/src/findyfixy/evals/answers.py": "d6b27fb3debc44e29e1bdae0460bb2e17bd5b6db6d2235fc20e27a1d538007e0",
     "examples/findyfixy/src/findyfixy/evals/golden.py": "45a9cb58fe3375e17205cedd1c157140bd7a727ff21c03334174c2a8fa9c362e",
     "examples/findyfixy/src/findyfixy/events.py": "092fb2a4bad3d7259e0ba74af429593ccea078f1c5c08116aca4a42e90cd31aa",
-    "examples/findyfixy/src/findyfixy/llm.py": "79b8098d475c9934944d4f17a70582bf5b097c9a8051c59105925a01579feab5",
+    "examples/findyfixy/src/findyfixy/llm.py": "eb0a2454a7bba37ee3341e3ce9bb596f6d018d7061d2fb477ed9540d35ae190f",
     "examples/findyfixy/src/findyfixy/model_cache.py": "a1479480f4db0150efd6e87435c58d3713eec58bf13b1afae5318395be8d2d5d",
     "examples/findyfixy/src/findyfixy/observability/__init__.py": "b79bb0b0dfddabb2264d5d7ffb397160755fb499fab0a128243a2e1711ad0f6f",
     "examples/findyfixy/src/findyfixy/observability/adapter.py": "b7030d80a110fed39cfbed137e260b6fd60dc9b73ab2c3cda33ca5bda184d581",
@@ -33,7 +33,7 @@
     "examples/findyfixy/src/findyfixy/triage/graph.py": "e17793e3934f9cbed7ac624be81c5b8c6cf1ad34b0d75e82339cc9b8f62fb83c",
     "examples/findyfixy/src/findyfixy/triage/record.py": "bd4d32846d19bf553faf167e039816d15c0238d810b95a9d046e0cf2db127bb5",
     "examples/findyfixy/src/findyfixy/wiring.py": "502af6f516afaca92cd3244f39cab3e4e97043b48681afe5f9177cc89b7ec580",
-    "src/wyld3rness/__init__.py": "f7c2656007a5873e1d5bbde4cac124ea8c27278f6eb55d9d9c10ab57e90bc70a",
+    "src/wyld3rness/__init__.py": "e7e198ec73fb821a014c88cda2d6e6147b68ef462b5aaeb6ecc6486bf52401c9",
     "src/wyld3rness/eval/__init__.py": "6f6378ed1a7cd259565df12ae3151a0254f5698703589d01858e4a8696fe694b",
     "src/wyld3rness/eval/attest.py": "5bedaa4786d7870665021dc82c0d54473c32cbf21af00ef5a35d2852742f3ce5",
     "src/wyld3rness/eval/case.py": "bc88eff221e5e4f37f4821139fa6911f2a10ea5e1010f5ce2f7a910d675db4ef",
@@ -47,14 +47,14 @@
     "src/wyld3rness/eval/runner.py": "c412944020ccfa5cb6ed464d66688537e0c43acff1ac029b109c422b4257e8c7",
     "src/wyld3rness/eval/stats.py": "382247f661bfe4613be48d06c9ad4fc44d7adf7ad8dbf9e04d58f795890ad476",
     "src/wyld3rness/eval/sut.py": "df0270344f7fe50deade2742886ae6d1fb85d7440ef7f4bdac8c2627e92fca98",
-    "src/wyld3rness/trace/__init__.py": "4459f1bed198c5dd7b0e1ae42cdace4fd61ad3210aec125c2982767c3e2fddc7",
+    "src/wyld3rness/trace/__init__.py": "3db82e46e4cbcf5ca85d277a0e1c3133d63ac7bcffa20d8986f4769d0219c8d4",
     "src/wyld3rness/trace/command.py": "d13cb87397dd5c17e237b165f3a8c8f5f3b4c4e501a686aeb4c829be51462711",
     "src/wyld3rness/trace/scores.py": "afdcf4b6cd99125b22b7b82f1eda0a387a63c15600f6d805c2de3d7bfe237310",
     "src/wyld3rness/trace/spans.py": "145cd0e9a7704bc65d9ef901585ed2d65e2006cc7bdc3d111062133a4bbc3611",
     "src/wyld3rness/trace/tracing.py": "b85dde2f79b487a49496eec541c996c5aeed8f43e6fd7c0a0132448e10a65a8d",
-    "uv.lock": "d875d65746059b577d8bea4f0958c34b32e8643544538a12441b3448da54a6d9"
+    "uv.lock": "16b4f417571ace50f9112bf4b62ca5d7465e67e77f64e64be52f28e1de95223c"
   },
-  "fingerprint": "3dd0dd9714dfb9e16a3d71a1dd6462429c0d66803aa769ec57cec3ff3251dc70",
+  "fingerprint": "9e77d8e499e6db1e145a95ec15c024063b24e12d109d31fd77b50ef5ac4fea26",
   "inputs": {
     "entry_modules": [
       "findyfixy.evals.answers"
@@ -72,16 +72,16 @@
     ]
   },
   "report": {
-    "name": "eval-20261124T020339Z.json",
-    "sha256": "b5117de2d2cca685cd73839bdecd138bc7b914149552a3273d5e8f1f3d5c0e10"
+    "name": "eval-20261125T230235Z.json",
+    "sha256": "5bd9514469044f288755895fa84459fe0f358911daa9547958799f6d1a626921"
   },
   "run": {
-    "git_sha": "tree-6912f7188921",
+    "git_sha": "tree-786147575b39",
     "judge_digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
     "judge_model": "qwen2.5:7b",
     "large_model": "qwen3:4b-instruct",
     "small_model": "qwen3:4b-instruct",
-    "timestamp_utc": "2026-11-24T01:52:07+00:00"
+    "timestamp_utc": "2026-11-25T22:51:32+00:00"
   },
   "verdict": "pass",
   "version": 2
