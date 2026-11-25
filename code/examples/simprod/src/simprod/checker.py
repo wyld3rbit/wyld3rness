@@ -2,7 +2,8 @@
 
     every second: GET /customers/metrics ──► completions since the last scrape, ok and failed
                       │
-    a good second: failed ≤ SLO_FAILED_SHARE of that second's completions (and some completed)
+    a good second: over the JUDGE_S seconds ending then, failed ≤ SLO_FAILED_SHARE of the
+                   completions (and some completed)
                       │
     recovered at t: t lies within WAIT of the action, and every second from t to t + HOLD is good
 
@@ -34,6 +35,11 @@ import time
 import urllib.request
 
 SLO_FAILED_SHARE = 0.01  # a second with more than 1% of customer requests failing is a bad second
+# Each second is judged on the JUDGE_S seconds ending at it (research log, entry 011). At
+# R = 200 one second holds about 200 requests, so 1% is 2 failures and a stray pair breaks
+# a real recovery (entry 010); 5 s holds about 1,000, so 1% is 10. The cost: a recovery
+# shows up to JUDGE_S - 1 s late, which the pilot's WAIT absorbs.
+JUDGE_S = 5
 _SAMPLE = re.compile(r'^customers_requests_total\{outcome="([^"]+)"\}\s+(\S+)$', re.M)
 _LATE = re.compile(r"^customers_late_sends_total\s+(\S+)$", re.M)
 
@@ -81,6 +87,19 @@ def seconds_from(scrapes: Sequence[tuple[float, float, float]]) -> list[Second]:
         for (_, ok0, f0), (t1, ok1, f1) in itertools.pairwise(scrapes)
         if ok1 >= ok0 and f1 >= f0
     ]
+
+
+def judged(series: Sequence[Second], window_s: float = JUDGE_S) -> list[Second]:
+    """Each second with the completions of the `window_s` seconds ending at it, for verdicts. Pure.
+
+    The window is by time, not by count, so a scrape gap shortens it instead of
+    reaching further back.
+    """
+    out = []
+    for i, s in enumerate(series):
+        window = [x for x in series[: i + 1] if x.t > s.t - window_s]
+        out.append(Second(s.t, sum(x.ok for x in window), sum(x.failed for x in window)))
+    return out
 
 
 def resets(scrapes: Sequence[tuple[float, float, float]]) -> int:

@@ -5,6 +5,7 @@ from simprod.checker import (
     Second,
     customer_counts,
     customer_minutes,
+    judged,
     late_sends,
     late_share,
     longest_good_stretch,
@@ -119,3 +120,17 @@ def test_the_scraper_keeps_late_sends_beside_each_scrape() -> None:
     sc = Scraper(fetch=lambda u: METRICS + "customers_late_sends_total 7\n", clock=lambda: 0.0)
     sc.scrape()
     assert sc.late[0][3] == 7.0 and sc.late[0][:3] == sc.scrapes[0]
+
+
+def test_seconds_are_judged_over_the_last_five() -> None:
+    """Entry 010: 2 failed of 188 broke a real recovery. Over 5 s it is 2 of about 1,000."""
+    s = [Second(float(t), 200, 0) for t in range(1, 11)]
+    s[6] = Second(7.0, 186, 2)
+    assert not s[6].good and all(x.good for x in judged(s))
+    assert judged(s)[6] == Second(7.0, 986, 2)
+    assert judged(s)[1] == Second(2.0, 400, 0)  # the first seconds have a shorter window
+
+
+def test_a_scrape_gap_shortens_the_window_instead_of_reaching_back() -> None:
+    s = [Second(1.0, 100, 100), Second(7.0, 200, 0)]
+    assert judged(s)[1] == Second(7.0, 200, 0)

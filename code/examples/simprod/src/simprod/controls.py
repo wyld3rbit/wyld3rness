@@ -19,7 +19,8 @@ wrong     acts with the storm's wrong fix (faults.py), undone if not verified
 Every arm also needs every action and undo it sent answered 200: a refused
 action would make a "fix" or an "undo" that never happened look like a result.
 And a run counts only if it can be judged (`invalid`): the customer stream
-measured whole and the load really offered. A run that cannot is a miss.
+measured whole and the load really offered. A run that cannot is run once
+more, both tries kept; if the second cannot be judged either, it is a miss.
 The storms cycle through the three kinds, so 21 is 7 of each.
 
 If nobody's storms end by themselves, a later "fix" would be credited for what
@@ -57,6 +58,7 @@ from simprod.checker import (
     Scraper,
     Second,
     customer_minutes,
+    judged,
     late_share,
     longest_good_stretch,
     max_gap,
@@ -72,11 +74,14 @@ WARM_S = 20
 DETECT_S = 15
 VERIFY_S = 5  # at the end of WAIT, the last this many seconds must all be good to call it verified
 PILOT_SEED, PILOT_STORMS, PILOT_OBSERVE_S = 3, 9, 90  # 3 of each kind
-CONTROLS_SEED, CONTROLS_STORMS = 7, 21  # 7 of each kind
-# From the pilot (entry 008, re-run after entry 009 on 2026-11-25), written before the
-# controls run. Slowest scripted recovery 8.6 s, so WAIT = 2 x 8.6 rounded up to 5;
-# no good second under nobody, so HOLD is its 30 s floor. None: `make controls` refuses.
-WAIT_S: int | None = 20
+# 7 of each kind. Seed 7 ran under entry 008's rules (entry 010); 11 is fresh for entry 011,
+# so the amended rules are not judged on the storms that prompted them.
+CONTROLS_SEED, CONTROLS_STORMS = 11, 21
+# From the pilot (entry 008, re-run after entry 009 on 2026-11-25), recomputed from its saved
+# series under the 5 s judging window of entry 011, written before the controls run.
+# Slowest scripted recovery 12.6 s, so WAIT = 2 x 12.6 rounded up to 5; no good second
+# under nobody, so HOLD is its 30 s floor. None: `make controls` refuses.
+WAIT_S: int | None = 30
 HOLD_S: int | None = 30
 MAX_GAP_S = 2.5  # longest allowed time between two scrapes after the fault: one fast-failing scrape at most
 # Every compose setting the storm arithmetic rests on (faults.py), pinned so a value
@@ -206,7 +211,7 @@ def run_storm(storm: Storm, arm: str, rate: int, wait_s: float, hold_s: float) -
     try:
         before = read_settings()
         time.sleep(WARM_S)
-        warm = scraper.series()
+        warm = judged(scraper.series())
         record["warm_ok"] = bool(warm) and all(s.good for s in warm)
         t_fault = time.monotonic() - scraper.start
         record["injected"] = chaos("inject", json.dumps(asdict(storm)))
@@ -216,7 +221,7 @@ def run_storm(storm: Storm, arm: str, rate: int, wait_s: float, hold_s: float) -
         record["actions"] = [act(*a) for a in chosen]
         time.sleep(wait_s)
         t_verify = time.monotonic() - scraper.start
-        record["verified"] = verified(scraper.series(), t_verify)
+        record["verified"] = verified(judged(scraper.series()), t_verify)
         if arm == "wrong" and not record["verified"]:
             record["undos"] = [act(*a) for a in storm.undo_of_wrong()]
             record["restored"] = read_settings() == before
@@ -232,12 +237,13 @@ def run_storm(storm: Storm, arm: str, rate: int, wait_s: float, hold_s: float) -
         except Exception as exc:  # a storm whose faults cannot be cleared must not poison the next: reset does
             record["clear_error"] = f"{type(exc).__name__}: {exc}"
     series = scraper.series()
+    verdict = judged(series)
     record.update(
         t_fault=round(t_fault, 2),
         t_act=round(t_act, 2),
         t_verify=round(t_verify, 2),
-        recovered_at=recovered_at(series, t_act, wait_s, hold_s),
-        longest_good_after_act_s=longest_good_stretch(series, t_act),
+        recovered_at=recovered_at(verdict, t_act, wait_s, hold_s),
+        longest_good_after_act_s=longest_good_stretch(verdict, t_act),
         customer_minutes=customer_minutes(series, t_fault, rate),
         scrape_errors=scraper.errors,
         counter_resets=resets(scraper.scrapes),
@@ -257,7 +263,7 @@ def invalid(r: JSON) -> list[str]:
     load was really offered: no counter reset (a restart drops its failures), no
     scrape gap past MAX_GAP_S (merged seconds thin the verification window), no
     late sends past the load test's bar (the open loop had closed), and the
-    faults cleared. A run that fails this is a miss, never a rerun (entry 008).
+    faults cleared. Such a run is run once more (entry 011); if that fails too, it is a miss.
     """
     why = []
     if r["counter_resets"]:
@@ -273,7 +279,7 @@ def invalid(r: JSON) -> list[str]:
 
 def first_good_run(series: list[list[float]], after_t: float, length_s: float) -> float | None:
     """Seconds after `after_t` until a run of `length_s` good seconds begins. Pure. For the pilot."""
-    secs = [Second(t, ok, f) for t, ok, f in series]
+    secs = judged([Second(t, ok, f) for t, ok, f in series])
     for i, s in enumerate(secs):
         if s.t <= after_t or not s.good:
             continue
@@ -294,7 +300,9 @@ def pilot_windows(runs: list[JSON]) -> JSON:
     if any(x is None for x in recoveries):
         raise ValueError(f"a scripted fix did not recover in the pilot: {recoveries}")
     stretches = [
-        longest_good_stretch([Second(*s) for s in r["series"]], r["t_act"]) for r in runs if r["arm"] == "nobody"
+        longest_good_stretch(judged([Second(*s) for s in r["series"]]), r["t_act"])
+        for r in runs
+        if r["arm"] == "nobody"
     ]
     slowest = max(x for x in recoveries if x is not None)
     return {
@@ -399,13 +407,21 @@ def controls() -> int:
         "runs": [],
     }
     out = results_path("controls")
+    report["not_judged_first"] = []  # first tries that could not be judged, kept and reported
     for storm in storms(CONTROLS_STORMS, RATE, CONTROLS_SEED):
         for arm in ("nobody", "scripted", "wrong"):
             r = run_storm(storm, arm, RATE, WAIT_S, HOLD_S)
-            report["runs"].append(r)
             print(line(r), flush=True)
+            if r["invalid"]:  # once, never on a verdict: only a run that cannot be judged (entry 011)
+                report["not_judged_first"].append(r)
+                save(report, out)
+                r = run_storm(storm, arm, RATE, WAIT_S, HOLD_S)
+                r["second_try"] = True
+                print(line(r), flush=True)
+            report["runs"].append(r)
             save(report, out)
     report["bars"] = bars(report["runs"])
+    report["bars"]["second_tries"] = len(report["not_judged_first"])
     report["complete"] = True
     save(report, out)
     print(f"\nbars: {report['bars']}\nresults: {out}", flush=True)

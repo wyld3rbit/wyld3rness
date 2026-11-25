@@ -37,14 +37,16 @@ def test_pilot_windows_double_the_slowest_recovery_and_the_longest_false_one() -
         }
 
     runs = [
-        run("scripted", "bbb" + "g" * 12),
-        run("scripted", "bbbbbbb" + "g" * 12),
-        run("nobody", "b" * 5 + "g" * 4 + "b" * 10),
+        run("scripted", "bbb" + "g" * 20),
+        run("scripted", "bbbbbbb" + "g" * 20),
+        run("nobody", "b" * 5 + "g" * 20 + "b" * 10),
         run("nobody", "b" * 20),
     ]
     w = controls.pilot_windows(runs)
-    assert w["recovery_s"] == [4.0, 8.0] and w["nobody_longest_good_s"] == [4.0, 0.0]
-    assert w["wait_s"] == 20 and w["hold_s"] == 30  # 2 x 8 → 20; 2 x 4 = 8 → the 30 s floor
+    # Judged over 5 s (checker.judged), a second turns good once the bad ones leave its window:
+    # 4 s after the series does.
+    assert w["recovery_s"] == [8.0, 12.0] and w["nobody_longest_good_s"] == [16.0, 0.0]
+    assert w["wait_s"] == 25 and w["hold_s"] == 35  # 2 x 12 → 25; 2 x 16 = 32 → 35
     with pytest.raises(ValueError):
         controls.pilot_windows([run("scripted", "b" * 30)])
 
@@ -136,3 +138,35 @@ def test_the_compose_defaults_are_the_operating_point() -> None:
     assert default("GATEWAY_BACKOFF") == loadtest.PINNED["GATEWAY_BACKOFF"] == "0"  # as shipped
     for name, value in controls.STORM_FIXED.items():
         assert default(name) == value, name
+
+
+def test_a_run_that_cannot_be_judged_runs_once_more_and_both_are_kept(monkeypatch, tmp_path) -> None:
+    """Entry 011: a second try only for a run that cannot be judged, never for a verdict."""
+    tries: dict[tuple[str, str], int] = {}
+
+    def fake_run(storm, arm, rate, wait_s, hold_s) -> dict:
+        """The first scripted try of the first storm cannot be judged; everything else can."""
+        n = tries[storm.id, arm] = tries.get((storm.id, arm), 0) + 1
+        bad = storm.id.endswith("-00") and arm == "scripted" and n == 1
+        return {
+            "storm": {"id": storm.id, "kind": storm.kind},
+            "arm": arm,
+            "warm_ok": True,
+            "verified": arm == "scripted",
+            "recovered": arm == "scripted",
+            "recovered_at": None,
+            "customer_minutes": 0.0,
+            "actions": [{"path": "/x", "status": 200}] if arm != "nobody" else [],
+            "undos": [{"path": "/x", "status": 200}] if arm == "wrong" else [],
+            "restored": True,
+            "invalid": ["late sends 2.0%"] if bad else [],
+        }
+
+    monkeypatch.setattr(controls, "run_storm", fake_run)
+    monkeypatch.setattr(controls, "CONTROLS_STORMS", 3)
+    monkeypatch.setattr(controls.loadtest, "conditions", dict)
+    monkeypatch.setattr(controls, "results_path", lambda name: tmp_path / "out.json")
+    assert controls.controls() == 0
+    report = __import__("json").loads((tmp_path / "out.json").read_text())
+    assert len(report["runs"]) == 9 and len(report["not_judged_first"]) == 1
+    assert report["bars"]["second_tries"] == 1 and max(tries.values()) == 2
