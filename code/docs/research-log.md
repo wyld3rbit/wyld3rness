@@ -283,7 +283,7 @@ Unexplained and left so: in s7-08 nobody, almost every customer request failed f
 
 Verified, warm-up and the pilot's recovery all use the same judgment. The bars, the arms and the validity rule are unchanged.
 
-**Seen before this entry.** Seed 7's saved series, re-scored under the new judgment as a check that the change is enough: scripted 21 of 21, nobody 20 of 21, wrong 20 of 21, the two misses the runs that could not be judged. That is why this is not evidence, and the controls run again.
+**Seen before this entry.** Seed 7's saved series, re-scored under the new judgment as a check that the change is enough: scripted 21 of 21, nobody 20 of 21, wrong 20 of 21, the two misses the runs that could not be judged. Those storms shaped the rule, so they cannot test it: the controls run again.
 
 **Expected.** About 5 h 20 min (each run 10 s longer). Customer minutes as in entry 010, since the change judges, it does not count.
 
