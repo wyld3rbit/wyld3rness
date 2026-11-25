@@ -66,4 +66,4 @@ Each storm is drawn from a seed, so a storm set is reproducible ([faults.py](src
 
 ## Controls
 
-`make controls-pilot`, then `make controls` (research log entry 008): before any agent acts, 21 storms (7 of each kind) under three arms show that doing nothing fails, the scripted fix recovers and holds, and a wrong fix is caught and undone.
+`make controls-pilot`, then `make controls` (research log entries 008 and 011): before any agent acts, 21 storms (7 of each kind) under three arms show that doing nothing fails, the scripted fix recovers and holds, and a wrong fix is caught and undone. Results in entry 012.
