@@ -258,7 +258,7 @@
   <section class="panel" aria-label="Architecture schematic">
     <div class="schematic">
     <svg viewBox="-60 -198 1000 1044" role="img" aria-labelledby="svgtitle">
-      <title id="svgtitle">Autonomous on-call, target and built. Before runtime a human sets the goal, the invariants, the allowed kinds of action and the budget. Built today: an eval gate, a gate at every commit with a CI recheck, and tracing in the harness, and FindyFixy's decision, which takes a question through recall, an optional tool step, a small model, validation and a route to a triage record. Planned: the record becomes one typed action that passes policy and identity, acts on a simulated production and is verified on real signals. A recovery is kept and scored with its cost. A failure that can be undone is undone and tried again, until the tries or the budget run out. Then, or when a failure cannot be undone, the system goes to a safe state.</title>
+      <title id="svgtitle">Autonomous on-call, target and built. Before runtime a human sets the goal, the invariants, the allowed kinds of action and the budget. Built today: an eval gate, a gate at every commit with a CI recheck, and tracing in the harness, and FindyFixy's decision, which takes a question through recall, an optional tool step, a small model, validation and a route to a triage record, and the simulated production's services under real load. Planned: the record becomes one typed action that passes policy and identity, acts on a simulated production and is verified on real signals. A recovery is kept and scored with its cost. A failure that can be undone is undone and tried again, until the tries or the budget run out. Then, or when a failure cannot be undone, the system goes to a safe state.</title>
 
       <defs><marker id="arrow-planned" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,1 L10,5 L0,9 z" fill="#7f8fb0"/></marker></defs>
 
@@ -518,8 +518,8 @@
         <text class="t" x="189" y="788">Alerts</text>
         <text class="s" x="189" y="806">error budget burn</text>
       </g>
-      <g class="node" data-status="planned" data-code="none">
-        <title>Planned. Not built, no behavior yet.&#10;Small real services in containers, synthetic customers and data.</title>
+      <g class="node" data-status="built" data-code="simprod/gateway.py">
+        <title>In: Synthetic customers paying, from an open-loop load generator: Poisson arrivals at a fixed rate, each sent on time whatever the gateway does.&#10;Out: Real signals for anyone to read through the edge proxy on 127.0.0.1:8100: health, Prometheus-text metrics, an OpenAPI spec per service, and JSON logs in docker compose logs. The service that executes an action logs it with its actor.&#10;Logic: A gateway writes each payment to a ledger of 4 shards with fixed capacity, retrying failures, then notifies. Standard-library Python in hardened containers on a Docker network with no route out; the edge forwards an allow-list and never a fault control. Three typed actions: retry backoff and a per-key rate cap, each with an undo, and a restart with none.&#10;Trust: Simulated, and labeled so. Sleeps stand in for database work, so the capacity is a parameter and the faults reproduce on any machine. Research log entry 006 measures whether the VM can serve it.</title>
         <rect x="460" y="762" width="130" height="64" rx="8"/>
         <ellipse class="i" transform="translate(465 766) scale(.56)" cx="12" cy="5" rx="9" ry="3"/><path class="i" transform="translate(465 766) scale(.56)" d="M3 5V19A9 3 0 0 0 21 19V5"/><path class="i" transform="translate(465 766) scale(.56)" d="M3 12A9 3 0 0 0 21 12"/>
         <text class="t" x="525" y="788">Services</text>

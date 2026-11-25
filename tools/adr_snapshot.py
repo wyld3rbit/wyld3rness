@@ -55,8 +55,12 @@ FIRST_BUILT = {
     "Recall": 4,
     "Eval gate": 5, "CI gate": 5,
     "Tracing": 6,
+    "Services": 7,
 }
-PHASES = range(1, 7)
+PHASES = range(1, 8)
+# The phase being built, whose ADR is written when it closes. Until then the
+# newest ADR shows the phase before it. Set to None when the day's ADR lands.
+OPEN_PHASE: int | None = 7
 
 # ADR number -> the phase its picture shows. Usually the same number. Day 5 was
 # rebuilt after ADR 0005 was accepted, so ADR 0006 records the rebuilt phase 5

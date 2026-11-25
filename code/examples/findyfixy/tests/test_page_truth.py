@@ -24,6 +24,7 @@ Why parse the page instead of running it in a browser
     covers behaviour, with a stub DOM, and needs Node (skipped without it).
 """
 
+import inspect
 import json
 import os
 from pathlib import Path
@@ -42,9 +43,11 @@ from findyfixy.paths import PAGE, ROOT, WORKSPACE
 from findyfixy.tools.deploys import make_deploys_tool
 from findyfixy.tools.investigate import build_investigator
 from findyfixy.triage.graph import build_graph
+import simprod
 from wyld3rness.eval.events import EvalEventKind
 
 REPLAY = ROOT / "tests" / "js" / "replay.js"
+SIMPROD_SRC = Path(inspect.getfile(simprod)).resolve().parents[1]  # the simulated production's source root
 
 _NODE = re.compile(r'<g class="node"([^>]*)>(.*?)</g>', re.S)
 _ATTR = re.compile(r'([\w-]+)="([^"]*)"')
@@ -100,7 +103,7 @@ def code_exists(code: str, graph: set[str]) -> bool:
     """True when `data-code` names a real graph node or an existing module in a package's source root."""
     if code.startswith("graph:"):
         return code.removeprefix("graph:") in graph
-    return any((src / code).is_file() for src in (WORKSPACE / "src", ROOT / "src"))
+    return any((src / code).is_file() for src in (WORKSPACE / "src", ROOT / "src", SIMPROD_SRC))
 
 
 def status_problems(page: str, graph: set[str]) -> list[str]:

@@ -240,7 +240,7 @@ text { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-se
         <text class="t" x="189" y="788">Alerts</text>
         <text class="s" x="189" y="806">error budget burn</text>
       </g>
-<g class="node" data-status="planned">
+<g class="node" data-status="built">
         <rect x="460" y="762" width="130" height="64" rx="8"/>
         <ellipse class="i" transform="translate(465 766) scale(.56)" cx="12" cy="5" rx="9" ry="3"/><path class="i" transform="translate(465 766) scale(.56)" d="M3 5V19A9 3 0 0 0 21 19V5"/><path class="i" transform="translate(465 766) scale(.56)" d="M3 12A9 3 0 0 0 21 12"/>
         <text class="t" x="525" y="788">Services</text>

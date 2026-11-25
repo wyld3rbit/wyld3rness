@@ -178,6 +178,8 @@ code/
 │       ├── evals/           golden set and the adapter the harness drives
 │       ├── console/         the live visualizer
 │       └── wiring.py        the one composition root
+├── examples/simprod/        the simulated production it acts on: gateway, ledger, notifications,
+│                            edge allow-list, open-loop customers; standard library, no route out
 ├── infra/                   self-hosted services
 └── docs/                    this page and one decision record per phase
 tools/                       public checks: docs drift, privacy scan, pictures
@@ -193,6 +195,7 @@ tools/                       public checks: docs drift, privacy scan, pictures
 | Incident memory | Postgres with pgvector | PostgreSQL |
 | Embedding, reranking | bge-small-en-v1.5, bge-reranker-base | MIT |
 | Tracing | OpenTelemetry into self-hosted Langfuse | Apache 2.0, MIT |
+| Simulated production | Python standard library on a pinned Debian slim image, Docker Compose | PSF, Debian free licenses |
 
 ## Two harnesses
 

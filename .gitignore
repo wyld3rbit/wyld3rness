@@ -61,3 +61,5 @@ Icon?
 # Local working material and the agent's instructions. Never pushed.
 internal/
 CLAUDE.md
+# Load-test and control results from the simulated production (code/examples/simprod)
+/code/examples/simprod/results/

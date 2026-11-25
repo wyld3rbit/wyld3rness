@@ -112,3 +112,10 @@ def test_every_readme_in_the_repository_is_checked() -> None:
                              capture_output=True, text=True, check=True).stdout.split()
     assert set(tracked) <= set(check_docs.DOCS)
 
+
+
+def test_addresses_and_quoted_shell_are_not_paths() -> None:
+    """A curl line names URLs and headers, not repository files."""
+    refs = check_docs.path_refs(["curl -X POST 127.0.0.1:8100/gateway/pay -H 'Content-Type: application/json'",
+                                 "urlopen('http://ledger:9000/fault')", "see code/README.md"])
+    assert refs == {"code/README.md"}

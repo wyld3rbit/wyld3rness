@@ -2,7 +2,7 @@
 
 wyld3rness is being built as a harness and a set of agentic loops for agents that run on-call without a human approving each action. People will set the goal, the invariants, the allowed kinds of action and the budget before runtime. Code will decide what may act, check real signals, undo what did not work, and stop when the tries or the money run out. It is tested on FindyFixy, an event detection, determination and mitigation agent.
 
-**Today FindyFixy diagnoses and proposes. It cannot act yet.** The loop and the simulated production it will act on are the build in progress.
+**Today FindyFixy diagnoses and proposes. It cannot act yet.** The simulated production it will act on runs under real load and can be inspected by anyone ([simprod](code/examples/simprod/README.md)); its faults and the loop are the build in progress.
 
 ![The visualizer on a live eval run: two golden cases move through what is built, inside the planned loop drawn dashed](code/docs/demo.gif)
 

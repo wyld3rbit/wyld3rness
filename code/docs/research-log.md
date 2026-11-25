@@ -111,3 +111,214 @@ The bar: both behave as predicted. The 2026-11-21 loss is the reference, with th
 **Deviations.** The first attempt at the step 1 commit, before E and F, stopped because the container VM had shut down: its host agent received a termination signal at 12:16:36, from a cause not found. With no database, the gate failed within seconds, as the fail-fast rule in 004's change intends, and the commit was refused. It was repeated once the VM was back.
 
 **Meaning.** A database restart now costs the case in flight a few seconds instead of costing the rest of the run, and the restarts seen on 2026-11-21 lose their trigger. What this cannot show: a restart longer than the 60 s deadline (the case in flight fails and the next one tries again, by design, and is covered by tests with fakes only), a network path that drops silently (keepalives, also tested only with fakes), or behaviour under memory pressure, where the 2026-11-21 restarts began.
+
+---
+
+## 006. Does the simulated production fit in the container VM, and at what rate does it run? (protocol)
+
+**Question.** Steps 2 to 6 run a small production (gateway, ledger, notifications, behind an allow-list proxy, code in `code/examples/simprod/`) under synthetic load, in the same container VM as Langfuse and Postgres: 2 CPUs and 5.77 GiB, of which about 2.7 GiB was available before it started. If the services under load leave no room, a storm's numbers would measure the VM, not the system, so this is checked before anything is built on them. The test also fixes the load rate R that every storm runs at, which sets the ledger's capacity and converts failed requests into customer minutes in step 6.
+
+**Protocol.** `make load-test` at commit `83a4d1f` (`simprod/loadtest.py`, whose constants are these numbers), with Langfuse and Postgres running. Customers are an open-loop generator: Poisson arrivals at the rate, each request sent at its time whether or not earlier ones answered, latency counted from the scheduled time, customer timeout 3 s. VM CPU and memory are read from `/proc/stat` and `/proc/meminfo` inside a container, which show the whole VM; the generator's own CPU counts, as it will in the storms.
+
+| Part | What runs | Bar for each phase |
+|---|---|---|
+| Ramp | 25, 50, 100, 200, 400, 800, 1600 requests/s, 60 s each, ledger capacity far above the load (64 slots of 1 ms per shard), stopping at the first rate that fails | 0 failed requests, p99 ≤ 250 ms (half the gateway's 500 ms timeout), VM CPU mean ≤ 80%, late sends (more than 100 ms behind schedule) ≤ 1% |
+| Rate | C = the highest ramp rate passing before the first failure (a lower bound if all pass). R = the highest ramp rate with 4 × R ≤ C: a retry storm sends each request up to 4 times, and must still fit in what the VM can serve | No R: stop and resize the VM before building on it |
+| Soak | 3 runs of 300 s at R (seeds 1 to 3), the ledger as it will run in storms: 1 slot per shard, each write held 2000 / R ms, so capacity is 2 × R and the shards are half busy | The ramp's bar with VM CPU mean ≤ 60%, and VM memory available ≥ 1024 MiB at its lowest |
+
+The bar: all three soaks pass. Expected from the exploratory runs below: every ramp rate up to at least 400 passes, so R is 100 or more.
+
+**Exploratory runs before this entry** (2026-11-23, evidence kept, no bar): 10 s at 50/s, 499 of 499 ok, p99 133 ms, ledger at its default 20 ms per write. 15 s each at 200/s and 400/s with the ledger unconstrained: all 3,020 and 6,031 ok, p99 48 and 88 ms, VM CPU over each run 28% and 33%. They changed the design in three ways before this entry: the ramp gained 1600/s because 400/s left most of the CPU idle; the generator's thread pool is sized from the rate (rate × 3 s × 1.5, since a storm keeps up to rate × 3 s requests waiting), because the fixed 256 threads would have sent late during a storm and quietly lowered the load on the system it measures; and late sends became part of the bar.
+
+**Limits.** One VM on one machine, with Langfuse idle rather than ingesting traces. Sleep-based service times stand in for database work, so ledger CPU is not representative of a real database. The ramp's 60 s phases show sustained throughput, not behaviour over hours.
+
+**Ran.** Not yet.
+
+---
+
+## 007. Does the simulated production fit in the container VM, and at what rate does it run? (results of 006)
+
+**Ran.** On 2026-11-24 from 02:08 to 02:32 UTC, `make load-test` at commit `07574fc` (the code of `83a4d1f`; the image's files were checked equal to that commit's before the run), with Langfuse, Postgres and Adminer running. Results file SHA-256 `f91681778a33c042…`.
+
+| Phase | Rate/s | Requests | Failed | Late sends | p50 ms | p99 ms | VM CPU mean (max) | VM memory available, lowest | Bar |
+|---|---|---|---|---|---|---|---|---|---|
+| Ramp | 25 | 1,476 | 0 | 0 | 8.7 | 89.5 | 21.6% (33.7%) | 2,573 MiB | pass |
+| Ramp | 50 | 2,998 | 0 | 0 | 8.9 | 90.4 | 21.8% (37.9%) | 2,533 MiB | pass |
+| Ramp | 100 | 5,981 | 0 | 0 | 8.5 | 89.8 | 26.4% (42.3%) | 2,537 MiB | pass |
+| Ramp | 200 | 12,071 | 0 | 0 | 7.7 | 88.4 | 27.1% (40.7%) | 2,587 MiB | pass |
+| Ramp | 400 | 23,815 | 0 | 0 | 7.7 | 55.1 | 37.5% (59.7%) | 2,545 MiB | pass |
+| Ramp | 800 | 48,298 | 0 | 0 | 7.4 | 49.7 | 44.3% (55.2%) | 2,542 MiB | pass |
+| Ramp | 1600 | 95,689 | 12,604 (11,081 timeouts, 1,523 connection errors) | 745 | 10.0 | 546.2 | 81.6% (89.8%) | 2,199 MiB | fail: failures, p99, CPU |
+| Soak 1 | 200 | 59,587 | 0 | 0 | 19.1 | 57.8 | 29.6% (45.6%) | 2,430 MiB | pass |
+| Soak 2 | 200 | 59,933 | 0 | 0 | 19.6 | 58.4 | 30.8% (49.2%) | 2,392 MiB | pass |
+| Soak 3 | 200 | 59,719 | 0 | 0 | 19.4 | 57.5 | 31.2% (46.1%) | 2,412 MiB | pass |
+
+C = 800/s, measured, not a lower bound: 1600/s failed. R = 200/s, since 4 × 200 = 800 ≤ C. All three soaks pass, so the bar is met. No phase lost a VM sample (27 to 28 per ramp phase, 144 per soak). The 200/s prediction of the exploratory runs held, and the expectation in 006 (every rate to at least 400 passes) was exceeded: 800 passed.
+
+**What saturated.** Per-container CPU from `docker stats` (100% is one core): at 800/s the gateway used 29%, the generator 14%, notifications 13%, the ledger 12%; at 1600/s the gateway used 81%, the generator 23%. A Python process runs one thread at a time, so one process tops out near one core: the knee is the gateway's, not the generator's (745 late sends, 0.8%, stayed under the 1% bar). The VM itself idles at about 21% with Langfuse and Postgres up, the floor under every phase.
+
+**Deviations.** None from the protocol. `make load-test` reinstalled the simprod package in the worktree's environment first (uv's editable install of a changed member); the image, which serves the requests, was unchanged.
+
+**Meaning.** Storms run at 200 customer requests a second, the ledger at one slot per shard holding each write 10 ms (capacity 400/s, half busy), and a storm that quadruples the gateway's load to the ledger still sits at the rate the VM served without a failure. A retry storm's numbers will therefore measure the storm, not the VM. Customer minutes in step 6 convert at 12,000 requests a minute. Unexplained and left so: below 400/s p99 is about 90 ms, above it about 50 ms; one guess is CPU frequency scaling at low load, not tested. What this cannot show: behaviour while Langfuse ingests traces (it was idle), a gateway with more than one process, or anything over hours.
+
+---
+
+## 008. Are the storms real, fixable, and judged fairly? (protocol)
+
+**Question.** Steps 3 to 6 put an agent and a no-model script on seeded storms in the simulated production (entry 006), judged by a checker that reads only what customers saw. Three things must hold first. A storm must last by itself, or a later "fix" would be credited for what time did. The correct fix must end it, or no agent can win and every result is noise. A wrong fix must be caught and undone, or the checker cannot be trusted. Each of three arms is the control for one of these. The pilot before them sets the two windows every later verdict uses, and the controls give the spread of customer minutes from which step 6 sizes N.
+
+**Storms.** Faults version 2 (`simprod/faults.py`), at R = 200 requests a second (entry 007). A storm is a fault plus the gateway it meets, deployed either as shipped (retries fire at once) or with backoff (`GATEWAY_BACKOFF=1`: full jitter and a retry budget). The storms cycle through three kinds; each has one correct fix, a set of actions applied together. The decoy is another customer's key, drawn from the seed.
+
+| Kind | Gateway | Injected | Fix | Wrong fix |
+|---|---|---|---|---|
+| Retry storm | As shipped | Every ledger write slower by 2 to 5 service times, for 5 to 15 s | Backoff on | Cap the decoy |
+| Hot shard | Backs off | One key sent at 0.5 R to 0.75 R on top of its customers, until cleared | Cap that key at R / 20 | Cap the decoy |
+| Compound | As shipped | The same runaway | Cap that key and backoff on | Backoff on and cap the decoy |
+
+**Protocol.** At commit `633a288`. One storm under one arm: fresh containers, the gateway deployed as the kind says; 20 s of warm-up in which every second must be good; the fault injected from inside the network; 15 s later the arm acts through the edge, as an agent will; WAIT seconds later, verification; then the hold. A good second has at least one completed customer request and at most 1% failed. Recovered means a run of HOLD good seconds that starts within WAIT of the action. Verified means the last 5 s of WAIT are all good. Customer minutes are the failed customer requests from the fault on, divided by R × 60. A run is judged only if the customer stream was measured whole and the load was really offered: no counter reset, no more than 2.5 s between two scrapes after the fault, at most 1% of customer requests sent over 100 ms late (the load test's bar), and the faults cleared at the end. A run that fails this is a miss for its arm. Every setting the storm arithmetic rests on (shards, queue limit, service times, retries, timeout, backoff, rate) is pinned per storm and saved in its record.
+
+| Part | What runs | Rule or bar |
+|---|---|---|
+| Pilot | `make controls-pilot`: 9 storms (seed 3), 3 of each kind, under nobody and the scripted fix, observed for 90 s after the action | WAIT = 2 × the slowest scripted recovery (the first run of 10 good seconds), HOLD = 2 × the longest good stretch under nobody, at least 30 s, both rounded up to 5 s. A scripted storm that never recovers fails the pilot: stop and report |
+| Windows | WAIT and HOLD are committed into `simprod/controls.py` before the controls run; `make controls` refuses to run without them | - |
+| Controls | `make controls`: 21 storms (seed 7), 7 of each kind, each under nobody, scripted, wrong, in that order | nobody: 21 of 21 not recovered. scripted: 21 of 21 recovered, every action answered 200. wrong: 21 of 21 not verified, undone with every undo answered 200, the gateway back to its starting settings. Every warm-up good |
+
+The bar: all three arms meet theirs over all 21 storms. No storm is rerun: a storm that hits an infrastructure error, or cannot be judged, counts as a miss and is reported as one with its reason. Reported beside the bar: customer minutes per kind and arm (median, minimum, maximum), the time to recovery after the scripted fix, scrape errors, the longest scrape gap and the late-send share.
+
+Expected from the exploratory runs below: nobody loses about 1.25 customer minutes in a retry storm and about 0.32 in a runaway storm; the scripted fix recovers within about 2 s (retry storm, hot shard) to 6 s (compound) of acting; WAIT near 20 s and HOLD at its 30 s floor.
+
+**Exploratory runs before this entry** (2026-11-24, faults version 1 on the uncommitted step code, one storm per arm, evidence kept, no bar):
+
+| Run | Storm and gateway | Arm | Recovered | Customer minutes |
+|---|---|---|---|---|
+| 02:36 UTC | Retry storm, as shipped | nobody | no | 1.253 |
+| | | backoff | yes | 0.279 |
+| | Hot shard, as shipped | nobody | no | 0.324 |
+| | | cap | no | 0.315 |
+| 02:46 UTC | Hot shard, backoff deployed before the fault | nobody | no | 0.324 |
+| | | cap | yes, failures near 0 about 2 s after acting | 0.072 |
+| | | cap on another key | no | 0.323 |
+| 18:49 UTC | Hot shard, as shipped (same storm as 02:46) | cap | no | 0.317 |
+| | | backoff | no | 0.324 |
+| | | cap and backoff together | yes, about 6 s after acting | 0.079 |
+| | | cap, then backoff 15 s later | yes, about 7 s after the backoff | 0.147 |
+
+They changed the design. In version 1 a hot shard was fixed by a cap alone, and the 02:36 run showed it was not: with retries firing at once, the shard's own customers (about R / 4 a second, each sent up to 4 times) keep a shard that serves R / 2 over capacity after the runaway is capped, so the outage is a retry storm confined to one shard. The 02:46 run isolated the cause: with backoff deployed, the cap alone ends it. The 18:49 run showed that on the gateway as shipped each action alone is indistinguishable from doing nothing, and only the pair recovers. Version 2 keeps both systems as two kinds, the wrong fixes aim at a decoy key so they test the target as well as the action, and a try in step 3 became a set of at most 2 actions verified together.
+
+**Limits.** The same project writes the faults, the fixes and the checker. The scripted fix is an oracle that reads the storm's seed, so the controls show the environment can be won, not that anything can find the fix. Arms run in a fixed order per storm; containers are recreated between runs, so only the VM carries over. One seed set per part, one VM, synthetic customers, and windows measured on this rate and capacity only.
+
+**Ran.** Not yet.
+
+---
+
+## 009. The gateway broke again after a correct fix (deviation from 008)
+
+**What happened.** The pilot of entry 008 ran on 2026-11-25 from 05:08 to 05:52 UTC at commit `e4de41e` and gave WAIT = 20 s and HOLD = 30 s. In one storm (s3-04, hot shard) the scripted cap recovered customers 5 s after acting, held for about 70 s, and then customers failed again at up to 177 a second until the run ended, with the cap still in force. The run was marked not judged (2.5% late sends), as entry 008 requires.
+
+**Exploratory runs** (2026-11-25, evidence kept, no bar):
+
+| Runs of storm s3-04, scripted cap | Broke again after recovering | Gateway after |
+|---|---|---|
+| 7 more, as in the pilot | 1 of 7 (2 of 8 with the pilot), 62 s and 75 s after the cap | about 95% of one core, against 12 to 17% in the runs that held |
+| Customers container paused 2 s, 30 s after the cap | 3 of 3, within 3 s of the pause, until the run ended | about 95% of one core; established connections from about 330 to about 920 |
+| The same pause, gateway open-file limit raised from 1,024 to 65,536 | 0 of 3: 3 bad seconds, then good to the end | normal |
+
+**Cause.** Each container could hold 1,024 open files, sockets included. A gateway thread holds up to three sockets: its customer's, one to the ledger, one to notifications. When the customers process stalls (a VM hiccup, or the forced pause), it then sends its backlog at once, the gateway gains hundreds of connections and threads, and it passes the limit. From then on every new ledger connection failed at once (a plain `OSError`, answered in 0.1 ms), the gateway answered 504 to most payments, and since kept-alive connections never close, the count never came back down. Two other fixes, a limit on payments in flight and closing idle connections, did not help and were removed. Guesses ruled out by measurement: lock contention in the payment path (failing payments were not in flight), and exhausted local ports (464 sockets in TIME_WAIT of 28,232).
+
+**Deviation.** The open-file limit is raised to 65,536 in every simprod container (commit `5dac66a`), and nothing else changes. The system that entries 006, 007 and the pilot measured has changed, so before the controls, the load test of entry 006 and the pilot of entry 008 are run again, each exactly as written. The first pilot is superseded and kept with its evidence. If the load test changes C, R follows the rule of entry 006, and the storms run at the new R.
+
+**Meaning.** A system can fail in a way none of its designed faults describe, and a correct fix gets the blame. Here it was a resource limit, invisible until a burst. Entry 008's validity rule caught it (the run was not judged), but only because the burst also made customers send late.
+
+---
+
+## 010. Are the storms real, fixable, and judged fairly? (results of 008)
+
+**Ran.** On 2026-11-25 from 09:20 to 14:26 UTC, `make controls` at commit `b1051fc` (the code of `5dac66a` with WAIT = 20 s and HOLD = 30 s from the re-run pilot, entry 009), with Langfuse, Postgres and Adminer running. 21 storms (seed 7), 3 arms each. Results file SHA-256 `ab76f70729615efe…`.
+
+**The bar is not met.** 59 of 63 runs met their arm's bar.
+
+| Arm | Met | Missed |
+|---|---|---|
+| nobody | 20 of 21 | s7-08 (compound): not judged, scrape gap 4.0 s and 8.7% late sends |
+| scripted | 19 of 21 | s7-01 and s7-10 (both hot shard): recovered about 5 s after acting, then one second with 3 failed of 208, and 2 failed of 188, broke the hold |
+| wrong | 20 of 21 | s7-07 (hot shard): not judged, 2.7% late sends. Every wrong fix was undone and the gateway's settings restored, 21 of 21 |
+
+Every warm-up was good. Every action and undo was answered 200.
+
+**Customer minutes**, judged runs (median, minimum to maximum):
+
+| Kind | nobody | scripted | wrong |
+|---|---|---|---|
+| Retry storm | 1.080 (1.059 to 1.109) | 0.276 (0.271 to 0.289) | 1.091 (1.058 to 1.107) |
+| Hot shard | 0.277 (0.272 to 0.285) | 0.073 (0.068 to 0.080) | 0.277 (0.272 to 0.282) |
+| Compound | 0.279 (0.272 to 0.285) | 0.079 (0.072 to 0.089) | 0.275 (0.272 to 0.281) |
+
+Recovery after the scripted fix, by the checker: retry storm 4.5 to 4.7 s; hot shard 4.6 to 6.6 s, and 18.8 s in s7-13; compound 5.5 to 8.3 s, and 19.5 s in s7-08. The two late ones are the same effect as the two misses: a single second with 2 failed requests of about 200 came after the real recovery, so the checker's run of good seconds started later.
+
+**What failed.** The fixes did not fail. In every scripted run, failures fell to about 0 within 5 to 8 s of acting. Two rules did:
+
+- A good second allows at most 1% failed, which at 200 requests a second is 2. Stray failures of 2 or 3 in one second, after a real recovery, broke the 30 s hold twice in 21 scripted runs and delayed the verdict twice more. The rule is too fine for counts this small.
+- A run that cannot be judged is a miss, and the customers generator stalled in 2 of 63 runs (late sends 2.7% and 8.7%). At that rate, all 63 runs being judged was unlikely from the start.
+
+Unexplained and left so: in s7-08 nobody, almost every customer request failed for a stretch (1.07 customer minutes, against about 0.28 for that kind), in the same run as the worst generator stall. That run could not be judged.
+
+**Deviations.** None from the protocol. The run took 5 h 6 min, not the 2 hours expected: recreating the containers before each storm takes longer than estimated.
+
+**Meaning.** The storms are real: no judged storm ended by itself, and the wrong fixes changed nothing and were undone. The correct fixes work. But the controls, as specified, cannot certify that, so step 2's bar is not met, and nothing after it may rely on these windows and rules yet. A changed rule needs a new protocol entry and a fresh seed, so it is not tuned to these storms.
+
+---
+
+## 011. Are the storms real, fixable, and judged fairly? (amended protocol)
+
+**Why.** Entry 010 failed its bar on two rules, not on the storms or the fixes. A second judged alone holds about 200 customer requests, so 1% is 2 failures, and stray pairs after a real recovery broke the hold. And a run that could not be judged was a miss, though the customers generator stalls now and then (2 of 63 runs).
+
+**What changes.** Entry 008 stands except for these, at commit `22c09b2`:
+
+| Rule | Entry 008 | Now |
+|---|---|---|
+| A good second | Its own completions: some, and at most 1% failed | The completions of the 5 s ending at it (`checker.judged`): some, and at most 1% failed. About 1,000 requests, so 1% is 10. A scrape gap shortens the window; it never reaches further back |
+| A run that cannot be judged | A miss | Run once more, at once, same storm and arm. Both tries are kept and reported. If the second cannot be judged either, a miss. A run that can be judged is never run again, whatever its verdict |
+| WAIT, HOLD | 20 s, 30 s | 30 s, 30 s: entry 008's pilot rule applied to the saved series of the re-run pilot (entry 009) under the new judgment, without a new pilot. Slowest scripted recovery 12.6 s (was 8.6 s: a second turns good 4 s later, when the bad ones leave its window); no good second under nobody |
+| Storms | Seed 7 | Seed 11, 21 storms, 7 of each kind: fresh, so the rules are not judged on the storms that prompted them |
+
+Verified, warm-up and the pilot's recovery all use the same judgment. The bars, the arms and the validity rule are unchanged.
+
+**Seen before this entry.** Seed 7's saved series, re-scored under the new judgment as a check that the change is enough: scripted 21 of 21, nobody 20 of 21, wrong 20 of 21, the two misses the runs that could not be judged. Those storms shaped the rule, so they cannot test it: the controls run again.
+
+**Expected.** About 5 h 20 min (each run 10 s longer). Customer minutes as in entry 010, since the change judges, it does not count.
+
+**Limits.** As entry 008. Wider: a 5 s window can hide a single bad second of up to about 10 failures; a real relapse lasts longer than that (entry 009's lasted until the run ended).
+
+**Ran.** Not yet.
+
+---
+
+## 012. Are the storms real, fixable, and judged fairly? (results of 011)
+
+**Ran.** On 2026-11-25 from 17:51 to 19:54 UTC, `make controls` at commit `95575df` (the rules of `22c09b2`, entry 011), with Langfuse, Postgres and Adminer running. 21 storms (seed 11), 3 arms each. Results file SHA-256 `37ff3e62402fe8a2…`.
+
+**The bar is met.** 63 of 63 runs met their arm's bar, every run was judged on its first try, so no second try ran.
+
+| Arm | Met | What happened |
+|---|---|---|
+| nobody | 21 of 21 | No storm ended by itself: not one judged-good second after the fault, in any storm |
+| scripted | 21 of 21 | Every fix recovered and held 30 s, every action answered 200 |
+| wrong | 21 of 21 | None verified, every one undone with every undo answered 200, the gateway's settings restored 21 of 21 |
+
+Every warm-up was good. No scrape errors; the longest gap between scrapes 1.13 s; late sends at most 0.13% in a run.
+
+**Customer minutes** (median, minimum to maximum):
+
+| Kind | nobody | scripted | wrong |
+|---|---|---|---|
+| Retry storm | 1.248 (1.241 to 1.266) | 0.281 (0.271 to 0.288) | 1.262 (1.240 to 1.264) |
+| Hot shard | 0.317 (0.312 to 0.330) | 0.074 (0.070 to 0.084) | 0.318 (0.312 to 0.327) |
+| Compound | 0.320 (0.312 to 0.327) | 0.080 (0.078 to 0.089) | 0.319 (0.312 to 0.325) |
+
+Against entry 010, scripted is the same, and nobody and wrong are about 15% higher. That is the longer run, not the storms: failures are counted from the fault to the end of the hold, which entry 011's WAIT moved from 65 s to 75 s after the fault, and an unfixed storm fails at a steady rate (1.080 × 75 / 65 = 1.246; 0.277 × 75 / 65 = 0.320).
+
+Recovery after the scripted fix, by the checker: retry storm 8.5 to 8.8 s, hot shard 8.5 to 10.7 s, compound 9.6 to 11.6 s. Entry 010's 4.5 to 8.3 s, plus the 4 s the 5 s window adds, as entry 011 expected.
+
+**Deviations.** None from the protocol. The run took 2 h 3 min, not the 5 h 20 min expected from entry 010's 5 h 6 min on the same machine and conditions. Why entry 010 ran slower is not known.
+
+**Meaning.** The storms are real (none ends by itself), fixable (the correct set of actions ends every one, in about 10 s), and judged fairly (every wrong fix is caught and undone, with the system put back as it was). The environment can be won, so an agent's result in it means something. The spread is tight: within a kind and arm, customer minutes vary by at most about 0.03 (2% in retry storms, up to 20% in the small scripted numbers). Step 6 sizes N from it. These windows and rules are now fixed for steps 3 to 6.

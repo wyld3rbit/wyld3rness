@@ -6,11 +6,11 @@
 #   1. Known vulnerabilities in the locked set, without installing anything.
 #   2. Startup hooks: a .pth file runs code every time Python starts, which is
 #      how a hijacked package can persist. Only the known shims are allowed,
-#      and this workspace's own editable installs (wyld3rness.pth and
-#      findyfixy.pth), each a single line naming its src/ folder.
+#      and this workspace's own editable installs (wyld3rness.pth,
+#      findyfixy.pth and simprod.pth), each a single line naming its src/ folder.
 # On any finding, stop and read it. Do not upgrade or remove to make it pass.
 
-.PHONY: audit hooks scan up down setup ingest console triage test test-harness lint eval-retrieval eval eval-gate eval-baseline eval-freeze eval-compare eval-negative case golden verify-attestation obs-secrets obs-up obs-down obs-prices
+.PHONY: audit hooks scan up down sim-up load-test controls-pilot controls setup ingest console triage test test-harness lint eval-retrieval eval eval-gate eval-baseline eval-freeze eval-compare eval-negative case golden verify-attestation obs-secrets obs-up obs-down obs-prices
 
 # Memory for the Colima VM, in GB. 6 on most days, 8 on Langfuse days:
 #   make up COLIMA_MEMORY=8
@@ -21,6 +21,8 @@ COLIMA_MEMORY ?= 6
 APP_DIR := examples/findyfixy
 APP_COMPOSE := $(APP_DIR)/docker-compose.yml
 APP_ENV := $(APP_DIR)/.env
+# The simulated production the agent operates (examples/simprod/README.md).
+SIM_COMPOSE := examples/simprod/docker-compose.yml
 # Every workspace member installed: the harness and the example app.
 RUN := uv run --all-packages
 
@@ -39,10 +41,33 @@ up:
 # The compose step runs only while the VM is up. If it fails then, the make
 # stops there, so a half-stopped system is never reported as clean.
 down:
-	@if colima status >/dev/null 2>&1; then docker compose -f $(APP_COMPOSE) down; fi
+	@if colima status >/dev/null 2>&1; then docker compose -f $(SIM_COMPOSE) --profile load --profile storm --profile chaos down && docker compose -f $(APP_COMPOSE) down; fi
 	colima stop
 	@if colima status >/dev/null 2>&1; then echo "FAILED: Colima is still running"; exit 1; fi
 	@echo "Colima is stopped."
+
+# sim-up: build and start the simulated production (gateway, ledger,
+# notifications, edge) and wait until every service is healthy. Separate from
+# `up` because it costs VM memory only the step 2 to 6 runs need. Inspect it on
+# 127.0.0.1:8100 (examples/simprod/README.md). `make down` stops it too.
+sim-up:
+	docker compose -f $(SIM_COMPOSE) up -d --build --wait
+
+# load-test: research log entry 006. A rate ramp, then three soaks at the chosen
+# rate, about 25 minutes. Needs `make up` and `make sim-up`. Prints the verdict and
+# writes examples/simprod/results/loadtest-<UTC>.json.
+load-test:
+	$(RUN) simprod-loadtest
+
+# controls-pilot / controls: research log entry 008. The pilot (about 45 minutes)
+# measures recovery times and sets WAIT and HOLD; the controls (about 2 hours) run
+# 21 storms x 3 arms (nobody, scripted fix, wrong fix undone) against their bars.
+# Need `make up` and `make sim-up`. Results in examples/simprod/results/.
+controls-pilot:
+	$(RUN) simprod-controls pilot
+
+controls:
+	$(RUN) simprod-controls run
 
 audit:
 	uv export --frozen --all-packages --format requirements-txt --no-emit-workspace -o .audit-req.txt > /dev/null
@@ -53,12 +78,13 @@ audit:
 	    ! -name 'distutils-precedence.pth' \
 	    ! -name '__editable__*.pth' \
 	    ! -name 'wyld3rness.pth' \
-	    ! -name 'findyfixy.pth'); \
+	    ! -name 'findyfixy.pth' \
+	    ! -name 'simprod.pth'); \
 	if [ -n "$$bad" ]; then \
 	    echo "UNEXPECTED .pth FILES, show their contents before going on:"; \
 	    echo "$$bad"; exit 1; \
 	fi; \
-	for pair in wyld3rness:src findyfixy:examples/findyfixy/src; do \
+	for pair in wyld3rness:src findyfixy:examples/findyfixy/src simprod:examples/simprod/src; do \
 	    f=$$(find .venv -name "$${pair%%:*}.pth"); want="$$(pwd)/$${pair#*:}"; \
 	    if [ -n "$$f" ] && [ "$$(cat "$$f")" != "$$want" ]; then \
 	        echo "UNEXPECTED CONTENT in $$f (expected the single line $$want):"; cat "$$f"; exit 1; \
