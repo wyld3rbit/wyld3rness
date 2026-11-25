@@ -228,3 +228,40 @@ They changed the design. In version 1 a hot shard was fixed by a cap alone, and 
 **Deviation.** The open-file limit is raised to 65,536 in every simprod container (commit `5dac66a`), and nothing else changes. The system that entries 006, 007 and the pilot measured has changed, so before the controls, the load test of entry 006 and the pilot of entry 008 are run again, each exactly as written. The first pilot is superseded and kept with its evidence. If the load test changes C, R follows the rule of entry 006, and the storms run at the new R.
 
 **Meaning.** A system can fail in a way none of its designed faults describe, and a correct fix gets the blame. Here it was a resource limit, invisible until a burst. Entry 008's validity rule caught it (the run was not judged), but only because the burst also made customers send late.
+
+---
+
+## 010. Are the storms real, fixable, and judged fairly? (results of 008)
+
+**Ran.** On 2026-11-25 from 09:20 to 14:26 UTC, `make controls` at commit `b1051fc` (the code of `5dac66a` with WAIT = 20 s and HOLD = 30 s from the re-run pilot, entry 009), with Langfuse, Postgres and Adminer running. 21 storms (seed 7), 3 arms each. Results file SHA-256 `ab76f70729615efe…`.
+
+**The bar is not met.** 59 of 63 runs met their arm's bar.
+
+| Arm | Met | Missed |
+|---|---|---|
+| nobody | 20 of 21 | s7-08 (compound): not judged, scrape gap 4.0 s and 8.7% late sends |
+| scripted | 19 of 21 | s7-01 and s7-10 (both hot shard): recovered about 5 s after acting, then one second with 3 failed of 208, and 2 failed of 188, broke the hold |
+| wrong | 20 of 21 | s7-07 (hot shard): not judged, 2.7% late sends. Every wrong fix was undone and the gateway's settings restored, 21 of 21 |
+
+Every warm-up was good. Every action and undo was answered 200.
+
+**Customer minutes**, judged runs (median, minimum to maximum):
+
+| Kind | nobody | scripted | wrong |
+|---|---|---|---|
+| Retry storm | 1.080 (1.059 to 1.109) | 0.276 (0.271 to 0.289) | 1.091 (1.058 to 1.107) |
+| Hot shard | 0.277 (0.272 to 0.285) | 0.073 (0.068 to 0.080) | 0.277 (0.272 to 0.282) |
+| Compound | 0.279 (0.272 to 0.285) | 0.079 (0.072 to 0.089) | 0.275 (0.272 to 0.281) |
+
+Recovery after the scripted fix, by the checker: retry storm 4.5 to 4.7 s; hot shard 4.6 to 6.6 s, and 18.8 s in s7-13; compound 5.5 to 8.3 s, and 19.5 s in s7-08. The two late ones are the same effect as the two misses: a single second with 2 failed requests of about 200 came after the real recovery, so the checker's run of good seconds started later.
+
+**What failed.** The fixes did not fail. In every scripted run, failures fell to about 0 within 5 to 8 s of acting. Two rules did:
+
+- A good second allows at most 1% failed, which at 200 requests a second is 2. Stray failures of 2 or 3 in one second, after a real recovery, broke the 30 s hold twice in 21 scripted runs and delayed the verdict twice more. The rule is too fine for counts this small.
+- A run that cannot be judged is a miss, and the customers generator stalled in 2 of 63 runs (late sends 2.7% and 8.7%). At that rate, all 63 runs being judged was unlikely from the start.
+
+Unexplained and left so: in s7-08 nobody, almost every customer request failed for a stretch (1.07 customer minutes, against about 0.28 for that kind), in the same run as the worst generator stall. That run could not be judged.
+
+**Deviations.** None from the protocol. The run took 5 h 6 min, not the 2 hours expected: recreating the containers before each storm takes longer than estimated.
+
+**Meaning.** The storms are real: no judged storm ended by itself, and the wrong fixes changed nothing and were undone. The correct fixes work. But the controls, as specified, cannot certify that, so step 2's bar is not met, and nothing after it may rely on these windows and rules yet. A changed rule needs a new protocol entry and a fresh seed, so it is not tuned to these storms.
