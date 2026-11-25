@@ -131,3 +131,9 @@ def test_pure_modules_import_no_vendor_client() -> None:
         path = HARNESS / "eval" / f"{name}.py"
         for module in _imported_modules(path):
             assert not module.split(".")[0].startswith(VENDOR_CLIENTS), f"{path.name} imports {module}"
+
+
+def test_the_verdict_uses_the_standard_library_only() -> None:
+    """The rule that judges an agent must not depend on what the agent uses (loop/verdict.py)."""
+    imported = {m.split(".")[0] for m in _imported_modules(HARNESS / "loop" / "verdict.py")}
+    assert imported <= set(sys.stdlib_module_names), imported - set(sys.stdlib_module_names)

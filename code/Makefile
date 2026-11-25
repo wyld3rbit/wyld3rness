@@ -10,7 +10,7 @@
 #      findyfixy.pth and simprod.pth), each a single line naming its src/ folder.
 # On any finding, stop and read it. Do not upgrade or remove to make it pass.
 
-.PHONY: audit hooks scan up down sim-up load-test controls-pilot controls setup ingest console triage test test-harness lint eval-retrieval eval eval-gate eval-baseline eval-freeze eval-compare eval-negative case golden verify-attestation obs-secrets obs-up obs-down obs-prices
+.PHONY: audit hooks scan up down sim-up load-test controls-pilot controls oncall setup ingest console triage test test-harness lint eval-retrieval eval eval-gate eval-baseline eval-freeze eval-compare eval-negative case golden verify-attestation obs-secrets obs-up obs-down obs-prices
 
 # Memory for the Colima VM, in GB. 6 on most days, 8 on Langfuse days:
 #   make up COLIMA_MEMORY=8
@@ -68,6 +68,13 @@ controls-pilot:
 
 controls:
 	$(RUN) simprod-controls run
+
+# oncall: FindyFixy runs seeded storms through the harness's loop (decide, act,
+# wait, verify, hold, keep or undo and retry, or the safe state), with no person
+# in it. 3 storms from seed 3 by default, about 3 minutes each; SMALL_MODEL decides.
+# Needs `make up`, `make sim-up` and Ollama. Results in examples/simprod/results/.
+oncall:
+	$(RUN) findyfixy-oncall
 
 audit:
 	uv export --frozen --all-packages --format requirements-txt --no-emit-workspace -o .audit-req.txt > /dev/null

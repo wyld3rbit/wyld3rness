@@ -1,6 +1,6 @@
 # FindyFixy
 
-The agent the wyld3rness harness is tested on: an event detection, determination and mitigation agent, meant to run on-call without a human approving each action. Today it diagnoses and proposes, and cannot act yet. It is a uv workspace member with its own `code/examples/findyfixy/pyproject.toml`, which declares its libraries, its dependency on the harness and its commands (`findyfixy-console`, `findyfixy-eval` and the rest; the Makefile wraps the common ones).
+The agent the wyld3rness harness is tested on: an event detection, determination and mitigation agent, meant to run on-call without a human approving each action. Today it diagnoses, and acts only on the simulated production, through the harness's loop (`make oncall`). It is a uv workspace member with its own `code/examples/findyfixy/pyproject.toml`, which declares its libraries, its dependency on the harness and its commands (`findyfixy-console`, `findyfixy-eval` and the rest; the Makefile wraps the common ones).
 
 Beside the package: `code/examples/findyfixy/tests/` (its tests), `code/examples/findyfixy/data/` (the synthetic corpus, golden set and deploy history), `code/examples/findyfixy/evals/` (the frozen baseline and the attestation CI checks), `code/examples/findyfixy/config/prices.toml` (reference prices per token) and `code/examples/findyfixy/docker-compose.yml` (Postgres with pgvector). Settings go in `code/examples/findyfixy/.env`, copied from `code/examples/findyfixy/.env.example`.
 
@@ -25,6 +25,11 @@ The package is `code/examples/findyfixy/src/findyfixy/`. Dependencies point inwa
 - `code/examples/findyfixy/src/findyfixy/evals/adapter.py`: FindyFixy as a system under test for the harness in `code/src/wyld3rness/`: holdout recall, the severity label and the twin data.
 - `code/examples/findyfixy/src/findyfixy/evals/answers.py`: the answer evaluation's entry point. It builds the live adapter and hands it to the harness command line. It also declares what the CI gate attests: the entry module whose imports make up the eval path, the data directory, the baseline, the lock file and the compose file, and the database check that stops a gate run on a stale ingest.
 - `code/examples/findyfixy/src/findyfixy/evals/queries.py` and `code/examples/findyfixy/src/findyfixy/evals/retrieval.py`: the labelled queries and the retrieval evaluation.
+
+**On call**
+- `code/examples/findyfixy/src/findyfixy/oncall/env.py`: the harness's environment port over simprod's edge: the metrics an operator reads, the three typed actions with the undo that puts back the value from before, and the customer stream from the storm driver's scraper.
+- `code/examples/findyfixy/src/findyfixy/oncall/decide.py`: the decider: the model reads the metrics and earlier tries and proposes 1 or 2 actions, validated, with one retry that carries the error.
+- `code/examples/findyfixy/src/findyfixy/oncall/cli.py`: `make oncall`, seeded storms through the loop with simprod's storm driver, one line each and a results file in `code/examples/simprod/results/`.
 
 **Entry points and wiring**
 - `code/examples/findyfixy/src/findyfixy/wiring.py`, `code/examples/findyfixy/src/findyfixy/settings.py` and `code/examples/findyfixy/src/findyfixy/paths.py`: the composition root, the configuration read from the environment, and where files live.

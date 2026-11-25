@@ -1,6 +1,6 @@
 # Design and strategy
 
-**wyld3rness is being built as a harness and a set of agentic loops for running on-call without a human approving each action, inside a cost budget.** It is tested on FindyFixy, the agent in this repository. Today FindyFixy diagnoses and proposes: the loop that acts is planned. This page is the whole picture. The [decision records](adr/README.md) record what each phase decided and measured.
+**wyld3rness is being built as a harness and a set of agentic loops for running on-call without a human approving each action, inside a cost budget.** It is tested on FindyFixy, the agent in this repository. Today FindyFixy diagnoses, and acts only on the simulated production, through the harness's loop; the policy, the credential and the budget in front of it are planned. This page is the whole picture. The [decision records](adr/README.md) record what each phase decided and measured.
 
 ![The target design: what a human sets before runtime, the harness, the agent's decision, the act-verify-undo loop, and the simulated production. Solid is built, dashed is planned.](target-design.svg)
 
@@ -83,7 +83,7 @@ The harness never imports the app. Each control is a port the app implements or 
 
 - `SystemUnderTest` (built): describe, answer, summarise. The eval gate runs the app through it.
 - The event adapter (built): the app reports its steps, and the harness turns them into spans.
-- The environment port (planned): the app supplies observe, its typed actions, and for each either an undo or the declaration that it has none. The harness owns the loop, the recovery check and the stop.
+- The environment port (built): the app supplies observe, its typed actions, and for each the undo that puts back the state from before, or the declaration that it has none, plus the user stream measured where the agent cannot write. The harness owns the loop, the recovery check and the stop. The decider port beside it holds the model.
 - The action port (planned): the app declares each kind of action, its blast radius and the preconditions policy checks.
 - The model port (planned): the app asks the gateway for a completion. The gateway routes, meters and refuses, and the app holds no model client.
 
@@ -129,8 +129,8 @@ A control counts as built only when a check fails if someone goes around it.
 | Retrieved, telemetry and user text is data, never instructions | 1 | An injection suite of attack prompts, poisoned incidents and forged telemetry, through the real prompt path, with 0 unauthorized actions, in CI | planned |
 | Quality is measured in operation, not only before release | 2 | A scheduled run below the gate raises an alert and lowers autonomy | planned |
 | No credential outlives one action or reaches beyond one resource | 1, 3 | A token used on the wrong action or resource, or after expiry, is refused | planned |
-| Nothing is called fixed until real signals recover and hold | 1, 8 | Doing nothing fails, a scripted fix passes, a wrong fix is undone | planned |
-| Every incident ends resolved or in a safe state, with no human per action | 8 | Spent tries, a spent budget, an error and the kill switch each end in the safe state | planned |
+| Nothing is called fixed until real signals recover and hold | 1, 8 | The storm controls: doing nothing fails, a scripted fix passes, a wrong fix is undone. The loop keeps an action only on that same verdict, and its tests fail if verification or the hold is skipped | built |
+| Every incident ends resolved or in a safe state, with no human per action | 8 | Spent tries, a spent budget, an error and the kill switch each end in the safe state. Tests cover spent tries and every error path; the budget and the kill switch are not built | partly built |
 | One writer per blast radius | 3, 8 | Colliding incidents never change one resource at the same time | planned |
 | Autonomy of each kind of action is a function of evidence, in code | 1, 2 | Worse evidence removes the kind, and no setting grants one past its evidence | planned |
 
@@ -140,7 +140,7 @@ A policy can be challenged, and the challenge has one path. An exception needs t
 
 ## Autonomy as policy
 
-Level 1: the agent advises and people act. Level 2: the agent acts after a person approves each action. **Level 3, the target: the agent acts, rolls back, rolls forward and writes the postmortem under the same risk controls, and people govern from on the loop: they set and review the rules, from failure patterns seen before production.** On the loop means nobody has to approve or watch each action. A person approves each kind of action once. Today every kind of action is at Level 1, because nothing can act.
+Level 1: the agent advises and people act. Level 2: the agent acts after a person approves each action. **Level 3, the target: the agent acts, rolls back, rolls forward and writes the postmortem under the same risk controls, and people govern from on the loop: they set and review the rules, from failure patterns seen before production.** On the loop means nobody has to approve or watch each action. A person approves each kind of action once. Today every kind of action is at Level 1 for any real system: the loop acts only on the simulated production, where no kind of action has been approved by evidence yet.
 
 Autonomy will be granted per kind of action:
 

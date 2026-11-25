@@ -2,7 +2,7 @@
 
 wyld3rness is being built as a harness and a set of agentic loops for agents that run on-call without a human approving each action. People will set the goal, the invariants, the allowed kinds of action and the budget before runtime. Code will decide what may act, check real signals, undo what did not work, and stop when the tries or the money run out. It is tested on FindyFixy, an event detection, determination and mitigation agent.
 
-**Today FindyFixy diagnoses and proposes. It cannot act yet.** The simulated production it will act on runs under real load and can be inspected by anyone ([simprod](code/examples/simprod/README.md)); its faults and the loop are the build in progress.
+**Today FindyFixy diagnoses, and acts only on a simulated production.** The harness's loop applies its proposed actions to [simprod](code/examples/simprod/README.md), which runs under real load and can be inspected by anyone, then checks what customers saw and undoes what did not work (`make oncall`). The policy, the credential and the budget in front of that loop are the build in progress.
 
 ![The visualizer on a live eval run: two golden cases move through what is built, inside the planned loop drawn dashed](code/docs/demo.gif)
 
@@ -14,8 +14,9 @@ wyld3rness is being built as a harness and a set of agentic loops for agents tha
 | What happened, and what did it cost? | A trace per run, with a reference cost on each triage and eval model call | **Built** |
 | What may one incident spend? | A budget reserved before each call, through one gateway | Planned |
 | May this action run, and as whom? | Policy by kind of action, and a credential per action | Planned |
-| Did it work? | A recovery check on real signals that the agent cannot touch | Planned |
-| What if it was wrong? | Undo and retry where that is possible, otherwise a safe state. A kill switch above all of it | Planned |
+| Did it work? | A recovery check on what customers saw, measured where the agent cannot write | **Built** |
+| What if it was wrong? | Undo and retry where that is possible, otherwise a safe state | **Built** |
+| Can a person stop it all? | A kill switch above every action | Planned |
 | Is it worth it? | Agent against runbook, by cost per resolved incident | Planned |
 | How much may it do alone? | A person approves each kind of action once, and evidence keeps or removes it | Planned |
 

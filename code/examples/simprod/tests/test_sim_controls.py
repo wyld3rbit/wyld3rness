@@ -1,13 +1,14 @@
-"""Tests for simprod/controls.py: the pure parts (settings, verification, pilot windows, bars)."""
+"""Tests for simprod/controls.py: settings, pilot windows, bars, and one storm with Docker faked."""
 
 from pathlib import Path
 import re
+import time
 
 import pytest
 
 from simprod import controls, loadtest
-from simprod.checker import Second
 from simprod.faults import storms
+from wyld3rness.loop.verdict import Second, seconds_from
 
 GATEWAY_METRICS = """gateway_backoff_enabled 1
 gateway_rate_caps{key="acct-0042"} 10
@@ -18,13 +19,6 @@ gateway_top_keys_rps{key="acct-0042"} 120
 def test_gateway_settings_are_read_from_its_metrics() -> None:
     assert controls.gateway_settings(GATEWAY_METRICS) == {"backoff": True, "caps": {"acct-0042": 10.0}}
     assert controls.gateway_settings("gateway_backoff_enabled 0\n") == {"backoff": False, "caps": {}}
-
-
-def test_verified_needs_the_last_seconds_all_good() -> None:
-    good = [Second(float(t), 200, 0) for t in range(1, 11)]
-    assert controls.verified(good, at=10)
-    assert not controls.verified([*good[:-1], Second(10.0, 100, 100)], at=10)
-    assert not controls.verified(good[:2], at=10)  # nothing measured is not verified
 
 
 def test_pilot_windows_double_the_slowest_recovery_and_the_longest_false_one() -> None:
@@ -43,7 +37,7 @@ def test_pilot_windows_double_the_slowest_recovery_and_the_longest_false_one() -
         run("nobody", "b" * 20),
     ]
     w = controls.pilot_windows(runs)
-    # Judged over 5 s (checker.judged), a second turns good once the bad ones leave its window:
+    # Judged over 5 s (wyld3rness.loop.verdict.judged), a second turns good once the bad ones leave its window:
     # 4 s after the series does.
     assert w["recovery_s"] == [8.0, 12.0] and w["nobody_longest_good_s"] == [16.0, 0.0]
     assert w["wait_s"] == 25 and w["hold_s"] == 35  # 2 x 12 → 25; 2 x 16 = 32 → 35
@@ -170,3 +164,51 @@ def test_a_run_that_cannot_be_judged_runs_once_more_and_both_are_kept(monkeypatc
     report = __import__("json").loads((tmp_path / "out.json").read_text())
     assert len(report["runs"]) == 9 and len(report["not_judged_first"]) == 1
     assert report["bars"]["second_tries"] == 1 and max(tries.values()) == 2
+
+
+class _FakeScraper:
+    """A scraper whose series is already measured: 200 s of customers, all failing after t = 10."""
+
+    def __init__(self, url: str) -> None:
+        self.start = time.monotonic()
+        self.scrapes = [(float(t), 200.0 * min(t, 10), 100.0 * max(t - 10, 0)) for t in range(201)]
+        self.late = [(*s, 0.0) for s in self.scrapes]
+        self.errors = 0
+
+    def scrape(self) -> None:
+        """Nothing to read: the series is fixed."""
+
+    def series(self) -> list[Second]:
+        """Every interval, as the real scraper gives it."""
+        return seconds_from(self.scrapes)
+
+
+def _no_docker(monkeypatch) -> list[str]:
+    """Replace every call that would reach Docker or the edge; returns the chaos commands sent."""
+    sent: list[str] = []
+
+    def chaos(*args: str) -> dict:
+        """Record the command instead of running the chaos container."""
+        sent.append(args[0])
+        return {}
+
+    monkeypatch.setattr(controls, "reset", lambda storm, rate: None)
+    monkeypatch.setattr(controls, "chaos", chaos)
+    monkeypatch.setattr(controls, "read_settings", lambda: {"backoff": False, "caps": {}})
+    monkeypatch.setattr(controls, "Scraper", _FakeScraper)
+    monkeypatch.setattr(controls.time, "sleep", lambda s: None)
+    return sent
+
+
+def test_a_storm_nobody_fixes_is_measured_and_cleared(monkeypatch) -> None:
+    sent = _no_docker(monkeypatch)
+    r = controls.run_storm(storms(1, 200, 1)[0], "nobody", 200, 30, 30)
+    assert sent == ["inject", "clear"] and r["actions"] == [] and r["undos"] == []
+    assert r["recovered"] is False and r["invalid"] == [] and "t_verify" in r and len(r["series"]) == 200
+
+
+def test_the_faults_are_cleared_when_an_arm_raises(monkeypatch) -> None:
+    sent = _no_docker(monkeypatch)
+    with pytest.raises(RuntimeError), controls.live_storm(storms(1, 200, 1)[0], "loop", 200, 30, 30) as live:
+        raise RuntimeError("the arm failed")
+    assert sent == ["inject", "clear"] and "recovered" not in live.record  # a run cut short has no verdict

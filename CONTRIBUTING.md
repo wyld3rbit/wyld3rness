@@ -19,6 +19,7 @@ A change to an answer-affecting file (the eval path's code, `code/examples/findy
 - Validate at system boundaries. Treat corpus text, model output and request data as untrusted. Fail loudly.
 - Resolve files from the project root, never from a hardcoded path or the current directory.
 - Inject dependencies, use precise types, write small pure functions and do no work at import time.
+- Write idiomatic, professional Python: standard-library tools before clever ones, plain control flow over tricks (no side effects inside expressions, no `assert` for runtime checks), imports at the top of the module unless a lazy import is a documented choice, and Ruff and mypy clean.
 - Test logic with fakes next to the code, and show that each new test can fail: break the code on purpose, see it fail, restore it.
 - Document each module, class and function: what it does, why, the trade-off and the failure mode.
 - Pin versions and commit the lock file. Pin container images by digest.

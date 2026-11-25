@@ -1,6 +1,6 @@
 # wyld3rness
 
-The `code/src/wyld3rness/` package is the harness: evaluation (`code/src/wyld3rness/eval/`) scores an LLM system's answers and gates a release on the scores, and tracing (`code/src/wyld3rness/trace/`) records every run as a trace. It knows nothing about any one application. FindyFixy is its first consumer. The loop, the budget and the action controls that autonomous operation needs are planned, and are not in the package yet (`code/docs/adr/0008-autonomous-operation-with-cost-as-an-invariant.md`).
+The `code/src/wyld3rness/` package is the harness: evaluation (`code/src/wyld3rness/eval/`) scores an LLM system's answers and gates a release on the scores, tracing (`code/src/wyld3rness/trace/`) records every run as a trace, and the loop (`code/src/wyld3rness/loop/`) runs one incident with no person approving each action. It knows nothing about any one application. FindyFixy is its first consumer. The budget and the action controls (policy, credential) that autonomous operation also needs are planned, and are not in the package yet (`code/docs/adr/0008-autonomous-operation-with-cost-as-an-invariant.md`).
 
 **The seam.** An application implements `SystemUnderTest` in `code/src/wyld3rness/eval/sut.py`: `describe()` returns the settings that shaped its answers, `answer(case)` returns an `Answer` (the text the judge scores, the contexts the model saw, the proposed action, the labels and app data), and `summarise(records)` returns any extra aggregates. Cases arrive as `Case` from `code/src/wyld3rness/eval/case.py`. FindyFixy's implementation is `code/examples/findyfixy/src/findyfixy/evals/adapter.py`.
 
@@ -27,6 +27,17 @@ The `code/src/wyld3rness/` package is the harness: evaluation (`code/src/wyld3rn
 
 **Cost on traces.** `code/src/wyld3rness/trace/prices.py` parses a price table (one price per input and output token per model, and the source of each price) and syncs it to Langfuse's model definitions, which then price every generation at ingestion. The backend computes the cost, so the hot path carries no pricing code; the trade-off is that a price change applies to new traces only. Only the project's own definitions are touched, never the backend's built-in ones. FindyFixy's table is `code/examples/findyfixy/config/prices.toml`, registered by `make obs-prices`.
 
-**Test doubles.** `code/src/wyld3rness/testing.py` ships a fake judge, embedder and system under test, so an app's own tests can drive the harness without a model. FindyFixy's adapter tests use them.
+**The loop.** `code/src/wyld3rness/loop/run.py` `run_incident` takes an app's `Environment` (`code/src/wyld3rness/loop/env.py`: observe, apply an action and get its undo back, the user stream, the clock) and a `Decider` (the model behind its own validation), and runs at most 3 tries:
+
+```
+observe ─► decide: 1 or 2 typed actions ─► apply ─► wait WAIT ─► verified?
+   no ─► undo, last first ─► next try, told what failed
+   yes ─► hold HOLD ─► recovered within WAIT and held? yes ─► resolved, keep  no ─► undo ─► next try
+safe state: undo what is still in force, change nothing else, stop
+```
+
+The safe state ends every other path: out of tries, a decider that raised, an action not carried out, a failed undo, a try with an action that has no undo, or the environment raising. Nothing waits for a person. The verdict, `code/src/wyld3rness/loop/verdict.py`, is the good-second rule simprod's storm controls were scored on, moved here unchanged and standard library only: a second is good when at most 1% of the requests in the 5 s ending at it failed. WAIT and HOLD come from the environment's pilot and are passed in. FindyFixy's environment and decider are in `code/examples/findyfixy/src/findyfixy/oncall/`.
+
+**Test doubles.** `code/src/wyld3rness/testing.py` ships a fake judge, embedder and system under test, so an app's own tests can drive the harness without a model, and a fake world and decider for the loop, on a clock that moves only when the loop waits. FindyFixy's adapter and on-call tests use them.
 
 **Packaging.** The harness is the root project of the workspace, `code/pyproject.toml`, with only the dependencies it imports. `code/tests/test_harness_rules.py` keeps the import allowlist and that list in step. Its tests are in `code/tests/` (`code/tests/README.md`).

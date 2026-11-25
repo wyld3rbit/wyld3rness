@@ -58,7 +58,7 @@ A storm is a fault plus the gateway it meets: as shipped (retries at once) or we
 | Hot shard | Backs off | One key hammered by a runaway client | It never stops by itself | Cap that key |
 | Compound | As shipped | The same runaway | The runaway, and that shard's own customers retrying at once | Cap that key and backoff on |
 
-Each storm is drawn from a seed, so a storm set is reproducible ([faults.py](src/simprod/faults.py)). The [checker](src/simprod/checker.py) judges recovery from what customers saw, nothing else.
+Each storm is drawn from a seed, so a storm set is reproducible ([faults.py](src/simprod/faults.py)). The [checker](src/simprod/checker.py) reads what customers saw, and the harness's [verdict](../../src/wyld3rness/loop/verdict.py) judges recovery from it, nothing else. FindyFixy's `make oncall` runs the same storms through the harness's loop, with the controls' storm driver.
 
 ## Load test
 
