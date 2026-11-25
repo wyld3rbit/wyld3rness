@@ -208,3 +208,23 @@ They changed the design. In version 1 a hot shard was fixed by a cap alone, and 
 **Limits.** The same project writes the faults, the fixes and the checker. The scripted fix is an oracle that reads the storm's seed, so the controls show the environment can be won, not that anything can find the fix. Arms run in a fixed order per storm; containers are recreated between runs, so only the VM carries over. One seed set per part, one VM, synthetic customers, and windows measured on this rate and capacity only.
 
 **Ran.** Not yet.
+
+---
+
+## 009. The gateway broke again after a correct fix (deviation from 008)
+
+**What happened.** The pilot of entry 008 ran on 2026-11-25 from 05:08 to 05:52 UTC at commit `e4de41e` and gave WAIT = 20 s and HOLD = 30 s. In one storm (s3-04, hot shard) the scripted cap recovered customers 5 s after acting, held for about 70 s, and then customers failed again at up to 177 a second until the run ended, with the cap still in force. The run was marked not judged (2.5% late sends), as entry 008 requires.
+
+**Exploratory runs** (2026-11-25, evidence kept, no bar):
+
+| Runs of storm s3-04, scripted cap | Broke again after recovering | Gateway after |
+|---|---|---|
+| 7 more, as in the pilot | 1 of 7 (2 of 8 with the pilot), 62 s and 75 s after the cap | about 95% of one core, against 12 to 17% in the runs that held |
+| Customers container paused 2 s, 30 s after the cap | 3 of 3, within 3 s of the pause, until the run ended | about 95% of one core; established connections from about 330 to about 920 |
+| The same pause, gateway open-file limit raised from 1,024 to 65,536 | 0 of 3: 3 bad seconds, then good to the end | normal |
+
+**Cause.** Each container could hold 1,024 open files, sockets included. A gateway thread holds up to three sockets: its customer's, one to the ledger, one to notifications. When the customers process stalls (a VM hiccup, or the forced pause), it then sends its backlog at once, the gateway gains hundreds of connections and threads, and it passes the limit. From then on every new ledger connection failed at once (a plain `OSError`, answered in 0.1 ms), the gateway answered 504 to most payments, and since kept-alive connections never close, the count never came back down. Two other fixes, a limit on payments in flight and closing idle connections, did not help and were removed. Guesses ruled out by measurement: lock contention in the payment path (failing payments were not in flight), and exhausted local ports (464 sockets in TIME_WAIT of 28,232).
+
+**Deviation.** The open-file limit is raised to 65,536 in every simprod container (commit `5dac66a`), and nothing else changes. The system that entries 006, 007 and the pilot measured has changed, so before the controls, the load test of entry 006 and the pilot of entry 008 are run again, each exactly as written. The first pilot is superseded and kept with its evidence. If the load test changes C, R follows the rule of entry 006, and the storms run at the new R.
+
+**Meaning.** A system can fail in a way none of its designed faults describe, and a correct fix gets the blame. Here it was a resource limit, invisible until a burst. Entry 008's validity rule caught it (the run was not judged), but only because the burst also made customers send late.
