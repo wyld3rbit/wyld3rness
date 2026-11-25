@@ -1,10 +1,10 @@
 # Architecture decision records
 
-This project is a prototype harness for an LLM app, built with open-source tools. It keeps changing. Each record here covers one phase of the build and shows the system as it stood when the phase closed.
+This project is a prototype harness for an LLM app, built with open-source tools. It keeps changing. Each record covers one day of the build: its design decisions, each written in its step's plan before any code, then one Outcome when the day closes, with the system as it stood then. What was measured is in the [research log](../research-log.md); what changed is in the [changelog](../../CHANGELOG.md).
 
 A record has a decision, a diagnosis, guiding policies, coherent actions, a build-buy-adopt call, a staffing rule, what would change the decision, evidence and limits. The structure follows a standard engineering strategy shape.
 
-Records are append-only. A later phase adds a record and never edits an earlier one. Records 0001 to 0005 were written on 2026-10-29, after their phases closed, from the day notes, the changelog and the decision log. From Day 6 each record is written in the commit that closes its phase.
+Records are append-only. A day's record grows only by its decision sections and its Outcome; a later decision that reverses one is a new record that supersedes it, and an earlier record is never edited. Records 0001 to 0005 were written on 2026-10-29, after their phases closed, from the day notes, the changelog and the decision log. Day 6's record was written in the commit that closed it. Day 7's began at the start of the day as its direction (0008), and its decisions were added to it; from Day 8 each record is begun in the plan of the day's first step.
 
 Day 5 was rebuilt after ADR 0005 was accepted, so ADR 0006 records the rebuilt phase and 0005 keeps its own text and picture. Diagrams are keyed by ADR number. The diagrams for ADRs 0001 to 0008 are frozen files checked by hash: 0001 to 0004 were drawn from the page's earlier one-lane layout, 0005 shows the eval gate as first built inside the app, 0006 and 0007 predate the autonomous loop on the page, and 0008 records a plan as it was accepted. `make adr-snapshot` draws the diagram of each later record from the live architecture page. A test fails if a frozen file changes, or if the page and the latest phase disagree.
 

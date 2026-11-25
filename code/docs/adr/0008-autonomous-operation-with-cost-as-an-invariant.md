@@ -70,3 +70,33 @@ A recovery signal that cannot be made honest: then verification cannot replace a
 ## Limits
 
 This is a direction and not a result. The evidence is synthetic, small and from local models. The 17 kinds come from tidy incidents that each end in one known fix. Reference prices cover tokens and leave out the machine. Zero failures in N runs supports only a failure rate below about 3/N, and only for what was tested.
+
+## Day 7 decisions
+
+Everything above is the direction as accepted before Day 7's build, with its picture; it is not edited. From here this record holds Day 7's design decisions, one section per step. Steps 0 to 3 were written after they were built, from the decision log, and say so; from step 4 on, each section is written in its step's plan, before any code. The Outcome at close says what was built and where it differed. What was measured is in the [research log](../research-log.md), what changed in the [changelog](../../CHANGELOG.md).
+
+### Step 0: the gate at commit (written after the build)
+
+The eval gate runs in the pre-commit hook, on exactly the staged tree in its own environment, and reuses a judge score only where every judge input is identical to the attested run's. Rejected: checking the attestation only at push (a regression is found after work is built on it), a full run on every commit (about 14 minutes). Research log entries 002 and 003.
+
+### Step 2: a production small enough to trust (written after the build)
+
+Three standard-library services on a Docker network with no route out; one edge proxy publishes an allow-list and never forwards a fault control. Ledger capacity is a parameter (slots times a sleep per write), not CPU speed, so a fault reproduces on any machine. Customers are an open loop: seeded arrivals sent on time whatever the gateway does, and a phase with more than 1% late sends is invalid. Three storm kinds from two faults, each with one fix that is a set of actions. Rejected: publishing each service's port (gives up "no route out"), CPU-bound work (faults would depend on the machine), a closed-loop load generator (it sends less exactly when the system struggles). Research log entries 006 to 012.
+
+### Step 3: the loop (written after the build)
+
+**Decision.** Code owns the loop, in the harness: at most 3 tries; each try is 1 or 2 typed actions applied together, then wait 30 s, verify on what customers saw, hold 30 s; then keep, or undo last first and try again with what failed, or the safe state. The verdict is the rule the storm controls were scored on, moved into the harness unchanged. An app supplies two ports: an environment (observe, apply an action and return its undo, the customer stream, the clock) and a decider (the model). The picture is the live page: Act, Verify, Undo and Safe state are built ([target design](../target-design.svg)).
+
+**Blueprints searched (after the build, on 2026-11-25).**
+
+| Pattern | Where it is established | What we take | Why not adopt the software |
+|---|---|---|---|
+| Metric analysis with automatic rollback | Argo Rollouts' AnalysisRun: a success condition per measurement, failure, inconclusive and error limits, abort and roll back | Verify after a wait on a measured condition, roll back on failure, and a hard bound so a run cannot hang | It rolls out Kubernetes workloads; simprod has no Kubernetes, and the actions here are runtime settings, not revisions |
+| Remediation sequence | Keptn v1: an action, a delayed evaluation, then resolved or escalated | Act, wait, evaluate, then the next action or stop | End of life since December 2023, repository archived |
+| Compensation in reverse order | The saga pattern, as Temporal documents it | Undo last first, each undo registered when its action is applied | It needs a workflow server; its gain, durability across a crash, is a gap below |
+
+So the pattern is adopted and the code is ours: three modules, 468 lines with their documentation, standard library only. Rejected: a graph framework (no branching needed yet, and every path is tested with fakes as plain code); computing an undo after the action (only the moment of applying sees the state before).
+
+**Gaps the search shows.** First, Argo Rollouts separates a failed measurement from a missing one (inconclusive). This loop does not: a second it could not measure counts against verification, so a scraper outage undoes a working fix and spends a try. The safer reading of "cannot measure" is the safe state, not a retry. Second, the loop's state is in memory: a crash mid-incident leaves actions in force that no record names. A durable record of each action before it is applied would close it; the action ledger planned for Day 8 is where it belongs.
+
+**What would change this.** The loop needing branches a person must follow (parallel tries, a human step), then a framework earns its cost. A measured case where undo-and-retry does worse than the safe state after one failed try.
