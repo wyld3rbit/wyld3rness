@@ -160,3 +160,51 @@ C = 800/s, measured, not a lower bound: 1600/s failed. R = 200/s, since 4 × 200
 **Deviations.** None from the protocol. `make load-test` reinstalled the simprod package in the worktree's environment first (uv's editable install of a changed member); the image, which serves the requests, was unchanged.
 
 **Meaning.** Storms run at 200 customer requests a second, the ledger at one slot per shard holding each write 10 ms (capacity 400/s, half busy), and a storm that quadruples the gateway's load to the ledger still sits at the rate the VM served without a failure. A retry storm's numbers will therefore measure the storm, not the VM. Customer minutes in step 6 convert at 12,000 requests a minute. Unexplained and left so: below 400/s p99 is about 90 ms, above it about 50 ms; one guess is CPU frequency scaling at low load, not tested. What this cannot show: behaviour while Langfuse ingests traces (it was idle), a gateway with more than one process, or anything over hours.
+
+---
+
+## 008. Are the storms real, fixable, and judged fairly? (protocol)
+
+**Question.** Steps 3 to 6 put an agent and a no-model script on seeded storms in the simulated production (entry 006), judged by a checker that reads only what customers saw. Three things must hold first. A storm must last by itself, or a later "fix" would be credited for what time did. The correct fix must end it, or no agent can win and every result is noise. A wrong fix must be caught and undone, or the checker cannot be trusted. Each of three arms is the control for one of these. The pilot before them sets the two windows every later verdict uses, and the controls give the spread of customer minutes from which step 6 sizes N.
+
+**Storms.** Faults version 2 (`simprod/faults.py`), at R = 200 requests a second (entry 007). A storm is a fault plus the gateway it meets, deployed either as shipped (retries fire at once) or with backoff (`GATEWAY_BACKOFF=1`: full jitter and a retry budget). The storms cycle through three kinds; each has one correct fix, a set of actions applied together. The decoy is another customer's key, drawn from the seed.
+
+| Kind | Gateway | Injected | Fix | Wrong fix |
+|---|---|---|---|---|
+| Retry storm | As shipped | Every ledger write slower by 2 to 5 service times, for 5 to 15 s | Backoff on | Cap the decoy |
+| Hot shard | Backs off | One key sent at 0.5 R to 0.75 R on top of its customers, until cleared | Cap that key at R / 20 | Cap the decoy |
+| Compound | As shipped | The same runaway | Cap that key and backoff on | Backoff on and cap the decoy |
+
+**Protocol.** At commit `633a288`. One storm under one arm: fresh containers, the gateway deployed as the kind says; 20 s of warm-up in which every second must be good; the fault injected from inside the network; 15 s later the arm acts through the edge, as an agent will; WAIT seconds later, verification; then the hold. A good second has at least one completed customer request and at most 1% failed. Recovered means a run of HOLD good seconds that starts within WAIT of the action. Verified means the last 5 s of WAIT are all good. Customer minutes are the failed customer requests from the fault on, divided by R × 60. A run is judged only if the customer stream was measured whole and the load was really offered: no counter reset, no more than 2.5 s between two scrapes after the fault, at most 1% of customer requests sent over 100 ms late (the load test's bar), and the faults cleared at the end. A run that fails this is a miss for its arm. Every setting the storm arithmetic rests on (shards, queue limit, service times, retries, timeout, backoff, rate) is pinned per storm and saved in its record.
+
+| Part | What runs | Rule or bar |
+|---|---|---|
+| Pilot | `make controls-pilot`: 9 storms (seed 3), 3 of each kind, under nobody and the scripted fix, observed for 90 s after the action | WAIT = 2 × the slowest scripted recovery (the first run of 10 good seconds), HOLD = 2 × the longest good stretch under nobody, at least 30 s, both rounded up to 5 s. A scripted storm that never recovers fails the pilot: stop and report |
+| Windows | WAIT and HOLD are committed into `simprod/controls.py` before the controls run; `make controls` refuses to run without them | - |
+| Controls | `make controls`: 21 storms (seed 7), 7 of each kind, each under nobody, scripted, wrong, in that order | nobody: 21 of 21 not recovered. scripted: 21 of 21 recovered, every action answered 200. wrong: 21 of 21 not verified, undone with every undo answered 200, the gateway back to its starting settings. Every warm-up good |
+
+The bar: all three arms meet theirs over all 21 storms. No storm is rerun: a storm that hits an infrastructure error, or cannot be judged, counts as a miss and is reported as one with its reason. Reported beside the bar: customer minutes per kind and arm (median, minimum, maximum), the time to recovery after the scripted fix, scrape errors, the longest scrape gap and the late-send share.
+
+Expected from the exploratory runs below: nobody loses about 1.25 customer minutes in a retry storm and about 0.32 in a runaway storm; the scripted fix recovers within about 2 s (retry storm, hot shard) to 6 s (compound) of acting; WAIT near 20 s and HOLD at its 30 s floor.
+
+**Exploratory runs before this entry** (2026-11-24, faults version 1 on the uncommitted step code, one storm per arm, evidence kept, no bar):
+
+| Run | Storm and gateway | Arm | Recovered | Customer minutes |
+|---|---|---|---|---|
+| 02:36 UTC | Retry storm, as shipped | nobody | no | 1.253 |
+| | | backoff | yes | 0.279 |
+| | Hot shard, as shipped | nobody | no | 0.324 |
+| | | cap | no | 0.315 |
+| 02:46 UTC | Hot shard, backoff deployed before the fault | nobody | no | 0.324 |
+| | | cap | yes, failures near 0 about 2 s after acting | 0.072 |
+| | | cap on another key | no | 0.323 |
+| 18:49 UTC | Hot shard, as shipped (same storm as 02:46) | cap | no | 0.317 |
+| | | backoff | no | 0.324 |
+| | | cap and backoff together | yes, about 6 s after acting | 0.079 |
+| | | cap, then backoff 15 s later | yes, about 7 s after the backoff | 0.147 |
+
+They changed the design. In version 1 a hot shard was fixed by a cap alone, and the 02:36 run showed it was not: with retries firing at once, the shard's own customers (about R / 4 a second, each sent up to 4 times) keep a shard that serves R / 2 over capacity after the runaway is capped, so the outage is a retry storm confined to one shard. The 02:46 run isolated the cause: with backoff deployed, the cap alone ends it. The 18:49 run showed that on the gateway as shipped each action alone is indistinguishable from doing nothing, and only the pair recovers. Version 2 keeps both systems as two kinds, the wrong fixes aim at a decoy key so they test the target as well as the action, and a try in step 3 became a set of at most 2 actions verified together.
+
+**Limits.** The same project writes the faults, the fixes and the checker. The scripted fix is an oracle that reads the storm's seed, so the controls show the environment can be won, not that anything can find the fix. Arms run in a fixed order per storm; containers are recreated between runs, so only the VM carries over. One seed set per part, one VM, synthetic customers, and windows measured on this rate and capacity only.
+
+**Ran.** Not yet.
