@@ -290,3 +290,35 @@ Verified, warm-up and the pilot's recovery all use the same judgment. The bars, 
 **Limits.** As entry 008. Wider: a 5 s window can hide a single bad second of up to about 10 failures; a real relapse lasts longer than that (entry 009's lasted until the run ended).
 
 **Ran.** Not yet.
+
+---
+
+## 012. Are the storms real, fixable, and judged fairly? (results of 011)
+
+**Ran.** On 2026-11-25 from 17:51 to 19:54 UTC, `make controls` at commit `95575df` (the rules of `22c09b2`, entry 011), with Langfuse, Postgres and Adminer running. 21 storms (seed 11), 3 arms each. Results file SHA-256 `37ff3e62402fe8a2…`.
+
+**The bar is met.** 63 of 63 runs met their arm's bar, every run was judged on its first try, so no second try ran.
+
+| Arm | Met | What happened |
+|---|---|---|
+| nobody | 21 of 21 | No storm ended by itself: not one judged-good second after the fault, in any storm |
+| scripted | 21 of 21 | Every fix recovered and held 30 s, every action answered 200 |
+| wrong | 21 of 21 | None verified, every one undone with every undo answered 200, the gateway's settings restored 21 of 21 |
+
+Every warm-up was good. No scrape errors; the longest gap between scrapes 1.13 s; late sends at most 0.13% in a run.
+
+**Customer minutes** (median, minimum to maximum):
+
+| Kind | nobody | scripted | wrong |
+|---|---|---|---|
+| Retry storm | 1.248 (1.241 to 1.266) | 0.281 (0.271 to 0.288) | 1.262 (1.240 to 1.264) |
+| Hot shard | 0.317 (0.312 to 0.330) | 0.074 (0.070 to 0.084) | 0.318 (0.312 to 0.327) |
+| Compound | 0.320 (0.312 to 0.327) | 0.080 (0.078 to 0.089) | 0.319 (0.312 to 0.325) |
+
+Against entry 010, scripted is the same, and nobody and wrong are about 15% higher. That is the longer run, not the storms: failures are counted from the fault to the end of the hold, which entry 011's WAIT moved from 65 s to 75 s after the fault, and an unfixed storm fails at a steady rate (1.080 × 75 / 65 = 1.246; 0.277 × 75 / 65 = 0.320).
+
+Recovery after the scripted fix, by the checker: retry storm 8.5 to 8.8 s, hot shard 8.5 to 10.7 s, compound 9.6 to 11.6 s. Entry 010's 4.5 to 8.3 s, plus the 4 s the 5 s window adds, as entry 011 expected.
+
+**Deviations.** None from the protocol. The run took 2 h 3 min, not the 5 h 20 min expected from entry 010's 5 h 6 min on the same machine and conditions. Why entry 010 ran slower is not known.
+
+**Meaning.** The storms are real (none ends by itself), fixable (the correct set of actions ends every one, in about 10 s), and judged fairly (every wrong fix is caught and undone, with the system put back as it was). The environment can be won, so an agent's result in it means something. The spread is tight: within a kind and arm, customer minutes vary by at most about 0.03 (2% in retry storms, up to 20% in the small scripted numbers). Step 6 sizes N from it. These windows and rules are now fixed for steps 3 to 6.
