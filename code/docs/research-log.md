@@ -265,3 +265,28 @@ Unexplained and left so: in s7-08 nobody, almost every customer request failed f
 **Deviations.** None from the protocol. The run took 5 h 6 min, not the 2 hours expected: recreating the containers before each storm takes longer than estimated.
 
 **Meaning.** The storms are real: no judged storm ended by itself, and the wrong fixes changed nothing and were undone. The correct fixes work. But the controls, as specified, cannot certify that, so step 2's bar is not met, and nothing after it may rely on these windows and rules yet. A changed rule needs a new protocol entry and a fresh seed, so it is not tuned to these storms.
+
+---
+
+## 011. Are the storms real, fixable, and judged fairly? (amended protocol)
+
+**Why.** Entry 010 failed its bar on two rules, not on the storms or the fixes. A second judged alone holds about 200 customer requests, so 1% is 2 failures, and stray pairs after a real recovery broke the hold. And a run that could not be judged was a miss, though the customers generator stalls now and then (2 of 63 runs).
+
+**What changes.** Entry 008 stands except for these, at commit `22c09b2`:
+
+| Rule | Entry 008 | Now |
+|---|---|---|
+| A good second | Its own completions: some, and at most 1% failed | The completions of the 5 s ending at it (`checker.judged`): some, and at most 1% failed. About 1,000 requests, so 1% is 10. A scrape gap shortens the window; it never reaches further back |
+| A run that cannot be judged | A miss | Run once more, at once, same storm and arm. Both tries are kept and reported. If the second cannot be judged either, a miss. A run that can be judged is never run again, whatever its verdict |
+| WAIT, HOLD | 20 s, 30 s | 30 s, 30 s: entry 008's pilot rule applied to the saved series of the re-run pilot (entry 009) under the new judgment, without a new pilot. Slowest scripted recovery 12.6 s (was 8.6 s: a second turns good 4 s later, when the bad ones leave its window); no good second under nobody |
+| Storms | Seed 7 | Seed 11, 21 storms, 7 of each kind: fresh, so the rules are not judged on the storms that prompted them |
+
+Verified, warm-up and the pilot's recovery all use the same judgment. The bars, the arms and the validity rule are unchanged.
+
+**Seen before this entry.** Seed 7's saved series, re-scored under the new judgment as a check that the change is enough: scripted 21 of 21, nobody 20 of 21, wrong 20 of 21, the two misses the runs that could not be judged. That is why this is not evidence, and the controls run again.
+
+**Expected.** About 5 h 20 min (each run 10 s longer). Customer minutes as in entry 010, since the change judges, it does not count.
+
+**Limits.** As entry 008. Wider: a 5 s window can hide a single bad second of up to about 10 failures; a real relapse lasts longer than that (entry 009's lasted until the run ended).
+
+**Ran.** Not yet.
