@@ -1,0 +1,244 @@
+# The harness: what it owns and what an app plugs in. Drawn by tools/diagram.py; edit this file, not the picture.
+# A box is solid when its code exists, dashed when it is planned.
+caption = "The harness: what people set, what it checks at every commit, and the boundary around every incident. Solid is built, dashed is planned."
+width = 1260
+height = 640
+[[zone]]
+label = "Set by people, before runtime"
+kind = "human"
+x = 10
+y = 0
+w = 1240
+h = 104
+[[zone]]
+label = "Harness, at every commit and every model call"
+kind = "harness"
+x = 10
+y = 124
+w = 1240
+h = 104
+[[zone]]
+label = "Harness, every incident. No person approves each action"
+kind = "harness"
+x = 10
+y = 248
+w = 1240
+h = 232
+[[zone]]
+label = "Proposers"
+kind = "plain"
+x = 10
+y = 500
+w = 540
+h = 120
+[[zone]]
+label = "The app's environment port"
+kind = "plain"
+x = 720
+y = 500
+w = 530
+h = 120
+[[box]]
+id = "rules"
+name = "Allowed kinds"
+sub = "read by the policy"
+icon = "Triage record"
+x = 30
+y = 28
+status = "built"
+[[box]]
+id = "limit"
+name = "Budget limit"
+sub = "per incident"
+icon = "Budget"
+x = 380
+y = 28
+status = "built"
+[[box]]
+id = "cases"
+name = "Golden cases"
+sub = "and the bar to pass"
+icon = "Question"
+x = 1080
+y = 28
+status = "built"
+[[box]]
+id = "trace"
+name = "Tracing"
+sub = "every step and cost"
+icon = "Tracing"
+x = 30
+y = 150
+status = "built"
+[[box]]
+id = "ci"
+name = "CI check"
+sub = "run attested at commit"
+icon = "CI gate"
+x = 905
+y = 150
+status = "built"
+[[box]]
+id = "gate"
+name = "Eval gate"
+sub = "scores answer changes"
+icon = "Eval gate"
+x = 1080
+y = 150
+status = "built"
+[[box]]
+id = "keep"
+name = "Keep"
+sub = "customers recovered"
+icon = "Verify"
+x = 555
+y = 275
+status = "built"
+[[box]]
+id = "policy"
+name = "Policy"
+sub = "allowed, now?"
+icon = "Policy"
+x = 30
+y = 390
+status = "built"
+[[box]]
+id = "pass"
+name = "One-time pass"
+sub = "this action, 60 s, once"
+icon = "Identity"
+x = 205
+y = 390
+status = "built"
+[[box]]
+id = "act"
+name = "Act"
+sub = "through the app's port"
+icon = "Act"
+x = 380
+y = 390
+status = "built"
+[[box]]
+id = "verify"
+name = "Verify"
+sub = "customers recovered?"
+icon = "Verify"
+x = 555
+y = 390
+status = "built"
+[[box]]
+id = "undo"
+name = "Undo"
+sub = "then try again"
+icon = "Undo"
+x = 730
+y = 390
+status = "built"
+[[box]]
+id = "safe"
+name = "Safe state"
+sub = "out of tries: stop"
+icon = "Safe state"
+x = 905
+y = 390
+status = "built"
+[[box]]
+id = "handoff"
+name = "Hand-off"
+sub = "to the on-call person"
+icon = "Alerts"
+x = 1080
+y = 390
+status = "planned"
+[[box]]
+id = "script"
+name = "Script"
+sub = "fixed fixes, no model"
+icon = "Script"
+x = 30
+y = 528
+status = "built"
+[[box]]
+id = "decide"
+name = "Decider port"
+sub = "the app's model"
+icon = "Decide"
+x = 205
+y = 528
+status = "built"
+[[box]]
+id = "budget"
+name = "Budget"
+sub = "worst case first"
+icon = "Budget"
+x = 380
+y = 528
+status = "built"
+[[box]]
+id = "env"
+name = "Environment"
+sub = "observe, apply, undo"
+icon = "Services"
+x = 905
+y = 528
+status = "built"
+[[edge]]
+from = "gate"
+to = "ci"
+status = "built"
+[[edge]]
+from = "policy"
+to = "pass"
+status = "built"
+[[edge]]
+from = "pass"
+to = "act"
+status = "built"
+[[edge]]
+from = "act"
+to = "verify"
+status = "built"
+[[edge]]
+from = "verify"
+to = "keep"
+label = "recovered"
+status = "built"
+[[edge]]
+from = "verify"
+to = "undo"
+label = "no"
+status = "built"
+[[edge]]
+from = "undo"
+to = "safe"
+status = "built"
+[[edge]]
+from = "safe"
+to = "handoff"
+status = "planned"
+[[edge]]
+from = "script"
+to = "policy"
+label = "proposes"
+status = "built"
+[[edge]]
+from = "decide"
+to = "policy"
+status = "built"
+via = [[280, 480], [150, 480]]
+[[edge]]
+from = "budget"
+to = "decide"
+status = "built"
+[[edge]]
+from = "act"
+to = "env"
+label = "apply"
+status = "built"
+via = [[455, 490], [980, 490]]
+[[edge]]
+from = "env"
+to = "verify"
+label = "what customers saw"
+status = "built"
+via = [[690, 560]]

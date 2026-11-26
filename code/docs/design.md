@@ -2,7 +2,7 @@
 
 **wyld3rness is being built as a harness and a set of agentic loops for running on-call without a human approving each action, inside a cost budget.** It is tested on FindyFixy, the agent in this repository. Today FindyFixy diagnoses, and acts only on the simulated production, through the harness's loop, behind a policy, a signed credential for every action and a budget per incident. On the storms it knows, a script with no model in the same loop beat the model (research log, entry 020). This page is the whole picture. The [decision records](adr/README.md) record what each phase decided and measured.
 
-![The target design: what a human sets before runtime, the harness, the agent's decision, the act-verify-undo loop, and the simulated production. Solid is built, dashed is planned.](target-design.svg)
+![The target design: what a human sets before runtime, the harness, the triage agent, the two proposers (a model that reads the metrics and a script with no model), the act-verify-undo loop, and the simulated production. Solid is built, dashed is planned.](target-design.svg)
 
 ## The question
 
@@ -79,7 +79,9 @@ Why at commit, not at push or in CI. A check at push finds a commit that made an
 
 ## How an app plugs in
 
-The harness never imports the app. Each control is a port the app implements or calls:
+![The harness: what people set before runtime; the eval gate, the CI check and tracing at every commit and model call; and for every incident, the policy, a one-time pass, the action, the recovery check, keep or undo, and the safe state, with the hand-off to a person planned. Proposers, a script or the app's model behind a budget, feed the policy; the app's environment port applies actions and reports what customers saw.](img/harness.svg)
+
+The harness never imports the app. Each control is a port the app implements or calls. Where each part runs, and what each container cannot reach, is drawn in [ADR 0008](adr/0008-autonomous-operation-with-cost-as-an-invariant.md#step-4-the-trust-boundary-and-the-budget-written-in-the-plan-before-the-code).
 
 - `SystemUnderTest` (built): describe, answer, summarise. The eval gate runs the app through it.
 - The event adapter (built): the app reports its steps, and the harness turns them into spans.
@@ -152,6 +154,12 @@ Autonomy will be granted per kind of action:
 | Can do lasting damage | delete logs, issue a credential, restore an old certificate | a precondition code can prove, checked at execution, or the safe state |
 
 A kind reaches Level 3 only on evidence from the simulated production that passes thresholds written down before the runs: no lasting harm over enough varied attempts, resolution no worse than the runbook, and a cost per resolved incident inside its bar. Falling evidence removes it automatically. Zero failures in N attempts supports only "below about 3/N", so the claim is never stronger than that.
+
+## How a proposer earns its place
+
+![The experiment: a protocol committed first; held-out storms, each through four options in random order (nobody, the script, the model with one try, the model with up to three); every option that acts goes through the same boundary; customers are measured by the host; customer minutes lost per run feed a paired analysis with repeats for noise; the decision rule written in advance is applied.](img/experiment.svg)
+
+A proposer keeps a kind of incident only on evidence. Every proposer, a model, a script with no model, or nobody, meets the same storms, which none of them saw while it was built, in random order, through the same policy, pass and recovery check. What counts is what customers lost: customer minutes in a fixed window after the fault, measured by the host, outside the loop. The prediction and the decision rule are committed before the run, and the analysis reads only the saved results. If the model does not beat the script, the script keeps those incidents. The protocol and its results are in the [research log](research-log.md), entries 019 and 020.
 
 ## What changes next
 

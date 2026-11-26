@@ -50,6 +50,17 @@ def test_every_committed_picture_equals_a_fresh_render(spec) -> None:
     assert diagram.page_copy(PAGE, spec.stem) == fresh, "the live page's copy differs: run `make adr-snapshot`"
 
 
+@pytest.mark.parametrize("spec", diagram.doc_specs(), ids=lambda p: p.stem)
+def test_every_docs_picture_equals_a_fresh_render(spec) -> None:
+    fresh = diagram.render(spec.read_text(), PAGE)
+    assert (diagram.DOC_OUT / f"{spec.stem}.svg").read_text() == fresh, "run `make adr-snapshot` and commit the picture"
+    assert diagram.page_copy(PAGE, spec.stem) is None, "a docs picture has no copy in the live page"
+
+
+def test_there_is_at_least_one_docs_spec() -> None:
+    assert diagram.doc_specs(), "no docs spec found: the check above would pass with nothing to check"
+
+
 def test_there_is_at_least_one_spec() -> None:
     assert diagram.specs(), "no spec found: the check above would pass with nothing to check"
 

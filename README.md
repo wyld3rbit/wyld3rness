@@ -28,9 +28,9 @@ Cost per resolved incident is every attempt's cost, failed ones included, divide
 
 ## Target design
 
-![Target design: what a human sets before runtime, the harness, the agent's decision, the act-verify-undo loop and a simulated production. Solid is built, dashed is planned.](code/docs/target-design.svg)
+![Target design: what a human sets before runtime, the harness, the triage agent, the two proposers (a model that reads the metrics and a script with no model), the act-verify-undo loop and a simulated production. Solid is built, dashed is planned.](code/docs/target-design.svg)
 
-Details: [design and strategy](code/docs/design.md), and the decision behind it, [ADR 0008](code/docs/adr/0008-autonomous-operation-with-cost-as-an-invariant.md).
+Details: [design and strategy](code/docs/design.md), with [the harness](code/src/wyld3rness/README.md) and [how a proposer earns its place](code/docs/design.md#how-a-proposer-earns-its-place) each drawn, and the decision behind it, [ADR 0008](code/docs/adr/0008-autonomous-operation-with-cost-as-an-invariant.md).
 
 ## Research log
 

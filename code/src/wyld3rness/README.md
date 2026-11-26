@@ -1,6 +1,9 @@
 # wyld3rness
 
-The `code/src/wyld3rness/` package is the harness: evaluation (`code/src/wyld3rness/eval/`) scores an LLM system's answers and gates a release on the scores, tracing (`code/src/wyld3rness/trace/`) records every run as a trace, and the loop (`code/src/wyld3rness/loop/`) runs one incident with no person approving each action. It knows nothing about any one application. FindyFixy is its first consumer. The policy, the budget and the credential are in the loop's package (`code/docs/adr/0008-autonomous-operation-with-cost-as-an-invariant.md`).
+The `code/src/wyld3rness/` package is the harness: evaluation (`code/src/wyld3rness/eval/`) scores an LLM system's answers and gates a release on the scores, tracing (`code/src/wyld3rness/trace/`) records every run as a trace, and the loop (`code/src/wyld3rness/loop/`) runs one incident with no person approving each action. It knows nothing about any one application. FindyFixy is its first consumer.
+
+![The harness: what people set before runtime; the eval gate, the CI check and tracing at every commit and model call; and for every incident, the policy, a one-time pass, the action, the recovery check, keep or undo, and the safe state, with the hand-off to a person planned. Proposers, a script or the app's model behind a budget, feed the policy; the app's environment port applies actions and reports what customers saw.](../../docs/img/harness.svg)
+ The policy, the budget and the credential are in the loop's package (`code/docs/adr/0008-autonomous-operation-with-cost-as-an-invariant.md`).
 
 **The seam.** An application implements `SystemUnderTest` in `code/src/wyld3rness/eval/sut.py`: `describe()` returns the settings that shaped its answers, `answer(case)` returns an `Answer` (the text the judge scores, the contexts the model saw, the proposed action, the labels and app data), and `summarise(records)` returns any extra aggregates. Cases arrive as `Case` from `code/src/wyld3rness/eval/case.py`. FindyFixy's implementation is `code/examples/findyfixy/src/findyfixy/evals/adapter.py`.
 
