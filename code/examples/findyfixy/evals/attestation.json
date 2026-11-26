@@ -1,5 +1,5 @@
 {
-  "created_utc": "2026-11-26T07:53:17+00:00",
+  "created_utc": "2026-11-26T19:35:32+00:00",
   "files": {
     "examples/findyfixy/data/deploys.json": "c1c9fa59e3c07706a618dc5d65a461b34a08c71b50491cfb537713e135e9b2f8",
     "examples/findyfixy/data/golden.jsonl": "2d005967149bbc1fc3e9572ba042a5edbac13e471f3b4ffc9cbbb4a7d1d22a1f",
@@ -72,21 +72,21 @@
     ]
   },
   "report": {
-    "name": "eval-20261126T075316Z.json",
-    "sha256": "8360a5f405c425575682cb74a984776a7f9e999a47ab181b216d44a91f4b460d"
+    "name": "eval-20261126T193532Z.json",
+    "sha256": "e28edd8b91e332a3bed7639f163e983a52f9181dd2ad6ed2ec5785f8d6eebc14"
   },
   "reuse": {
-    "from": "eval-20261126T045345Z.json",
+    "from": "eval-20261126T075316Z.json",
     "judged": 3,
     "reused": 27
   },
   "run": {
-    "git_sha": "tree-a2dfb69aeff7",
+    "git_sha": "28fccc9",
     "judge_digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
     "judge_model": "qwen2.5:7b",
     "large_model": "qwen3:4b-instruct",
     "small_model": "qwen3:4b-instruct",
-    "timestamp_utc": "2026-11-26T07:50:44+00:00"
+    "timestamp_utc": "2026-11-26T19:32:38+00:00"
   },
   "verdict": "pass",
   "version": 2
