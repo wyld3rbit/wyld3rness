@@ -371,3 +371,38 @@ Against entry 012 (median customer minutes): scripted 0.281, 0.074 and 0.080; no
 - Time to decide is paid in customer minutes: about 6.5 s here, about 40% of the scripted arm's loss in a retry storm.
 
 It cannot show anything about a held-out storm, another model, or the spread: three storms from a seed used in development, one model, temperature 0 (the same storm gave the same decision in all three runs, apart from which innocent key was capped). These are anecdotes, not a result; step 6 measures.
+
+---
+
+## 014. What do a policy and a budget change in the loop? (exploratory)
+
+**Question.** Step 4a puts a policy and a budget around the loop of entry 013. The policy refuses a rate cap on a key that is not sending at least 5% of the customers' rate, and a restart beside another action; the budget reserves each model call's worst case before it runs. Entry 013's two findings were an innocent key capped in every retry storm and a restart that cancelled the fix beside it in every hot shard. This decides whether the rules remove those, at what cost to resolution, and whether the budget's bound is sound.
+
+**Protocol.** None: exploratory runs before step 6's protocol, on seed 3 (one storm of each kind), never the held-out seed.
+
+**Ran.** On 2026-11-26, on branch `day7-step4` over `cd58b53`, with the step's code not yet committed. `qwen3:4b-instruct` at temperature 0, WAIT 30 s and HOLD 30 s, a budget of $0.005 per incident, Langfuse, Postgres and Adminer running as in entry 012.
+
+| Run | What | Results file SHA-256 |
+|---|---|---|
+| M | 10 live decider prompts (0 to 2 earlier tries in the history) and a one-character prompt, each sent once: UTF-8 bytes against the input tokens the model server reported | (output in the evidence only) |
+| 1 | `make oncall`: the policy and the budget, before the code review's fixes | `a71ea2ff5ed2f015…` |
+| 2 | `make oncall`: after the review's fixes, and a refused cap's reason naming the keys that qualify, or that none does | `66139cad4c4aafb0…` |
+| 3 | `make oncall`: as run 2, with the prompt's "Choose 1 or 2 actions" changed to "Choose one action … Add a second action only if one alone cannot end them" | `544eb5d6383b8bab…` |
+
+**Result: the budget's bound.** The 10 prompts were 1,887 to 2,094 bytes and 590 to 656 input tokens: 3.17 to 3.25 bytes per token. The one-character prompt was 9 input tokens, so the chat template adds 8. Replies were 147 to 179 tokens. The budget bounds input tokens by bytes plus 16, and output by a cap of 400. In runs 1 to 3 every call cost less than its reservation (about 2.5 times less), and no incident spent more than $0.00038.
+
+**Result: the storms.**
+
+| Storm | Run 1 | Run 2 | Run 3 |
+|---|---|---|---|
+| s3-00 retry storm (fix: backoff) | 3 tries refused (backoff with a cap on an unlisted key, each time): safe state, 1.631 | 2 tries refused (backoff with a cap, after being told no key qualified), then backoff with a restart refused: safe state, 1.260 | backoff alone: resolved on try 1, 0.406 |
+| s3-01 hot shard (fix: cap the runaway) | cap with a restart refused; backoff and cap: resolved on try 2, 0.117 | the same: resolved on try 2, 0.119 | cap alone: resolved on try 1, 0.093 |
+| s3-02 compound (fix: cap and backoff) | cap with a restart refused; backoff and cap: resolved on try 2, 0.134 | the same: resolved on try 2, 0.132 | cap, cap, backoff, each alone and not verified: safe state, 0.645 |
+
+Customer minutes after each result. The loop's verdict and the storm driver's agreed in 9 of 9 runs; every run was judged. Against entry 013, run 3 (median of three runs there): retry storm 0.382, hot shard 0.339 (safe state), compound 0.103.
+
+**Deviations.** Runs 1 and 2 ran on code changed after them: the code review's fixes (the driver's verdict measured from the last try that applied something; a model the budget cannot carry refused before any storm; the rule's wording matched to what is compared), the refusal's wording after run 1, and the prompt after run 2. All three runs are kept.
+
+**Meaning.** The rules did what they were written for: in runs 1 to 3 no innocent key was capped and no restart shared a decision, against 3 of 3 and 3 of 3 in entry 013. The budget's byte bound held on every call. What the rules exposed is the model's habit, not the system's state: asked for "1 or 2 actions", the small model proposed two every time, so a whole decision was refused for its second action and the correct first one was lost; told why, it repeated the pattern. Asked for one action by default, it proposed one every time, which resolves the two kinds that need one on the first try and fails the kind that needs two. In both versions the model followed the wording of the prompt rather than the metrics. Production meaning: a deterministic policy makes a weak proposer safe but not effective, and an instruction that shapes the number of actions decides which incidents can be won.
+
+It cannot show anything about held-out storms, other models or the spread: one run per storm and setting, on a seed used in development. Step 6 compares the loop with a script that tries each fix in turn and has no model.
