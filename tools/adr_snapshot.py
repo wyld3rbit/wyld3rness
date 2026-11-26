@@ -55,7 +55,7 @@ FIRST_BUILT = {
     "Recall": 4,
     "Eval gate": 5, "CI gate": 5,
     "Tracing": 6,
-    "Services": 7, "Act": 7, "Verify": 7, "Undo": 7, "Safe state": 7,
+    "Services": 7, "Act": 7, "Verify": 7, "Undo": 7, "Safe state": 7, "Policy": 7, "Budget": 7,
 }
 PHASES = range(1, 8)
 # The phase being built, whose ADR is written when it closes. Until then the

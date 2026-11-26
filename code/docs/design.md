@@ -84,7 +84,7 @@ The harness never imports the app. Each control is a port the app implements or 
 - `SystemUnderTest` (built): describe, answer, summarise. The eval gate runs the app through it.
 - The event adapter (built): the app reports its steps, and the harness turns them into spans.
 - The environment port (built): the app supplies observe, its typed actions, and for each the undo that puts back the state from before, or the declaration that it has none, plus the user stream measured where the agent cannot write. The harness owns the loop, the recovery check and the stop. The decider port beside it holds the model.
-- The action port (planned): the app declares each kind of action, its blast radius and the preconditions policy checks.
+- The policy table (built): the app declares each kind of action it allows, whether it must be alone, and the precondition the harness checks before the action runs. Blast radius per kind is planned.
 - The model port (planned): the app asks the gateway for a completion. The gateway routes, meters and refuses, and the app holds no model client.
 
 Dependencies point inward: the harness defines the ports, the app depends on them, and one composition root in the app wires the real implementations.
@@ -123,9 +123,9 @@ A control counts as built only when a check fails if someone goes around it.
 | No change that can alter an answer ships without a passing, attested eval | 2, 3 | The pre-commit hook gates the staged tree and refuses a failing commit; pre-push checks every pushed commit; CI rehashes every answer-affecting file and fails a change no passing run covered | built |
 | Every request, model call, tool call and decision is a trace, with its eval scores attached | 3, 6 | Tests read the spans a run emits; a run with the backend down keeps its speed | built |
 | The harness never imports the app | 4 | A test fails if the harness imports anything but the standard library, its declared dependencies and itself | built |
-| No incident spends past its budget | 6, 7 | A call whose worst case does not fit is refused, including when its cost is unknown | planned |
+| No incident spends past its budget | 6, 7 | A call whose worst case does not fit is refused, including when its cost is unknown. The on-call decider's calls reserve first and tests fail if a refusal is skipped; triage's calls and the gateway that would meter every call are not built | partly built |
 | No model call bypasses the gateway, which meters, routes and pins | 3, 7 | An architecture test fails if any module other than the gateway imports a model client | planned |
-| No action runs unless its kind was allowed before runtime and its preconditions hold when it executes | 1, 8 | A fully fooled proposer, forged telemetry and stale plans cause 0 unauthorized actions | planned |
+| No action runs unless its kind was allowed before runtime and its preconditions hold when it executes | 1, 8 | A fully fooled proposer, forged telemetry and stale plans cause 0 unauthorized actions. The loop checks the policy table before any action and tests fail if it does not; the credential checked where the action executes and the injection suite are not built | partly built |
 | Retrieved, telemetry and user text is data, never instructions | 1 | An injection suite of attack prompts, poisoned incidents and forged telemetry, through the real prompt path, with 0 unauthorized actions, in CI | planned |
 | Quality is measured in operation, not only before release | 2 | A scheduled run below the gate raises an alert and lowers autonomy | planned |
 | No credential outlives one action or reaches beyond one resource | 1, 3 | A token used on the wrong action or resource, or after expiry, is refused | planned |

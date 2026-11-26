@@ -28,7 +28,8 @@ The package is `code/examples/findyfixy/src/findyfixy/`. Dependencies point inwa
 
 **On call**
 - `code/examples/findyfixy/src/findyfixy/oncall/env.py`: the harness's environment port over simprod's edge: the metrics an operator reads, the three typed actions with the undo that puts back the value from before, and the customer stream from the storm driver's scraper.
-- `code/examples/findyfixy/src/findyfixy/oncall/decide.py`: the decider: the model reads the metrics and earlier tries and proposes 1 or 2 actions, validated, with one retry that carries the error.
+- `code/examples/findyfixy/src/findyfixy/oncall/decide.py`: the decider: the model reads the metrics, the policy's rules and earlier tries and proposes 1 or 2 actions, validated, with one retry that carries the error; each call reserves its worst case on the incident's budget first and has its reply capped at 400 tokens.
+- `code/examples/findyfixy/src/findyfixy/oncall/policy.py`: FindyFixy's policy table: backoff; a rate cap only on a key sending at least 5% of the customers' request rate now, read from the gateway's busiest-keys gauge; a restart only alone in its decision.
 - `code/examples/findyfixy/src/findyfixy/oncall/cli.py`: `make oncall`, seeded storms through the loop with simprod's storm driver, one line each and a results file in `code/examples/simprod/results/`.
 
 **Entry points and wiring**

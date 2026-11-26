@@ -26,6 +26,7 @@ from wyld3rness.eval.metrics import ActionRating, Claims, Questions, Verdict
 from wyld3rness.eval.runner import run_eval
 from wyld3rness.eval.sut import Answer
 from wyld3rness.loop.env import Action, Applied
+from wyld3rness.loop.policy import Policy, Rule
 from wyld3rness.loop.run import Try
 from wyld3rness.loop.verdict import Second
 
@@ -231,3 +232,8 @@ class FakeDecider:
         if self.fail(n):
             raise ValueError(f"decision {n} invalid after its retry")
         return self.decisions[n - 1]
+
+
+def allow(*kinds: str) -> Policy:
+    """A policy that allows exactly `kinds`, alone or together, with no preconditions: for tests of everything else."""
+    return Policy([Rule(k) for k in kinds])

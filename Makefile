@@ -44,6 +44,7 @@ eval-compare:
 # One architecture picture per phase for the ADRs in code/docs/adr/, drawn from the live page.
 adr-snapshot:
 	python3 tools/adr_snapshot.py
+	python3 tools/diagram.py
 
 # check: the documentation drift check, the repository tools' tests and the
 # privacy scan of the tree.

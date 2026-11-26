@@ -71,14 +71,18 @@ def ollama_ask(model: str, prompt: str) -> str:
     return ollama_reply(model, prompt, Triage)
 
 
-def ollama_reply(model: str, prompt: str, schema: type[BaseModel]) -> Reply:
+def ollama_reply(model: str, prompt: str, schema: type[BaseModel], max_output_tokens: int | None = None) -> Reply:
     """One greedy, constrained call: a reply shaped as `schema`'s JSON, not yet validated.
 
     Shared by triage (`ollama_ask`) and the on-call decider
     (`findyfixy.oncall.decide`), so every answering call has the same
     temperature, thinking setting and timeout. Fails as `ollama_ask` does.
+    `max_output_tokens` caps the reply (Ollama's `num_predict`), which is what
+    lets the budget price a call before it runs; a reply cut at the cap is
+    invalid JSON and fails validation. None leaves triage as it was: no cap.
     """
-    llm = ChatOllama(model=model, format=schema.model_json_schema(), **answer_options())
+    # None is ChatOllama's own default for num_predict, so triage's calls are unchanged.
+    llm = ChatOllama(model=model, format=schema.model_json_schema(), num_predict=max_output_tokens, **answer_options())
     return reply_from(llm.invoke(prompt))
 
 
