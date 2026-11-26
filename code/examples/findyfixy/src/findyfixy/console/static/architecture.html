@@ -260,7 +260,7 @@
 
   <section class="panel" aria-label="Architecture schematic">
     <div class="schematic">
-    <svg viewBox="-60 -198 1000 1044" role="img" aria-labelledby="svgtitle">
+    <svg viewBox="-60 -198 1000 1144" role="img" aria-labelledby="svgtitle">
       <title id="svgtitle">Autonomous on-call, target and built. Before runtime a human sets the goal, the invariants, the allowed kinds of action and the budget. Built today: an eval gate, a gate at every commit with a CI recheck, and tracing in the harness, and FindyFixy's decision, which takes a question through recall, an optional tool step, a small model, validation and a route to a triage record, and the simulated production's services under real load. Planned: the record becomes one typed action that passes policy and identity, acts on a simulated production and is verified on real signals. A recovery is kept and scored with its cost. A failure that can be undone is undone and tried again, until the tries or the budget run out. Then, or when a failure cannot be undone, the system goes to a safe state.</title>
 
       <defs><marker id="arrow-planned" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,1 L10,5 L0,9 z" fill="#7f8fb0"/></marker></defs>
@@ -270,12 +270,12 @@
       <text class="lane-label human" x="-44" y="-174">Before runtime, a human sets</text>
       <rect class="lane harness" x="-54" y="-122" width="988" height="114" rx="10"/>
       <text class="lane-label harness" x="-44" y="-106">Harness</text>
-      <rect class="lane" x="-54" y="24" width="988" height="436" rx="10"/>
+      <rect class="lane" x="-54" y="24" width="988" height="536" rx="10"/>
       <text class="lane-label" x="-20" y="44">FindyFixy</text>
-      <rect class="lane harness" x="-54" y="476" width="988" height="236" rx="10"/>
-      <text class="lane-label harness" x="-20" y="498">Harness: act, verify, undo. No human per action</text>
-      <rect class="lane" x="-54" y="728" width="988" height="110" rx="10"/>
-      <text class="lane-label" x="-20" y="748">Simulated production</text>
+      <rect class="lane harness" x="-54" y="576" width="988" height="236" rx="10"/>
+      <text class="lane-label harness" x="-20" y="598">Harness: act, verify, undo. No human per action</text>
+      <rect class="lane" x="-54" y="828" width="988" height="110" rx="10"/>
+      <text class="lane-label" x="-20" y="848">Simulated production</text>
       <text class="edge-label" x="40" y="-149">the goal</text>
       <text class="edge-label" x="185" y="-149">the invariants</text>
       <text class="edge-label" x="370" y="-149">the kinds of action allowed</text>
@@ -310,29 +310,31 @@
       <!-- planned paths: the loop that is not built yet -->
       <path id="p_small_gateway" class="edge planned" d="M400,228 L400,20 L525,20 L525,-31"/>
       <path id="p_val_second" class="edge planned" d="M511,228 L511,127"/>
-      <path id="p_rec_policy" class="edge planned" d="M880,292 L880,519"/>
-      <path id="p_policy_identity" class="edge" d="M796,552 L759,552"/>
-      <path id="p_identity_act" class="edge" d="M628,552 L591,552"/>
-      <path id="p_act_verify" class="edge" d="M460,552 L423,552"/>
-      <path id="p_verify_undo" class="edge" d="M292,552 L255,552"/>
-      <path id="p_verify_safe" class="edge" d="M300,584 L300,618 L40,618 L40,585"/>
-      <path id="p_undo_safe" class="edge" d="M124,552 L87,552"/>
-      <path id="p_undo_again" class="edge" d="M189,520 L189,442 L80,442 L80,293"/>
-      <path id="p_verify_score" class="edge planned" d="M357,584 L357,627"/>
-      <path id="p_safe_score" class="edge planned" d="M21,584 L21,660 L291,660"/>
-      <path id="p_kill_policy" class="edge planned" d="M861,628 L861,585"/>
-      <path id="p_act_services" class="edge" d="M525,584 L525,761"/>
-      <path id="p_services_verify" class="edge" d="M470,762 L470,722 L436,722 L436,570 L423,570"/>
-      <path id="p_services_alerts" class="edge planned" d="M460,794 L255,794"/>
-      <path id="p_faults_services" class="edge planned" d="M796,794 L591,794"/>
-      <path id="p_alerts_question" class="edge planned" d="M124,794 L-48,794 L-48,310 L30,310 L30,293"/>
-      <text class="edge-label" x="273" y="543">no</text>
-      <text class="edge-label" x="112" y="604">out of tries or budget</text>
-      <text class="edge-label" x="186" y="632">no, and cannot be undone</text>
-      <text class="edge-label" x="148" y="434">again, with what failed</text>
-      <text class="edge-label" x="390" y="610">recovered</text>
-      <text class="edge-label" x="388" y="724">real signals</text>
-      <text class="edge-label" x="40" y="786">page</text>
+      <path id="p_rec_policy" class="edge planned" d="M880,292 L880,619"/>
+      <path id="p_policy_identity" class="edge" d="M796,652 L759,652"/>
+      <path id="p_identity_act" class="edge" d="M628,652 L591,652"/>
+      <path id="p_act_verify" class="edge" d="M460,652 L423,652"/>
+      <path id="p_verify_undo" class="edge" d="M292,652 L255,652"/>
+      <path id="p_verify_safe" class="edge" d="M300,684 L300,718 L40,718 L40,685"/>
+      <path id="p_undo_safe" class="edge" d="M124,652 L87,652"/>
+      <path id="p_undo_again" class="edge" d="M189,620 L189,508 L459,508"/>
+      <path id="p_decide_policy" class="edge" d="M525,540 L525,554 L815,554 L815,619"/>
+      <path id="p_script_policy" class="edge" d="M758,508 L840,508 L840,619"/>
+      <path id="p_verify_score" class="edge planned" d="M357,684 L357,727"/>
+      <path id="p_safe_score" class="edge planned" d="M21,684 L21,760 L291,760"/>
+      <path id="p_kill_policy" class="edge planned" d="M861,728 L861,685"/>
+      <path id="p_act_services" class="edge" d="M525,684 L525,861"/>
+      <path id="p_services_verify" class="edge" d="M470,862 L470,822 L436,822 L436,670 L423,670"/>
+      <path id="p_services_alerts" class="edge planned" d="M460,894 L255,894"/>
+      <path id="p_faults_services" class="edge planned" d="M796,894 L591,894"/>
+      <path id="p_alerts_question" class="edge planned" d="M124,894 L-48,894 L-48,310 L30,310 L30,293"/>
+      <text class="edge-label" x="273" y="643">no</text>
+      <text class="edge-label" x="112" y="704">out of tries or budget</text>
+      <text class="edge-label" x="186" y="732">no, and cannot be undone</text>
+      <text class="edge-label" x="320" y="500">again, with what failed</text>
+      <text class="edge-label" x="390" y="710">recovered</text>
+      <text class="edge-label" x="388" y="824">real signals</text>
+      <text class="edge-label" x="40" y="886">page</text>
 
       <!-- app nodes: data-code names the graph node or module that implements each box -->
       <g class="node" id="n_q" data-status="built" data-code="graph:__start__">
@@ -406,6 +408,21 @@
         <text class="badge" x="207" y="119" id="b_tool"> </text>
       </g>
 
+      <g class="node" id="n_decide" data-status="built" data-code="findyfixy/oncall/decide.py">
+        <title>In: The metrics an operator would read, and what earlier tries did.&#10;Out: 1 or 2 typed actions, with the reason stated first.&#10;Logic: A model, output constrained to the action schema, one retry on an invalid reply. It only proposes: the harness decides whether anything runs.</title>
+        <rect x="460" y="476" width="130" height="64" rx="8"/>
+        <rect class="i" transform="translate(465 480) scale(.56)" width="16" height="16" x="4" y="4" rx="2"/><rect class="i" transform="translate(465 480) scale(.56)" width="6" height="6" x="9" y="9" rx="1"/><path class="i" transform="translate(465 480) scale(.56)" d="M15 2v2"/><path class="i" transform="translate(465 480) scale(.56)" d="M15 20v2"/><path class="i" transform="translate(465 480) scale(.56)" d="M2 15h2"/><path class="i" transform="translate(465 480) scale(.56)" d="M2 9h2"/><path class="i" transform="translate(465 480) scale(.56)" d="M20 15h2"/><path class="i" transform="translate(465 480) scale(.56)" d="M20 9h2"/><path class="i" transform="translate(465 480) scale(.56)" d="M9 2v2"/><path class="i" transform="translate(465 480) scale(.56)" d="M9 20v2"/>
+        <text class="t" x="525" y="502">Decide</text>
+        <text class="s" x="525" y="519">model reads metrics</text>
+      </g>
+      <g class="node" id="n_script" data-status="built" data-code="wyld3rness/loop/script.py">
+        <title>In: The same incident the model sees.&#10;Out: Fixed sets of actions, tried in order.&#10;Logic: No model. The baseline every proposer is measured against, through the same policy, pass and recovery check.</title>
+        <rect x="628" y="476" width="130" height="64" rx="8"/>
+        <path class="i" transform="translate(633 480) scale(.56)" d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+        <text class="t" x="693" y="502">Script</text>
+        <text class="s" x="693" y="519">fixed fixes, no model</text>
+      </g>
+
       <!-- harness nodes: one edit per build day flips data-status to built -->
       <g class="node" id="n_eval" data-status="built" data-layer="harness" data-code="wyld3rness/eval/runner.py">
         <title>In: An app's golden cases, through one interface (SystemUnderTest: describe, answer, summarise). FindyFixy plugs in with an adapter: 30 cases, each with a reference severity, cause and fix.&#10;Out: Scores per metric with confidence intervals, a saved report, and a pass or fail gate.&#10;Logic: The harness package (code/src/wyld3rness/eval) never imports the app. A judge model from an older generation of the same vendor scores faithfulness, context recall, action quality and response relevancy; labels such as severity are matched exactly. The gate fails if a score drops below its frozen floor (baseline mean minus 0.05), regresses outside its 95% interval, or the judge failure rate passes 0.15. Moving it into the harness changed no score: the frozen baseline still reproduces byte for byte.&#10;Watch it: choose Eval run above. Each case goes into the app lane, the answer comes back, and the metrics are scored here. The console is a viewer: it writes no report and no baseline, and it applies the gate only when every golden case ran.</title>
@@ -460,80 +477,80 @@
       </g>
       <g class="node" id="n_policy" data-status="built" data-layer="harness" data-code="wyld3rness/loop/policy.py">
         <title>In: A decision: the 1 or 2 actions the decider proposed.&#10;Out: Allowed, or every reason it is not; a refused decision applies nothing and spends a try, and the next try is told why.&#10;Logic: A table declared by the app as data: the allowed kinds, which must be alone, and a precondition read from live state. FindyFixy's: backoff; a rate cap only on a key sending at least 5% of the customers' request rate now (the gateway's busiest-keys gauge); a restart only alone. A precondition that cannot be checked refuses.&#10;Trust: Deterministic code the model cannot change. The credential in front of the gateway (step 4b) checks again where the action executes.</title>
-        <rect x="796" y="520" width="130" height="64" rx="8"/>
-        <path class="i" transform="translate(801 524) scale(.56)" d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path class="i" transform="translate(801 524) scale(.56)" d="m9 12 2 2 4-4"/>
-        <text class="t" x="861" y="546">Policy</text>
-        <text class="s" x="861" y="564">allowed kind?</text>
+        <rect x="796" y="620" width="130" height="64" rx="8"/>
+        <path class="i" transform="translate(801 624) scale(.56)" d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path class="i" transform="translate(801 624) scale(.56)" d="m9 12 2 2 4-4"/>
+        <text class="t" x="861" y="646">Policy</text>
+        <text class="s" x="861" y="664">allowed kind?</text>
       </g>
       <g class="node" id="n_identity" data-status="built" data-layer="harness" data-code="wyld3rness/loop/credential.py">
         <title>In: Each action, and each undo, just before the loop sends it.&#10;Out: A credential for exactly that action with its arguments, valid 60 s, usable once, signed by OpenBao; the key never leaves the vault, and the agent holds nothing that can sign.&#10;Logic: The service that runs the action checks it before acting (simprod's credentials.py): asks OpenBao whether the signature is genuine, then that the action and arguments match the request, that it has not expired, and that its one-time id is new. Anything missing, forged, expired, reused or meant for another action is refused with 403 and logged; a vault that cannot be reached refuses every action. An action that cannot be signed is not sent.&#10;Trust: Here the vault keeps its storage in memory and starts empty at each start; it is initialised and unsealed through its API, so no key is printed. Production keeps storage that persists and an unseal procedure.</title>
-        <rect x="628" y="520" width="130" height="64" rx="8"/>
-        <path class="i" transform="translate(633 524) scale(.56)" d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle class="i" transform="translate(633 524) scale(.56)" cx="16.5" cy="7.5" r=".5"/>
-        <text class="t" x="693" y="546">Identity</text>
-        <text class="s" x="693" y="564">this action only</text>
+        <rect x="628" y="620" width="130" height="64" rx="8"/>
+        <path class="i" transform="translate(633 624) scale(.56)" d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle class="i" transform="translate(633 624) scale(.56)" cx="16.5" cy="7.5" r=".5"/>
+        <text class="t" x="693" y="646">Identity</text>
+        <text class="s" x="693" y="664">this action only</text>
       </g>
       <g class="node" id="n_act" data-status="built" data-layer="harness" data-code="wyld3rness/loop/run.py">
         <title>In: One decision: 1 or 2 typed actions (backoff, a per-key rate cap, a restart), applied, verified and undone together. FindyFixy's on-call decider proposes them (findyfixy/oncall/decide.py), or the script with no model; the policy and a credential for each action come first.&#10;Watch it: the storm page (/) shows each try as it happens.&#10;Out: Each action sent through the environment port (wyld3rness/loop/env.py), with the undo that puts back the value from before it, or none for a restart.&#10;Logic: Code owns the loop, not the model: at most 3 tries, then the safe state. An action that is not carried out ends the incident; an invalid one is refused before anything is sent. FindyFixy's environment sends through simprod's edge as X-Actor findyfixy, so the service's own log can be checked against the record.&#10;Trust: The model never reaches the HTTP calls. It proposes; this loop applies.</title>
-        <rect x="460" y="520" width="130" height="64" rx="8"/>
-        <polygon class="i" transform="translate(465 524) scale(.56)" points="6 3 20 12 6 21 6 3"/>
-        <text class="t" x="525" y="546">Act</text>
-        <text class="s" x="525" y="564">typed, one at a time</text>
+        <rect x="460" y="620" width="130" height="64" rx="8"/>
+        <polygon class="i" transform="translate(465 624) scale(.56)" points="6 3 20 12 6 21 6 3"/>
+        <text class="t" x="525" y="646">Act</text>
+        <text class="s" x="525" y="664">typed, one at a time</text>
       </g>
       <g class="node" id="n_verify" data-status="built" data-layer="harness" data-code="wyld3rness/loop/verdict.py">
         <title>In: What customers saw, one interval a second, from a scraper in the host process that drives the storm, never in the agent's.&#10;Out: Verified (the last 5 s all good, 30 s after acting), then recovered and held (good from a time within the 30 s wait, for 30 s).&#10;Logic: A good second has at most 1% of the requests of the 5 s ending at it failed. The same rule scored the storm controls, 63 of 63 (research log, entry 012); re-scoring them with the rule moved into the harness changed none of their 252 verdicts (entry 013).&#10;Trust: The agent can read the same metrics through the edge and cannot change them or this verdict.</title>
-        <rect x="292" y="520" width="130" height="64" rx="8"/>
-        <path class="i" transform="translate(297 524) scale(.56)" d="m12 14 4-4"/><path class="i" transform="translate(297 524) scale(.56)" d="M3.34 19a10 10 0 1 1 17.32 0"/>
-        <text class="t" x="357" y="546">Verify</text>
-        <text class="s" x="357" y="564">did it recover?</text>
+        <rect x="292" y="620" width="130" height="64" rx="8"/>
+        <path class="i" transform="translate(297 624) scale(.56)" d="m12 14 4-4"/><path class="i" transform="translate(297 624) scale(.56)" d="M3.34 19a10 10 0 1 1 17.32 0"/>
+        <text class="t" x="357" y="646">Verify</text>
+        <text class="s" x="357" y="664">did it recover?</text>
       </g>
       <g class="node" id="n_undo" data-status="built" data-layer="harness" data-code="wyld3rness/loop/run.py">
         <title>In: A try that was not verified, or did not hold.&#10;Out: Every action of the try undone, last first, before the next try; the next decision sees the state put back and what was tried.&#10;Logic: Only for actions that can be undone: a try with a restart in it that did not resolve the incident goes to the safe state with no retry. A failed undo goes to the safe state too.</title>
-        <rect x="124" y="520" width="130" height="64" rx="8"/>
-        <circle class="i" transform="translate(129 524) scale(.56)" cx="18" cy="18" r="3"/><circle class="i" transform="translate(129 524) scale(.56)" cx="6" cy="6" r="3"/><path class="i" transform="translate(129 524) scale(.56)" d="M6 21V9a9 9 0 0 0 9 9"/>
-        <text class="t" x="189" y="546">Undo</text>
-        <text class="s" x="189" y="564">then try again</text>
+        <rect x="124" y="620" width="130" height="64" rx="8"/>
+        <circle class="i" transform="translate(129 624) scale(.56)" cx="18" cy="18" r="3"/><circle class="i" transform="translate(129 624) scale(.56)" cx="6" cy="6" r="3"/><path class="i" transform="translate(129 624) scale(.56)" d="M6 21V9a9 9 0 0 0 9 9"/>
+        <text class="t" x="189" y="646">Undo</text>
+        <text class="s" x="189" y="664">then try again</text>
       </g>
       <g class="node" id="n_safe" data-status="built" data-layer="harness" data-code="wyld3rness/loop/run.py">
         <title>In: Out of tries, a decision invalid after its retry, an action not carried out, a failed undo, a restart that did not resolve it, or the environment failing.&#10;Out: Every change still in force that has an undo is undone, last first, and nothing else changes. The record names what could not be put back.&#10;Logic: No path waits for a person. A containment beyond putting things back (shedding a tenant, paging) is added only when one is approved before runtime.</title>
-        <rect x="-44" y="520" width="130" height="64" rx="8"/>
-        <path class="i" transform="translate(-39 524) scale(.56)" d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path class="i" transform="translate(-39 524) scale(.56)" d="m9 12 2 2 4-4"/>
-        <text class="t" x="21" y="546">Safe state</text>
-        <text class="s" x="21" y="564">contain and stop</text>
+        <rect x="-44" y="620" width="130" height="64" rx="8"/>
+        <path class="i" transform="translate(-39 624) scale(.56)" d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path class="i" transform="translate(-39 624) scale(.56)" d="m9 12 2 2 4-4"/>
+        <text class="t" x="21" y="646">Safe state</text>
+        <text class="s" x="21" y="664">contain and stop</text>
       </g>
       <g class="node" data-status="planned" data-layer="harness" data-code="none">
         <title>Planned. Not built, no behavior yet.&#10;Per incident: cost including failed tries, customer minutes lost, harm, and whether it was resolved.</title>
-        <rect x="292" y="628" width="130" height="64" rx="8"/>
-        <circle class="i" transform="translate(297 632) scale(.56)" cx="8" cy="8" r="6"/><path class="i" transform="translate(297 632) scale(.56)" d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path class="i" transform="translate(297 632) scale(.56)" d="M7 6h1v4"/><path class="i" transform="translate(297 632) scale(.56)" d="m16.71 13.88.7.71-2.82 2.82"/>
-        <text class="t" x="357" y="654">Scorecard</text>
-        <text class="s" x="357" y="672">cost, minutes, harm</text>
+        <rect x="292" y="728" width="130" height="64" rx="8"/>
+        <circle class="i" transform="translate(297 732) scale(.56)" cx="8" cy="8" r="6"/><path class="i" transform="translate(297 732) scale(.56)" d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path class="i" transform="translate(297 732) scale(.56)" d="M7 6h1v4"/><path class="i" transform="translate(297 732) scale(.56)" d="m16.71 13.88.7.71-2.82 2.82"/>
+        <text class="t" x="357" y="754">Scorecard</text>
+        <text class="s" x="357" y="772">cost, minutes, harm</text>
       </g>
       <g class="node" data-status="planned" data-layer="harness" data-code="none">
         <title>Planned. Not built, no behavior yet.&#10;Stops every action at once. Available, and never needed for an action to proceed.</title>
-        <rect x="796" y="628" width="130" height="64" rx="8"/>
-        <path class="i" transform="translate(801 632) scale(.56)" d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle class="i" transform="translate(801 632) scale(.56)" cx="9" cy="7" r="4"/><polyline class="i" transform="translate(801 632) scale(.56)" points="16 11 18 13 22 9"/>
-        <text class="t" x="861" y="654">Kill switch</text>
-        <text class="s" x="861" y="672">stops every action</text>
+        <rect x="796" y="728" width="130" height="64" rx="8"/>
+        <path class="i" transform="translate(801 732) scale(.56)" d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle class="i" transform="translate(801 732) scale(.56)" cx="9" cy="7" r="4"/><polyline class="i" transform="translate(801 732) scale(.56)" points="16 11 18 13 22 9"/>
+        <text class="t" x="861" y="754">Kill switch</text>
+        <text class="s" x="861" y="772">stops every action</text>
       </g>
       <g class="node" data-status="planned" data-code="none">
         <title>Planned. Not built, no behavior yet.&#10;Pages the agent when a service burns its error budget.</title>
-        <rect x="124" y="762" width="130" height="64" rx="8"/>
-        <path class="i" transform="translate(129 766) scale(.56)" d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path class="i" transform="translate(129 766) scale(.56)" d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>
-        <text class="t" x="189" y="788">Alerts</text>
-        <text class="s" x="189" y="806">error budget burn</text>
+        <rect x="124" y="862" width="130" height="64" rx="8"/>
+        <path class="i" transform="translate(129 866) scale(.56)" d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path class="i" transform="translate(129 866) scale(.56)" d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>
+        <text class="t" x="189" y="888">Alerts</text>
+        <text class="s" x="189" y="906">error budget burn</text>
       </g>
       <g class="node" id="n_services" data-status="built" data-code="simprod/gateway.py">
         <title>In: Synthetic customers paying, from an open-loop load generator: Poisson arrivals at a fixed rate, each sent on time whatever the gateway does.&#10;Out: Real signals for anyone to read through the edge proxy on 127.0.0.1:8100: health, Prometheus-text metrics, an OpenAPI spec per service, and JSON logs in docker compose logs. The service that executes an action logs it with its actor.&#10;Logic: A gateway writes each payment to a ledger of 4 shards with fixed capacity, retrying failures, then notifies. Standard-library Python in hardened containers on a Docker network with no route out; the edge forwards an allow-list and never a fault control. Three typed actions: retry backoff and a per-key rate cap, each with an undo, and a restart with none.&#10;Trust: Simulated, and labeled so. Sleeps stand in for database work, so the capacity is a parameter and the faults reproduce on any machine. Research log entry 006 measures whether the VM can serve it.</title>
-        <rect x="460" y="762" width="130" height="64" rx="8"/>
-        <ellipse class="i" transform="translate(465 766) scale(.56)" cx="12" cy="5" rx="9" ry="3"/><path class="i" transform="translate(465 766) scale(.56)" d="M3 5V19A9 3 0 0 0 21 19V5"/><path class="i" transform="translate(465 766) scale(.56)" d="M3 12A9 3 0 0 0 21 12"/>
-        <text class="t" x="525" y="788">Services</text>
-        <text class="s" x="525" y="806">under real load</text>
+        <rect x="460" y="862" width="130" height="64" rx="8"/>
+        <ellipse class="i" transform="translate(465 866) scale(.56)" cx="12" cy="5" rx="9" ry="3"/><path class="i" transform="translate(465 866) scale(.56)" d="M3 5V19A9 3 0 0 0 21 19V5"/><path class="i" transform="translate(465 866) scale(.56)" d="M3 12A9 3 0 0 0 21 12"/>
+        <text class="t" x="525" y="888">Services</text>
+        <text class="s" x="525" y="906">under real load</text>
       </g>
       <g class="node" data-status="planned" data-code="none">
         <title>Planned. Not built, no behavior yet.&#10;Injected on a schedule the agent cannot read or control.</title>
-        <rect x="796" y="762" width="130" height="64" rx="8"/>
-        <path class="i" transform="translate(801 766) scale(.56)" d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
-        <text class="t" x="861" y="788">Faults</text>
-        <text class="s" x="861" y="806">hidden from the agent</text>
+        <rect x="796" y="862" width="130" height="64" rx="8"/>
+        <path class="i" transform="translate(801 866) scale(.56)" d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+        <text class="t" x="861" y="888">Faults</text>
+        <text class="s" x="861" y="906">hidden from the agent</text>
       </g>
 
       <circle id="dot" r="7" cx="0" cy="0"/>

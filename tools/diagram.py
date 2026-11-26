@@ -3,6 +3,12 @@
     code/docs/adr/fig/<name>.toml ──► code/docs/adr/img/<name>.svg       (the ADR shows it)
                                   └─► the live page, between <!-- diagram <name> --> markers
                                        (the console shows it under "Where it runs")
+    code/docs/fig/<name>.toml     ──► code/docs/img/<name>.svg           (the design document and
+                                                                          READMEs show it; no page copy)
+
+Why two folders: an ADR picture records a decision as it was made, and the
+console shows it beside the decision. A docs picture shows the system as it is
+now and changes with it, so it has no place in a dated record.
 
 Why a spec and not the live page: the page draws the logical flow (what talks to
 what), while a decision often needs another view, such as where each part runs.
@@ -40,6 +46,8 @@ import adr_snapshot as snap
 ROOT = Path(__file__).resolve().parents[1]
 SPECS = ROOT / "code" / "docs" / "adr" / "fig"
 OUT = ROOT / "code" / "docs" / "adr" / "img"
+DOC_SPECS = ROOT / "code" / "docs" / "fig"
+DOC_OUT = ROOT / "code" / "docs" / "img"
 PAGE = snap.PAGE
 BOX_W, BOX_H = 150, 64
 CAPTION_SPACE = 36
@@ -234,8 +242,13 @@ def render(spec_text: str, page: str) -> str:
 
 
 def specs() -> list[Path]:
-    """Every spec file, sorted."""
+    """Every ADR spec file, sorted."""
     return sorted(SPECS.glob("*.toml"))
+
+
+def doc_specs() -> list[Path]:
+    """Every docs spec file, sorted."""
+    return sorted(DOC_SPECS.glob("*.toml"))
 
 
 def region(name: str) -> re.Pattern[str]:
@@ -257,7 +270,7 @@ def with_copy(page: str, name: str, svg: str) -> str:
 
 
 def main() -> int:
-    """Draw every spec into its picture and into the page's region for it."""
+    """Draw every ADR spec into its picture and the page's region for it, then every docs spec into its picture."""
     page = PAGE.read_text()
     OUT.mkdir(parents=True, exist_ok=True)
     for spec in specs():
@@ -266,6 +279,10 @@ def main() -> int:
         page = with_copy(page, spec.stem, svg)
         print(f"wrote {(OUT / f'{spec.stem}.svg').relative_to(ROOT)} and its copy in the live page")
     PAGE.write_text(page)
+    DOC_OUT.mkdir(parents=True, exist_ok=True)
+    for spec in doc_specs():
+        (DOC_OUT / f"{spec.stem}.svg").write_text(render(spec.read_text(), page))
+        print(f"wrote {(DOC_OUT / f'{spec.stem}.svg').relative_to(ROOT)}")
     return 0
 
 
