@@ -120,6 +120,8 @@ ENTRY_POINTS = {
         "mcp.server",
         "observability.prices",
         "oncall.cli",
+        "oncall.attacks",
+        "oncall.service",
     )
 }
 # The composition root and the configuration it reads.

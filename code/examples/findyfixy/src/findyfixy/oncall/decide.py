@@ -101,7 +101,7 @@ Customers are failing now. Choose one action that ends the failures. Add a secon
 cannot end them.
 
 Actions:
-- {{"name": "backoff", "enabled": true or false}}: gateway retries back off with jitter, within a retry budget.
+- {{"name": "backoff", "enabled": true}}: gateway retries back off with jitter, within a retry budget.
 - {{"name": "rate_cap", "key": "acct-NNNN", "rps": number}}: the gateway refuses one account key's \
 requests above this many a second.
 - {{"name": "restart", "service": "gateway", "ledger" or "notifications"}}: restart one service. It \

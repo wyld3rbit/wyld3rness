@@ -79,6 +79,10 @@ services:
       OLLAMA_HOST: http://host.docker.internal:11434
     extra_hosts: ["host.docker.internal:host-gateway"]
     networks: [agent]
+    # Published on loopback so `make injection` can ask it directly; this changes
+    # nothing about what the agent itself can reach.
+    ports:
+      - "127.0.0.1:8301:8000"
     init: true
     read_only: true
     cap_drop: [ALL]

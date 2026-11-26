@@ -10,4 +10,5 @@ The tests of the `wyld3rness` harness. They drive it with the fakes in `code/src
 - `code/tests/test_policy.py` covers the policy table: unknown kinds, actions that must be alone, preconditions that refuse or cannot be checked. `code/tests/test_budget.py` covers the budget: the byte bound (on entry 014's measured prompts too), refusals, unpriced models and settling.
 - `code/tests/test_credential.py` covers the signed claims, the token format and the OpenBao signer with a fake vault.
 - `code/tests/test_remote.py` runs the loop through a decider served over HTTP on a local port: the history on the wire, budget refusals, a failing or missing agent, one decider per incident.
+- `code/tests/test_injection.py` covers the injection suite: goal matching, what counts as an attack that ran, a failing decider, and the fully fooled one.
 - `code/tests/test_prices.py` covers the price table parser and its sync to Langfuse, and `code/tests/test_langfuse_env.py` checks the Langfuse secrets writer against its compose file.
