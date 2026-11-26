@@ -22,7 +22,7 @@ model server, not bad output, and the loop turns them into the safe state.
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
@@ -219,6 +219,18 @@ class ModelDecider:
             raise
         self.budget.settle(reservation, getattr(reply, "input_tokens", None), getattr(reply, "output_tokens", None))
         return reply
+
+    def record(self) -> dict[str, object]:
+        """Plain JSON about this decider's work so far: its calls, its reasons and its budget."""
+        return {
+            "model_calls": [asdict(c) for c in self.calls],
+            "reasons": list(self.reasons),
+            "budget": {
+                "limit_usd": self.budget.limit_usd,
+                "spent_usd": self.budget.spent_usd,
+                "charges": [asdict(c) for c in self.budget.charges],
+            },
+        }
 
     def _record(self, reply: str, *, valid: bool) -> None:
         """Keep one call's model and tokens, as the reply reports them."""

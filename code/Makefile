@@ -10,7 +10,7 @@
 #      findyfixy.pth and simprod.pth), each a single line naming its src/ folder.
 # On any finding, stop and read it. Do not upgrade or remove to make it pass.
 
-.PHONY: audit hooks scan up down sim-up load-test controls-pilot controls oncall setup ingest console triage test test-harness lint eval-retrieval eval eval-gate eval-baseline eval-freeze eval-compare eval-negative case golden verify-attestation obs-secrets obs-up obs-down obs-prices
+.PHONY: audit hooks scan up down sim-up load-test controls-pilot controls oncall oncall-up setup ingest console triage test test-harness lint eval-retrieval eval eval-gate eval-baseline eval-freeze eval-compare eval-negative case golden verify-attestation obs-secrets obs-up obs-down obs-prices
 
 # Memory for the Colima VM, in GB. 6 on most days, 8 on Langfuse days:
 #   make up COLIMA_MEMORY=8
@@ -24,7 +24,7 @@ APP_ENV := $(APP_DIR)/.env
 # The simulated production the agent operates (examples/simprod/README.md).
 SIM_COMPOSE := examples/simprod/docker-compose.yml
 # Every workspace member installed: the harness and the example app.
-RUN := uv run --all-packages
+RUN := uv run --all-packages --all-extras
 
 # up: start the container runtime if it is off, then the services, and wait
 # until they are ready. Safe to run twice. `--wait` blocks until the database
@@ -41,7 +41,7 @@ up:
 # The compose step runs only while the VM is up. If it fails then, the make
 # stops there, so a half-stopped system is never reported as clean.
 down:
-	@if colima status >/dev/null 2>&1; then docker compose -f $(SIM_COMPOSE) --profile load --profile storm --profile chaos down && docker compose -f $(APP_COMPOSE) down; fi
+	@if colima status >/dev/null 2>&1; then docker compose -f $(SIM_COMPOSE) --profile load --profile storm --profile chaos down && docker compose -f $(APP_COMPOSE) --profile oncall down; fi
 	colima stop
 	@if colima status >/dev/null 2>&1; then echo "FAILED: Colima is still running"; exit 1; fi
 	@echo "Colima is stopped."
@@ -80,8 +80,17 @@ controls:
 oncall:
 	$(RUN) findyfixy-oncall
 
+# oncall-up: build and start the on-call agent and loop containers (profile
+# "oncall" in examples/findyfixy/docker-compose.yml), after `make sim-up`. The
+# image's requirements are exported from uv.lock with hashes, without the
+# `triage` extra. The loop runs as your user id so it can read the sign pass.
+oncall-up:
+	@test -f examples/simprod/.bao/sign.token || { echo "no sign pass yet: run make sim-up first"; exit 1; }
+	uv export --frozen --package findyfixy --no-dev --no-emit-workspace --format requirements-txt -o $(APP_DIR)/.oncall-requirements.txt > /dev/null
+	HOST_UID=$$(id -u) docker compose -f $(APP_COMPOSE) --profile oncall up -d --build --wait agent loop
+
 audit:
-	uv export --frozen --all-packages --format requirements-txt --no-emit-workspace -o .audit-req.txt > /dev/null
+	uv export --frozen --all-packages --all-extras --format requirements-txt --no-emit-workspace -o .audit-req.txt > /dev/null
 	uvx pip-audit --disable-pip --require-hashes -r .audit-req.txt
 	@echo "--- startup hooks (.pth files in .venv):"
 	@bad=$$(find .venv -name '*.pth' \
@@ -124,7 +133,7 @@ scan:
 setup:
 	@test -f $(APP_ENV) || { echo "code/$(APP_ENV) is missing. Copy it: cp $(APP_DIR)/.env.example $(APP_ENV)"; exit 1; }
 	@grep -q '^SMALL_MODEL=.' $(APP_ENV) && grep -q '^LARGE_MODEL=.' $(APP_ENV) || { echo "code/$(APP_ENV) must set SMALL_MODEL and LARGE_MODEL"; exit 1; }
-	uv sync --all-packages
+	uv sync --all-packages --all-extras
 	@set -a; . ./$(APP_ENV); set +a; \
 	  for m in "$$SMALL_MODEL" "$$LARGE_MODEL" "$${JUDGE_MODEL:-qwen2.5:7b}"; do echo "$$m"; done | sort -u | while read -r m; do ollama pull "$$m" || exit 1; done
 	$(MAKE) up
@@ -148,9 +157,9 @@ test:
 # typed definitions required in FindyFixy). Runs in the pre-commit hook when
 # code/ is staged, and in CI. `uv run ruff format .` applies the formatting.
 lint:
-	uv run --all-packages ruff check .
-	uv run --all-packages ruff format --check .
-	uv run --all-packages mypy
+	uv run --all-packages --all-extras ruff check .
+	uv run --all-packages --all-extras ruff format --check .
+	uv run --all-packages --all-extras mypy
 
 # test-harness: the harness's own suite in a throwaway environment that holds
 # the harness and its dev tools only, no app. It proves the harness stands
@@ -203,7 +212,7 @@ STAGED := $(RUN) python -m wyld3rness.eval.staged
 GATED := --workspace code --attestation examples/findyfixy/evals/attestation.json
 gate-at-commit:
 	$(STAGED) commit $(GATED) --link examples/findyfixy/.env --link infra/langfuse/.env \
-	  --link examples/findyfixy/reports -- uv run --all-packages --frozen --no-sync findyfixy-eval --gate
+	  --link examples/findyfixy/reports -- uv run --all-packages --all-extras --frozen --no-sync findyfixy-eval --gate
 
 # gate-at-push: the attestation of every commit being pushed, read from the
 # pre-push hook's stdin. A merge, rebase or cherry-pick skips pre-commit.
