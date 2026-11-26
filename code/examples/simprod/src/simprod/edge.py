@@ -24,6 +24,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 
+from simprod.credentials import HEADER
 from simprod.service import (
     JSON,
     Metrics,
@@ -42,8 +43,8 @@ SERVICES = ("gateway", "ledger", "notifications")
 # Its fault port (the runaway client) is sealed like the ledger's.
 CUSTOMERS = "customers"
 FORWARD_TIMEOUT_S = 10.0
-# Only these request headers pass through: the body's type and who is acting.
-FORWARDED_HEADERS = ("Content-Type", "X-Actor")
+# Only these request headers pass through: the body's type, who is acting, and the action's credential.
+FORWARDED_HEADERS = ("Content-Type", "X-Actor", HEADER)
 
 
 @dataclass(frozen=True)
@@ -117,8 +118,10 @@ def openapi(public_url: str) -> JSON:
             op["requestBody"] = {"required": True, "content": {"application/json": {"schema": {"type": "object"}}}}
             if "/actions/" in a.path:
                 op["parameters"] = [
-                    {"name": "X-Actor", "in": "header", "required": False, "schema": {"type": "string"}}
+                    {"name": HEADER, "in": "header", "required": True, "schema": {"type": "string"}},
+                    {"name": "X-Actor", "in": "header", "required": False, "schema": {"type": "string"}},
                 ]
+                op["responses"] = {**op["responses"], "403": {"description": "No valid credential for this action"}}
         paths.setdefault(f"/{a.service}{a.path}", {})[a.method.lower()] = op
     return {
         "openapi": "3.1.0",

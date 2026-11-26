@@ -12,7 +12,7 @@ from wyld3rness.loop.budget import Budget, BudgetExceeded
 from wyld3rness.loop.env import Action
 from wyld3rness.loop.policy import Policy
 from wyld3rness.loop.run import LoopConfig, Try, run_incident
-from wyld3rness.testing import FakeDecider, FakeWorld, allow
+from wyld3rness.testing import FakeDecider, FakeSigner, FakeWorld, allow
 from wyld3rness.trace.prices import ModelPrice
 
 PRICES = [ModelPrice("m", 0.00000005, 0.0000004, "test")]
@@ -95,9 +95,9 @@ def _env(status: int = 200) -> tuple[SimprodEnv, list[tuple]]:
     """An environment whose edge is a list: every post is recorded and answered `status`."""
     posts: list[tuple] = []
 
-    def post(path: str, body: dict, actor: str) -> dict:
+    def post(path: str, body: dict, actor: str, credential: str) -> dict:
         """Record the request; answer as `controls.act` does."""
-        posts.append((path, body, actor))
+        posts.append((path, body, actor, credential))
         return {"path": path, "body": body, "status": status, "answer": {"ok": status == 200}}
 
     env = SimprodEnv(lambda: [], lambda: 0.0, post=post, get=lambda url: "", settings=lambda: BEFORE)
@@ -106,37 +106,37 @@ def _env(status: int = 200) -> tuple[SimprodEnv, list[tuple]]:
 
 def test_apply_sends_as_findyfixy_and_returns_the_undo() -> None:
     env, posts = _env()
-    applied = env.apply(Action("backoff", {"enabled": True}))
+    applied = env.apply(Action("backoff", {"enabled": True}), "cred")
     assert applied.ok and applied.undo == Action("backoff", {"enabled": False})
-    assert posts == [("/gateway/actions/backoff", {"enabled": True}, "findyfixy")] and len(env.sent) == 1
+    assert posts == [("/gateway/actions/backoff", {"enabled": True}, "findyfixy", "cred")] and len(env.sent) == 1
 
 
 def test_apply_refuses_an_invalid_action_before_sending_anything() -> None:
     env, posts = _env()
-    applied = env.apply(Action("restart", {"service": "edge"}))
+    applied = env.apply(Action("restart", {"service": "edge"}), "cred")
     assert not applied.ok and applied.detail.startswith("refused") and posts == []
 
 
 def test_a_restart_answered_202_is_carried_out() -> None:
     """Exploratory storm s3-01 (research log, entry 013): only 200 counted, so an accepted restart ended the try."""
     env, _ = _env(status=202)
-    applied = env.apply(Action("restart", {"service": "gateway"}))
+    applied = env.apply(Action("restart", {"service": "gateway"}), "cred")
     assert applied.ok and applied.undo is None
 
 
 def test_a_reply_lost_after_sending_is_not_ok_but_keeps_its_undo() -> None:
-    def post(path: str, body: dict, actor: str) -> dict:
+    def post(path: str, body: dict, actor: str, credential: str) -> dict:
         """The request went out; the reply was cut short."""
         raise ValueError("reply was not JSON")
 
     env = SimprodEnv(lambda: [], lambda: 0.0, post=post, get=lambda url: "", settings=lambda: BEFORE)
-    applied = env.apply(Action("backoff", {"enabled": True}))
+    applied = env.apply(Action("backoff", {"enabled": True}), "cred")
     assert not applied.ok and applied.undo == Action("backoff", {"enabled": False}) and env.sent[0]["status"] == 0
 
 
 def test_a_refused_request_is_not_ok_but_keeps_its_undo() -> None:
     env, _ = _env(status=0)
-    applied = env.apply(Action("backoff", {"enabled": True}))
+    applied = env.apply(Action("backoff", {"enabled": True}), "cred")
     assert not applied.ok and applied.undo is not None  # it may have happened
 
 
@@ -214,9 +214,8 @@ def test_the_model_decider_drives_the_harness_loop_to_a_resolved_incident() -> N
         return next(replies)
 
     decider = ModelDecider(ask, "m", 30, budget())
-    out = run_incident(
-        FakeWorld(fix=["rate_cap"]), decider, LoopConfig(wait_s=30, hold_s=30), allow("backoff", "rate_cap")
-    )
+    config, policy = LoopConfig(wait_s=30, hold_s=30), allow("backoff", "rate_cap")
+    out = run_incident(FakeWorld(fix=["rate_cap"]), decider, config, policy, FakeSigner())
     assert out.resolved and [t.verdict for t in out.tries] == ["not verified", "resolved"]
     assert "Try 1: backoff(enabled=True): not verified, undone." in prompts[1]
     assert len(decider.budget.charges) == 2 and decider.budget.spent_usd > 0
@@ -346,8 +345,8 @@ def test_a_model_the_budget_cannot_carry_is_refused_before_any_storm() -> None:
 def test_the_driver_measures_from_the_last_try_that_applied_something() -> None:
     """The review's case: try 1 applied and was undone, tries 2 and 3 were refused."""
     config = LoopConfig(wait_s=30, hold_s=30)
-    out = run_incident(FakeWorld(fix=["z"]), FakeDecider([["a"], ["b"], ["b"]]), config, allow("a"))
+    out = run_incident(FakeWorld(fix=["z"]), FakeDecider([["a"], ["b"], ["b"]]), config, allow("a"), FakeSigner())
     assert [t.verdict for t in out.tries] == ["not verified", "denied", "denied"]
     assert last_action_at(out) == out.tries[0].t_act != out.tries[-1].t_act
-    refused_only = run_incident(FakeWorld(), FakeDecider([["b"]] * 3), config, allow("a"))
+    refused_only = run_incident(FakeWorld(), FakeDecider([["b"]] * 3), config, allow("a"), FakeSigner())
     assert last_action_at(refused_only) is None

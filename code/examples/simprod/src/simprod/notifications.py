@@ -11,7 +11,8 @@ from __future__ import annotations
 from collections.abc import Callable
 import time
 
-from simprod.service import Metrics, Request, Response, Route, Service, env_float, restart_route, run
+from simprod.credentials import Guard, guard_from_env
+from simprod.service import Metrics, Request, Response, Route, Service, env_float, log, restart_route, run
 
 NAME = "notifications"
 
@@ -34,8 +35,8 @@ class Notifications:
         return Response(200, {"sent": req.body.get("id")})
 
 
-def build(n: Notifications, exit: Callable[[int], None] | None = None) -> Service:
-    """The public service."""
+def build(n: Notifications, exit: Callable[[int], None] | None = None, guard: Guard | None = None) -> Service:
+    """The public service; `guard` checks each action's credential."""
     restart = restart_route(NAME) if exit is None else restart_route(NAME, exit=exit)
     return Service(
         NAME,
@@ -54,13 +55,16 @@ def build(n: Notifications, exit: Callable[[int], None] | None = None) -> Servic
             restart,
         ],
         metrics=n.metrics,
+        guard=guard,
     )
 
 
 def main() -> None:
     """Container entry point."""
     n = Notifications(env_float("NOTIFY_SERVICE_MS", 5) / 1000, Metrics())
-    run((build(n), 8000))
+    guard = guard_from_env()
+    log(NAME, "guard", on=guard is not None)
+    run((build(n, guard=guard), 8000))
 
 
 if __name__ == "__main__":

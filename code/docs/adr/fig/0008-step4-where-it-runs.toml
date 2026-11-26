@@ -1,11 +1,11 @@
 # Day 7, step 4: where each part runs (ADR 0008). Drawn by tools/diagram.py; edit this file, not the picture.
-# A box is solid when its code exists, dashed when it is planned. The two containers arrive in step 4b.
+# A box is solid when its code exists, dashed when it is planned. The two containers arrive in step 4c.
 caption = "Day 7, step 4: where each part runs. Solid is built, dashed is planned."
 width = 1180
 height = 670
 
 [[zone]]
-label = "Your Mac: only what needs the Docker socket or the GPU"
+label = "The host: only what needs the Docker socket or the GPU"
 kind = "human"
 x = 10
 y = 0
@@ -21,7 +21,7 @@ w = 1160
 h = 510
 
 [[zone]]
-label = "Harness container (step 4b): no Docker socket"
+label = "Harness container (step 4c): no Docker socket"
 kind = "harness"
 x = 30
 y = 180
@@ -29,7 +29,7 @@ w = 610
 h = 140
 
 [[zone]]
-label = "Agent container (step 4b): no socket, no keys, no route to simprod"
+label = "Agent container (step 4c): no socket, no keys, no route to simprod"
 kind = "harness"
 x = 670
 y = 180
@@ -114,7 +114,7 @@ sub = "key never leaves"
 icon = "Identity"
 x = 990
 y = 400
-status = "planned"
+status = "built"
 
 [[box]]
 id = "customers"
@@ -141,7 +141,7 @@ sub = "gateway asks OpenBao"
 icon = "CI gate"
 x = 700
 y = 550
-status = "planned"
+status = "built"
 
 [[edge]]
 from = "runner"
@@ -177,7 +177,7 @@ status = "built"
 from = "loop"
 to = "vault"
 label = "sign"
-status = "planned"
+status = "built"
 via = [[580, 360], [1065, 360]]
 
 [[edge]]
@@ -189,13 +189,13 @@ status = "built"
 [[edge]]
 from = "services"
 to = "token"
-status = "planned"
+status = "built"
 
 [[edge]]
 from = "token"
 to = "vault"
 label = "verify"
-status = "planned"
+status = "built"
 via = [[775, 432]]
 
 [[edge]]

@@ -348,3 +348,25 @@ def test_the_real_pre_push_hook_blocks_a_bad_push_and_allows_a_clean_one(repo, t
     assert "bad.txt:1: local_path" in blocked.stderr
     assert SOMEONE not in blocked.stdout + blocked.stderr
     assert git(remote, "rev-list", "--count", "main").stdout.strip() == published  # nothing arrived
+
+
+def test_this_computers_names_are_caught_whatever_they_are() -> None:
+    ident = sp.Identity(hostnames=("zephyr-laptop", "Zephyr Laptop", "lab"))
+    assert [r for _, r in sp.scan_text("built on zephyr-laptop last night", ident)] == ["identity"]
+    assert [r for _, r in sp.scan_text("Sharing name: Zephyr Laptop", ident)] == ["identity"]
+    assert sp.scan_text("the lab results", ident) == []  # too short to tell from an ordinary word
+
+
+def test_generic_host_names_are_not_a_person() -> None:
+    assert sp.scan_text("connect to localhost and the runner", sp.Identity(hostnames=("localhost", "runner"))) == []
+
+
+def test_the_computer_names_are_read_fresh_including_the_hyphenated_form(monkeypatch) -> None:
+    monkeypatch.setattr(sp.socket, "gethostname", lambda: "renamed-box.local")
+    names = sp.host_names(scutil=lambda key: {"ComputerName": "Renamed Box", "LocalHostName": "Renamed-Box"}[key])
+    assert {"renamed-box.local", "renamed-box", "Renamed Box", "Renamed-Box"} <= set(names)
+
+
+def test_a_computer_without_scutil_still_has_its_host_name(monkeypatch) -> None:
+    monkeypatch.setattr(sp.socket, "gethostname", lambda: "ci-box")
+    assert sp.host_names(scutil=lambda key: "") == ("ci-box",)

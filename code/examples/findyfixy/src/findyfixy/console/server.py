@@ -52,7 +52,7 @@ Security model (a local tool is still a web server)
     - An eval run's case count must be a JSON integer from 1 to the size of
       the chosen set (the golden set live, the invented set fake). Strict:
       "2", 2.0 and true are refused, and so is any unknown field.
-    - One run at a time, triage or eval. Two 7B-class runs would not fit in 16 GB.
+    - One run at a time, triage or eval. Two 7B-class runs would not fit in the 16 GB the project asks for.
 
 Failure modes
     - A browser that disconnects mid-stream is a broken pipe in the handler.

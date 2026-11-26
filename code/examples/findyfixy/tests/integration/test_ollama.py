@@ -35,7 +35,7 @@ from findyfixy.triage.record import Ask, Triage, ask_validated
 pytestmark = pytest.mark.integration
 
 # Generous on purpose. The first call to a model includes loading its weights
-# into memory (seconds for 1.5B, longer for 7B on a 16 GB machine under load).
+# into memory (seconds for 1.5B, longer for 7B within 16 GB under load).
 CALL_DEADLINE_S = 120
 FULL_RUN_DEADLINE_S = 600
 

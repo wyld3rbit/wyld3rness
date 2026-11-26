@@ -54,8 +54,9 @@ from typing import Any
 import urllib.error
 import urllib.request
 
-from simprod import loadtest
+from simprod import loadtest, vault
 from simprod.checker import Scraper, late_share, max_gap
+from simprod.credentials import HEADER
 from simprod.faults import FAULTS_VERSION, Storm, storms
 from wyld3rness.loop.verdict import (
     Second,
@@ -132,17 +133,16 @@ def chaos(*args: str) -> JSON:
     return result
 
 
-def act(path: str, body: Mapping[str, object], actor: str = ACTOR) -> JSON:
-    """One typed action through the edge, as the agent sends it, logged by the service under `actor`.
+def act(path: str, body: Mapping[str, object], actor: str = ACTOR, credential: str = "") -> JSON:
+    """One typed action through the edge, with its credential, logged by the service under `actor`.
 
-    Never raises: a failure is status 0.
+    Never raises: a failure is status 0. Without a credential the service
+    refuses it with 403, which is how an unsigned action shows in a record.
     """
-    req = urllib.request.Request(
-        EDGE + path,
-        data=json.dumps(body).encode(),
-        method="POST",
-        headers={"Content-Type": "application/json", "X-Actor": actor},
-    )
+    headers = {"Content-Type": "application/json", "X-Actor": actor}
+    if credential:
+        headers[HEADER] = credential
+    req = urllib.request.Request(EDGE + path, data=json.dumps(body).encode(), method="POST", headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=10) as r:
             return {"path": path, "body": dict(body), "status": r.status, "answer": json.loads(r.read())}
@@ -150,6 +150,24 @@ def act(path: str, body: Mapping[str, object], actor: str = ACTOR) -> JSON:
         return {"path": path, "body": dict(body), "status": e.code, "answer": e.read().decode(errors="replace")}
     except OSError as e:  # refused, reset or timed out: the action may or may not have happened
         return {"path": path, "body": dict(body), "status": 0, "answer": f"{type(e).__name__}: {e}"}
+
+
+def signed_act(path: str, body: Mapping[str, object]) -> JSON:
+    """`act` with a credential from the vault for exactly this action, as every arm must send it.
+
+    Never raises, like `act`: an action that cannot be signed is not sent and is
+    recorded with status 0 and the reason, so the run keeps what it already sent.
+    """
+    try:
+        credential = vault.signer().sign(vault.action_of(path, dict(body)))
+    except Exception as exc:
+        return {
+            "path": path,
+            "body": dict(body),
+            "status": 0,
+            "answer": f"not signed, not sent: {type(exc).__name__}: {exc}",
+        }
+    return act(path, body, credential=credential)
 
 
 _GAUGE = re.compile(r'^gateway_(backoff_enabled|rate_caps)(?:\{key="([^"]+)"\})?\s+(\S+)$', re.M)
@@ -285,13 +303,13 @@ def run_storm(storm: Storm, arm: str, rate: int, wait_s: float, hold_s: float) -
     with live_storm(storm, arm, rate, wait_s, hold_s) as live:
         record = live.record
         chosen = storm.fix(rate) if arm == "scripted" else storm.wrong(rate) if arm == "wrong" else []
-        record["actions"] = [act(*a) for a in chosen]
+        record["actions"] = [signed_act(*a) for a in chosen]
         time.sleep(wait_s)
         t_verify = live.now()
         record["t_verify"] = round(t_verify, 2)
         record["verified"] = verified(judged(live.scraper.series()), t_verify)
         if arm == "wrong" and not record["verified"]:
-            record["undos"] = [act(*a) for a in storm.undo_of_wrong()]
+            record["undos"] = [signed_act(*a) for a in storm.undo_of_wrong()]
             record["restored"] = read_settings() == live.before
         live.cover(live.t_act + wait_s + hold_s + 2)  # the hold window covered, however late recovery came
     return live.record
@@ -476,6 +494,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.cmd == "run" and (WAIT_S is None or HOLD_S is None):
         return controls()  # refuses with its message before anything is started or restored
+    try:
+        vault.check()  # an expired pass, a sealed vault or a skewed clock stops the run before any storm
+    except Exception as exc:
+        print(f"the vault is not ready ({exc}): run `make sim-up`", file=sys.stderr)
+        return 2
     try:
         return pilot() if args.cmd == "pilot" else controls()
     finally:

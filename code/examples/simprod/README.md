@@ -17,8 +17,9 @@ Three services from the incident corpus, under real load, with faults that hurt 
 | loadgen | Customers paying at a fixed average rate, whatever the gateway does, for one load-test phase | [loadgen.py](src/simprod/loadgen.py) |
 | customers | The same customers all the time, for storms, plus the hot shard's runaway client | [customers.py](src/simprod/customers.py) |
 | chaos | Injects a seeded fault from inside the network, where the fault ports are | [faults.py](src/simprod/faults.py) |
+| openbao | Holds the actions' signing key and verifies credentials; in-memory storage, a fresh key at each start | [vault.py](src/simprod/vault.py), [openbao/Dockerfile](openbao/Dockerfile) |
 
-Standard library only, one image ([Dockerfile](Dockerfile)), hardened in [docker-compose.yml](docker-compose.yml): read-only filesystem, no capabilities, non-root.
+The services: standard library only, one image ([Dockerfile](Dockerfile)). OpenBao: its own pinned image ([openbao/Dockerfile](openbao/Dockerfile)). Both hardened in [docker-compose.yml](docker-compose.yml): read-only filesystem, no capabilities, non-root.
 
 ## Inspect it yourself
 
@@ -31,7 +32,8 @@ Start it with `make sim-up` from `code/` (after `make up`). Then:
 | Metrics | `curl 127.0.0.1:8100/ledger/metrics` | Prometheus text: `ledger_writes_total`, `ledger_queue_depth` per shard |
 | Postman | Import `http://127.0.0.1:8100/openapi.json` | Every allowed endpoint, grouped by service |
 | Logs | `docker compose -p simprod logs -f gateway` | One JSON line per failure, action and fault |
-| Actions taken | `docker compose -p simprod logs gateway \| grep '"event": "action"'` | Each action with its actor, written by the service that executed it |
+| Actions taken | `docker compose -p simprod logs gateway \| grep '"event": "action"'` | Each action with its actor and its credential's one-time id, written by the service that executed it |
+| Actions refused | `curl -i -X POST 127.0.0.1:8100/gateway/actions/backoff -H 'Content-Type: application/json' -d '{"enabled":true}'` | `403` with `"reason": "no credential"`, and an `action_refused` line in the gateway's log |
 | Sealed faults | `curl -i 127.0.0.1:8100/ledger/fault` | `404`: the edge never forwards a fault control |
 | What customers see | `curl 127.0.0.1:8100/customers/metrics` (during a storm) | `customers_requests_total` by outcome, customers only: the runaway client is counted on the sealed admin port, so these metrics do not name the fault |
 | Busiest keys | `curl 127.0.0.1:8100/gateway/metrics \| grep top_keys` | The 5 keys sending most over the last 10 s |
@@ -46,7 +48,7 @@ Start it with `make sim-up` from `code/` (after `make up`). Then:
 | Cap a key's rate | `POST /gateway/actions/rate-cap {"key": "acct-0042", "rps": 5}` | `{"key": "acct-0042", "rps": null}` |
 | Restart a service | `POST /<service>/actions/restart {}` | none |
 
-Send `X-Actor: <who>` with an action and the service logs it.
+Every action needs `X-Action-Token`: a credential for exactly that action and its arguments, valid 60 s, usable once, signed by OpenBao ([credentials.py](src/simprod/credentials.py)). The service asks OpenBao whether it is genuine before acting and refuses anything missing, forged, expired, reused or meant for another action, with the reason. `make sim-up` creates the key and two passes in the git-ignored .bao folder: one that may only sign (the host's), one that may only verify (mounted read-only into the services). Send `X-Actor: <who>` too, and the service logs it.
 
 ## Faults
 

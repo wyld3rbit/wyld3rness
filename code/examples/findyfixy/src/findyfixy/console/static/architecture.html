@@ -462,8 +462,8 @@
         <text class="t" x="861" y="546">Policy</text>
         <text class="s" x="861" y="564">allowed kind?</text>
       </g>
-      <g class="node" data-status="planned" data-layer="harness" data-code="none">
-        <title>Planned. Not built, no behavior yet.&#10;A credential for one action on one resource, short-lived.</title>
+      <g class="node" data-status="built" data-layer="harness" data-code="wyld3rness/loop/credential.py">
+        <title>In: Each action, and each undo, just before the loop sends it.&#10;Out: A credential for exactly that action with its arguments, valid 60 s, usable once, signed by OpenBao; the key never leaves the vault, and the agent holds nothing that can sign.&#10;Logic: The service that runs the action checks it before acting (simprod's credentials.py): asks OpenBao whether the signature is genuine, then that the action and arguments match the request, that it has not expired, and that its one-time id is new. Anything missing, forged, expired, reused or meant for another action is refused with 403 and logged; a vault that cannot be reached refuses every action. An action that cannot be signed is not sent.&#10;Trust: Here the vault keeps its storage in memory and starts empty at each start; it is initialised and unsealed through its API, so no key is printed. Production keeps storage that persists and an unseal procedure.</title>
         <rect x="628" y="520" width="130" height="64" rx="8"/>
         <path class="i" transform="translate(633 524) scale(.56)" d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle class="i" transform="translate(633 524) scale(.56)" cx="16.5" cy="7.5" r=".5"/>
         <text class="t" x="693" y="546">Identity</text>
@@ -569,13 +569,13 @@
 <rect x="0" y="-36" width="1180" height="706" fill="#0b1220"/>
 <text class="dg-caption" x="14" y="-12">Day 7, step 4: where each part runs. Solid is built, dashed is planned.</text>
 <rect class="dg-zone human" x="10" y="0" width="1160" height="130" rx="10"/>
-<text class="dg-zone-label human" x="22" y="18">Your Mac: only what needs the Docker socket or the GPU</text>
+<text class="dg-zone-label human" x="22" y="18">The host: only what needs the Docker socket or the GPU</text>
 <rect class="dg-zone" x="10" y="150" width="1160" height="510" rx="10"/>
 <text class="dg-zone-label" x="22" y="168">Colima VM (Docker)</text>
 <rect class="dg-zone harness" x="30" y="180" width="610" height="140" rx="10"/>
-<text class="dg-zone-label harness" x="42" y="198">Harness container (step 4b): no Docker socket</text>
+<text class="dg-zone-label harness" x="42" y="198">Harness container (step 4c): no Docker socket</text>
 <rect class="dg-zone harness" x="670" y="180" width="490" height="140" rx="10"/>
-<text class="dg-zone-label harness" x="682" y="198">Agent container (step 4b): no socket, no keys, no route to simprod</text>
+<text class="dg-zone-label harness" x="682" y="198">Agent container (step 4c): no socket, no keys, no route to simprod</text>
 <rect class="dg-zone" x="30" y="500" width="860" height="140" rx="10"/>
 <text class="dg-zone-label" x="42" y="518">simprod: no route out</text>
 <path class="dg-edge" d="M535,104 L535,230"/>
@@ -588,12 +588,12 @@
 <text class="dg-edge-label" x="935" y="256" text-anchor="middle">reserve</text>
 <path class="dg-edge" d="M1065,230 L1065,104"/>
 <text class="dg-edge-label" x="1073" y="171" text-anchor="start">model call</text>
-<path class="dg-edge planned" d="M580,294 L580,360 L1065,360 L1065,400"/>
+<path class="dg-edge" d="M580,294 L580,360 L1065,360 L1065,400"/>
 <text class="dg-edge-label" x="822.5" y="354" text-anchor="middle">sign</text>
 <path class="dg-edge" d="M535,294 L535,550"/>
 <text class="dg-edge-label" x="543" y="426" text-anchor="start">act with token</text>
-<path class="dg-edge planned" d="M610,582 L700,582"/>
-<path class="dg-edge planned" d="M775,550 L775,432 L990,432"/>
+<path class="dg-edge" d="M610,582 L700,582"/>
+<path class="dg-edge" d="M775,550 L775,432 L990,432"/>
 <text class="dg-edge-label" x="882.5" y="426" text-anchor="middle">verify</text>
 <path class="dg-edge" d="M135,550 L135,294"/>
 <text class="dg-edge-label" x="143" y="426" text-anchor="start">scraped each second</text>
@@ -604,10 +604,10 @@
 <g class="dg-box"><rect x="460" y="230" width="150" height="64" rx="8"/><g transform="translate(465 234) scale(.56)"><polygon class="i" points="6 3 20 12 6 21 6 3"/></g><text class="dg-t" x="545" y="256">Loop</text><text class="dg-s" x="545" y="274">act, wait, undo, stop</text></g>
 <g class="dg-box"><rect x="730" y="230" width="150" height="64" rx="8"/><g transform="translate(735 234) scale(.56)"><rect class="i" width="16" height="16" x="4" y="4" rx="2"/><rect class="i" width="6" height="6" x="9" y="9" rx="1"/><path class="i" d="M15 2v2"/><path class="i" d="M15 20v2"/><path class="i" d="M2 15h2"/><path class="i" d="M2 9h2"/><path class="i" d="M20 15h2"/><path class="i" d="M20 9h2"/><path class="i" d="M9 2v2"/><path class="i" d="M9 20v2"/></g><text class="dg-t" x="815" y="256">Agent</text><text class="dg-s" x="815" y="274">proposes actions</text></g>
 <g class="dg-box"><rect x="990" y="230" width="150" height="64" rx="8"/><g transform="translate(995 234) scale(.56)"><circle class="i" cx="8" cy="8" r="6"/><path class="i" d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path class="i" d="M7 6h1v4"/><path class="i" d="m16.71 13.88.7.71-2.82 2.82"/></g><text class="dg-t" x="1075" y="256">Budget</text><text class="dg-s" x="1075" y="274">worst case first</text></g>
-<g class="dg-box planned"><rect x="990" y="400" width="150" height="64" rx="8"/><g transform="translate(995 404) scale(.56)"><path class="i" d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle class="i" cx="16.5" cy="7.5" r=".5"/></g><text class="dg-t" x="1075" y="426">OpenBao</text><text class="dg-s" x="1075" y="444">key never leaves</text></g>
+<g class="dg-box"><rect x="990" y="400" width="150" height="64" rx="8"/><g transform="translate(995 404) scale(.56)"><path class="i" d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle class="i" cx="16.5" cy="7.5" r=".5"/></g><text class="dg-t" x="1075" y="426">OpenBao</text><text class="dg-s" x="1075" y="444">key never leaves</text></g>
 <g class="dg-box"><rect x="60" y="550" width="150" height="64" rx="8"/><g transform="translate(65 554) scale(.56)"><path class="i" d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path class="i" d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></g><text class="dg-t" x="145" y="576">Customers</text><text class="dg-s" x="145" y="594">what they saw</text></g>
 <g class="dg-box"><rect x="460" y="550" width="150" height="64" rx="8"/><g transform="translate(465 554) scale(.56)"><ellipse class="i" cx="12" cy="5" rx="9" ry="3"/><path class="i" d="M3 5V19A9 3 0 0 0 21 19V5"/><path class="i" d="M3 12A9 3 0 0 0 21 12"/></g><text class="dg-t" x="545" y="576">Services</text><text class="dg-s" x="545" y="594">edge, gateway, ledger</text></g>
-<g class="dg-box planned"><rect x="700" y="550" width="150" height="64" rx="8"/><g transform="translate(705 554) scale(.56)"><circle class="i" cx="12" cy="12" r="10"/><path class="i" d="m9 12 2 2 4-4"/></g><text class="dg-t" x="785" y="576">Token check</text><text class="dg-s" x="785" y="594">gateway asks OpenBao</text></g>
+<g class="dg-box"><rect x="700" y="550" width="150" height="64" rx="8"/><g transform="translate(705 554) scale(.56)"><circle class="i" cx="12" cy="12" r="10"/><path class="i" d="m9 12 2 2 4-4"/></g><text class="dg-t" x="785" y="576">Token check</text><text class="dg-s" x="785" y="594">gateway asks OpenBao</text></g>
 </svg>
 <!-- /diagram -->
     </details>

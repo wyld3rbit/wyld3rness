@@ -49,7 +49,7 @@ Failure model
 
 What changes at scale
     Sequential by default: one Ollama on one Apple GPU, with the models loaded
-    in shared 16 GB memory. `--workers` runs cases in parallel when the model
+    in the 16 GB the project asks for, shared. `--workers` runs cases in parallel when the model
     server is started with OLLAMA_NUM_PARALLEL to match.
 """
 

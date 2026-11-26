@@ -103,7 +103,7 @@ So the pattern is adopted and the code is ours: three modules, 468 lines with th
 
 ### Step 4: the trust boundary and the budget (written in the plan, before the code)
 
-![Where each part runs after step 4: the experiment runner and Ollama on the Mac; the harness loop and the agent in their own containers in the VM; OpenBao holding the key; simprod with no route out](img/0008-step4-where-it-runs.svg)
+![Where each part runs after step 4: the experiment runner and Ollama on the host; the harness loop and the agent in their own containers in the VM; OpenBao holding the key; simprod with no route out](img/0008-step4-where-it-runs.svg)
 
 Built in two parts: 4a the policy, the budget and the diagram tool; 4b OpenBao, the credential and the containers.
 
@@ -113,7 +113,7 @@ Built in two parts: 4a the policy, the budget and the diagram tool; 4b OpenBao, 
 
 **Signing key: OpenBao's Transit engine, never exported.** The harness asks OpenBao to sign each one-action token; the gateway asks OpenBao to verify, so simprod stays standard library only (Python's standard library has no Ed25519). The image is OpenBao 2.7.2 with zlib and OpenSSL patched at pinned versions, as simprod's base was. Measured in dev mode on the unpatched 2.7.2 image: 17 to 21 MiB, and 1.2 ms a signature at the median. Rejected: an HMAC key file with a small signer (recommended first: no new image, but no rotation or audit log), a software HSM (SoftHSMv2 driven from Python: viable, with rotation and audit written by hand), a key in the agent's process.
 
-**Containers for the acting path only.** The agent becomes a small decider service with no Docker socket, no keys and no route to simprod: it gets the metrics as text and returns a proposal. The loop, its scraper and its policy run in their own container. The experiment runner stays on the Mac because it needs the Docker socket, and Ollama stays native for the GPU. Torch stays native too: the acting path does not use it, and a full app image in the VM measured 416 MB, about 1.4 GiB, and 7 to 9 times slower embedding and reranking on the VM's 2 CPUs. Rejected: every part in containers (the inner loop is slower and every timing changes), only OpenBao in Docker (the boundary stays a convention).
+**Containers for the acting path only.** The agent becomes a small decider service with no Docker socket, no keys and no route to simprod: it gets the metrics as text and returns a proposal. The loop, its scraper and its policy run in their own container. The experiment runner stays on the host because it needs the Docker socket, and Ollama stays native for the GPU. Torch stays native too: the acting path does not use it, and a full app image in the VM measured 416 MB, about 1.4 GiB, and 7 to 9 times slower embedding and reranking on the VM's 2 CPUs. Rejected: every part in containers (the inner loop is slower and every timing changes), only OpenBao in Docker (the boundary stays a convention).
 
 **Decision diagrams: one spec file per picture.** A standard-library tool draws each picture from its spec with the live page's icons; the ADR shows it and the console's page embeds a copy; `make check` fails if either differs from a fresh render. Rejected: growing the live page itself (it draws the logical flow, not where things run), Mermaid (no Lucide icons).
 

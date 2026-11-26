@@ -14,7 +14,7 @@ What it does
 
 Why answer everything first, then judge everything
     A local model server on a small machine keeps one model in memory at a
-    time. Measured on the 16 GB machine (2026-11-09): loading the judge
+    time. Measured within 16 GB (2026-11-09): loading the judge
     (qwen2.5:7b, 4.6 GB) unloads the answering model (qwen3:4b-instruct,
     2.9 GB) and the reverse, at 2 to 3 s per load. Answering and judging case
     by case swapped models twice per case, about 60 loads on 30 cases. Two

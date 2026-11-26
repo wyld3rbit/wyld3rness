@@ -34,7 +34,8 @@ is applied, so a refused decision changes nothing; it spends a try, because a
 decider that keeps proposing refused actions must run out. The budget
 (`budget.py`) is the decider's to call before each model call; a refusal
 surfaces here as `BudgetExceeded` and ends the incident in the safe state, named
-as the budget, not as a decider fault.
+as the budget, not as a decider fault. Every action and every undo is signed
+(`credential.py`) just before it is sent; one that cannot be signed is not sent.
 """
 
 from __future__ import annotations
@@ -44,6 +45,7 @@ from dataclasses import dataclass, field
 from typing import Literal, Protocol
 
 from wyld3rness.loop.budget import BudgetExceeded
+from wyld3rness.loop.credential import Signer
 from wyld3rness.loop.env import Action, Applied, Environment
 from wyld3rness.loop.policy import Policy
 from wyld3rness.loop.verdict import JUDGE_S, VERIFY_S, judged, recovered_at, verified
@@ -120,7 +122,9 @@ class _Stop(Exception):
         self.reason = reason
 
 
-def _undo_try(env: Environment, in_force: list[Applied], count: int) -> tuple[list[Applied], str | None]:
+def _undo_try(
+    env: Environment, signer: Signer, in_force: list[Applied], count: int
+) -> tuple[list[Applied], str | None]:
     """Undo the last `count` actions in force, last first, popping each one undone. Returns the undos and any error.
 
     A failed action is undone too when its undo is known: it may have happened.
@@ -131,7 +135,7 @@ def _undo_try(env: Environment, in_force: list[Applied], count: int) -> tuple[li
     for _ in range(count):
         a = in_force[-1]
         if a.undo is not None:
-            result = env.apply(a.undo)
+            result = _send(env, signer, a.undo)
             done.append(result)
             if not result.ok:
                 return done, f"undo failed: {a.undo.label()}: {result.detail}"
@@ -139,17 +143,31 @@ def _undo_try(env: Environment, in_force: list[Applied], count: int) -> tuple[li
     return done, None
 
 
-def _apply(env: Environment, action: Action) -> Applied:
-    """Apply one action; an apply that raises is a failed action that may be in force, with no known undo.
+def _sign(signer: Signer, action: Action) -> str | Applied:
+    """The action's credential, or a failed `Applied` when the signer cannot make one: then nothing is sent."""
+    try:
+        return signer.sign(action)
+    except Exception as exc:
+        return Applied(action, False, f"not signed, not sent: {type(exc).__name__}: {exc}", None)
+
+
+def _apply(env: Environment, action: Action, credential: str) -> Applied:
+    """Apply one signed action; an apply that raises is a failed action that may be in force, with no known undo.
 
     The request may have reached the system before the failure (a reply cut
     short, an unreadable body), so the record keeps it as possibly in force
     instead of dropping it, and the safe state lists it in `kept`.
     """
     try:
-        return env.apply(action)
+        return env.apply(action, credential)
     except Exception as exc:
         return Applied(action, False, f"apply raised: {type(exc).__name__}: {exc}", None)
+
+
+def _send(env: Environment, signer: Signer, action: Action) -> Applied:
+    """Sign, then apply. For undos, where a refusal either way leaves the action being undone in force."""
+    credential = _sign(signer, action)
+    return credential if isinstance(credential, Applied) else _apply(env, action, credential)
 
 
 def _check(actions: tuple[Action, ...], config: LoopConfig) -> tuple[Action, ...]:
@@ -175,7 +193,7 @@ def _judge(env: Environment, t_act: float, config: LoopConfig) -> tuple[Verdict,
     return ("resolved", at) if at is not None else ("did not hold", None)
 
 
-def run_incident(env: Environment, decider: Decider, config: LoopConfig, policy: Policy) -> Outcome:
+def run_incident(env: Environment, decider: Decider, config: LoopConfig, policy: Policy, signer: Signer) -> Outcome:
     """Run one incident through at most `config.tries` tries. Never raises: every failure is the safe state.
 
     A decision the policy refuses applies nothing and spends a try. Failure
@@ -202,7 +220,12 @@ def run_incident(env: Environment, decider: Decider, config: LoopConfig, policy:
                 continue
             applied: list[Applied] = []
             for action in actions:
-                result = _apply(env, action)
+                credential = _sign(signer, action)
+                if isinstance(credential, Applied):  # never sent, so never in force
+                    applied.append(credential)
+                    out.tries.append(Try(number, actions, tuple(applied), env.now(), "action failed"))
+                    raise _Stop(f"action failed: {action.label()}: {credential.detail}")
+                result = _apply(env, action, credential)
                 applied.append(result)
                 in_force.append(result)
                 if not result.ok:
@@ -220,7 +243,7 @@ def run_incident(env: Environment, decider: Decider, config: LoopConfig, policy:
             if any(a.undo is None for a in applied):
                 out.tries.append(Try(number, actions, tuple(applied), t_act, "no undo"))
                 raise _Stop(f"try {number}: {verdict}, and an action in it has no undo: no retry")
-            undone, error = _undo_try(env, in_force, len(applied))
+            undone, error = _undo_try(env, signer, in_force, len(applied))
             out.tries.append(Try(number, actions, tuple(applied), t_act, verdict, None, tuple(undone)))
             if error:
                 raise _Stop(error)
@@ -229,11 +252,11 @@ def run_incident(env: Environment, decider: Decider, config: LoopConfig, policy:
         out.reason = stop.reason
     except Exception as exc:  # the environment raised: the state is unknown, so put back what can be
         out.reason = f"environment failed: {type(exc).__name__}: {exc}"
-    _safe_state(env, in_force, out)
+    _safe_state(env, signer, in_force, out)
     return out
 
 
-def _safe_state(env: Environment, in_force: list[Applied], out: Outcome) -> None:
+def _safe_state(env: Environment, signer: Signer, in_force: list[Applied], out: Outcome) -> None:
     """Undo every action still in force that has an undo, last first; record each; keep what could not be undone.
 
     Every undo is attempted even after one fails or raises: each change left in
@@ -244,10 +267,7 @@ def _safe_state(env: Environment, in_force: list[Applied], out: Outcome) -> None
         if a.undo is None:
             kept.append(a.action)
             continue
-        try:
-            result = env.apply(a.undo)
-        except Exception as exc:
-            result = Applied(a.undo, False, f"{type(exc).__name__}: {exc}", None)
+        result = _send(env, signer, a.undo)
         out.safe_undos.append(result)
         if not result.ok:
             kept.append(a.action)

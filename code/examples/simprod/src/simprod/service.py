@@ -32,6 +32,8 @@ import threading
 import time
 from typing import Any, TypeGuard
 
+from simprod.credentials import HEADER, Guard, action_args
+
 JSON = dict[str, Any]
 Labels = tuple[tuple[str, str], ...]
 
@@ -206,8 +208,13 @@ class Request:
 
     @property
     def actor(self) -> str:
-        """Who asked, from the X-Actor header. Step 4 replaces it with a verified credential."""
-        return self.headers.get("X-Actor") or self.headers.get("x-actor") or "unknown"
+        """Who says they asked, from the X-Actor header: a label for the log. The credential is the proof."""
+        return self.header("X-Actor") or "unknown"
+
+    def header(self, name: str) -> str | None:
+        """A request header, whatever its case."""
+        lowered = {k.lower(): v for k, v in self.headers.items()}
+        return lowered.get(name.lower())
 
 
 @dataclass(frozen=True)
@@ -233,7 +240,7 @@ class Route:
     summary: str
     body: JSON | None = None  # JSON Schema of the request body, when there is one
     responses: Mapping[int, str] = field(default_factory=lambda: {200: "OK"})
-    action: bool = False  # an action: logged with its actor, documented with the X-Actor header
+    action: bool = False  # an action: checked by the guard, logged with its actor and credential id
 
 
 class Service:
@@ -241,6 +248,8 @@ class Service:
 
     `dispatch` is pure apart from the handlers, so tests call it without sockets.
     `fallback` lets the edge proxy route by prefix instead of by exact path.
+    `guard` checks each action's credential before its handler runs; None only
+    in unit tests that build a service directly (`credentials.guard_from_env`).
     """
 
     def __init__(
@@ -250,8 +259,9 @@ class Service:
         metrics: Metrics | None = None,
         fallback: Fallback | None = None,
         public_url: str | None = None,
+        guard: Guard | None = None,
     ) -> None:
-        self.name = name
+        self.name, self.guard = name, guard
         self.metrics = metrics or Metrics()
         self.fallback = fallback
         self.public_url = public_url or os.environ.get("PUBLIC_URL", f"http://127.0.0.1:8100/{name}")
@@ -282,13 +292,21 @@ class Service:
             if r.action:
                 op["parameters"] = [
                     {
+                        "name": HEADER,
+                        "in": "header",
+                        "required": True,
+                        "schema": {"type": "string"},
+                        "description": "A credential for exactly this action, signed by the vault (credentials.py)",
+                    },
+                    {
                         "name": "X-Actor",
                         "in": "header",
                         "required": False,
                         "schema": {"type": "string"},
                         "description": "Who is acting, for the action log",
-                    }
+                    },
                 ]
+                op["responses"] = {**op["responses"], "403": {"description": "No valid credential for this action"}}
             paths.setdefault(r.path, {})[r.method.lower()] = op
         return {
             "openapi": "3.1.0",
@@ -323,8 +341,18 @@ class Service:
             return Response(400, {"error": "body is not standard JSON"})
         if not isinstance(body, dict):
             return Response(400, {"error": "body must be a JSON object"})
+        request = Request(body, headers)
+        credential_id = None
+        if route.action and self.guard is not None:
+            wanted = action_args(self.name, route.path, body)
+            if wanted is None:
+                return Response(403, {"error": "this action has no credential name"})
+            credential_id, refused = self.guard.check(request.header(HEADER), *wanted)
+            if refused:
+                log(self.name, "action_refused", path=route.path, actor=request.actor, reason=refused)
+                return Response(403, {"error": "action refused", "reason": refused})
         try:
-            resp = route.handler(Request(body, headers))
+            resp = route.handler(request)
         except Exception as exc:  # a bug in a handler must not kill the server thread
             log(self.name, "handler_error", path=route.path, error=f"{type(exc).__name__}: {exc}")
             return Response(500, {"error": "internal error"})
@@ -333,7 +361,8 @@ class Service:
                 self.name,
                 "action",
                 path=route.path,
-                actor=Request(body, headers).actor,
+                actor=request.actor,
+                credential=credential_id,
                 params=body,
                 status=resp.status,
                 result=resp.body if isinstance(resp.body, dict) else None,

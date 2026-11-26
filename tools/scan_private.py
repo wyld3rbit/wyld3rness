@@ -16,8 +16,10 @@ The rule it enforces
 
 What it looks for
     local_path      /Users/<name>, /home/<name>, C:\\Users\\<name>
-    identity        this machine's own username, home directory and git email,
-                    read at run time and never stored in the repo
+    identity        this machine's own username, home directory, git email and
+                    computer names (host name, and on macOS the Sharing names),
+                    read at run time and never stored in the repo, so a renamed
+                    computer is caught on the next run
     private_term    any word in `.private-terms` (git-ignored), such as a name
     email           any email address except the allowed ones (GitHub no-reply,
                     the co-author trailer, example domains, git@github.com)
@@ -48,9 +50,10 @@ What changes at scale
 import argparse
 import getpass
 import re
+import socket
 import subprocess
 import sys
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -61,6 +64,8 @@ from pathlib import Path
 # generic CI or placeholder accounts, not people.
 _PATH = re.compile(r"(?:/Users|/home)/([A-Za-z0-9._-]+)|[A-Za-z]:\\+Users\\+([A-Za-z0-9._-]+)")
 _GENERIC_ACCOUNTS = {"runner", "user", "username", "you", "me", "name", "shared", "ubuntu"}
+# Host names that are not a person's computer: a container, a CI runner, or a default.
+_GENERIC_HOSTS = {"localhost", "localhost.localdomain", "runner", "ubuntu", "debian", "docker-desktop"}
 
 _EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+")
 _NO_REPLY_DOMAIN = "users.noreply.github.com"
@@ -97,6 +102,7 @@ class Identity:
     username: str = ""
     home: str = ""
     email: str = ""
+    hostnames: tuple[str, ...] = ()  # this computer's names, read fresh on every run, so a rename is caught
 
 
 @dataclass(frozen=True)
@@ -144,6 +150,11 @@ def scan_text(text: str, identity: Identity, terms: Iterable[str] = ()) -> list[
     generic = name.lower() in _GENERIC_ACCOUNTS
     home = "" if generic else identity.home   # the home of a CI account is /home/runner, which tests and docs name
     user = re.compile(rf"(?i)\b{re.escape(name)}\b") if len(name) >= 4 and not generic else None
+    hosts = [
+        re.compile(rf"(?i)(?<![A-Za-z0-9_]){re.escape(h)}(?![A-Za-z0-9_])")
+        for h in identity.hostnames
+        if len(h) >= 4 and h.lower() not in _GENERIC_HOSTS
+    ]
     found: list[tuple[int, str]] = []
     for number, line in enumerate(text.splitlines(), start=1):
         rules: set[str] = set()
@@ -155,6 +166,8 @@ def scan_text(text: str, identity: Identity, terms: Iterable[str] = ()) -> list[
         if sensitive_email and sensitive_email in line:
             rules.add("identity")
         if user and user.search(line):
+            rules.add("identity")
+        if any(h.search(line) for h in hosts):
             rules.add("identity")
         if any(t.search(line) for t in word_terms):
             rules.add("private_term")
@@ -190,8 +203,32 @@ def git(*args: str, check: bool = True) -> str:
     return out.stdout
 
 
+def host_names(scutil: Callable[[str], str] | None = None) -> tuple[str, ...]:
+    """This computer's names, as the system reports them now. Never stored, so a rename is caught on the next run.
+
+    The network host name (full and short), and on macOS the names Sharing
+    shows (`scutil --get ComputerName` and `LocalHostName`). A computer name
+    with spaces is also checked with hyphens, the way macOS turns it into a host
+    name. A name the system cannot give is skipped.
+    """
+    read = scutil or _scutil
+    names = {socket.gethostname(), socket.gethostname().split(".")[0]}
+    names |= {read(key) for key in ("ComputerName", "LocalHostName")}
+    names |= {n.replace(" ", "-") for n in names}
+    return tuple(sorted(n.strip() for n in names if n and n.strip()))
+
+
+def _scutil(key: str) -> str:
+    """A macOS system name, or "" where `scutil` does not exist or fails."""
+    try:
+        out = subprocess.run(["scutil", "--get", key], capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return out.stdout.strip() if out.returncode == 0 else ""
+
+
 def runtime_identity() -> Identity:
-    """This machine's username, home directory and git email."""
+    """This machine's username, home directory, git email and computer names, all read now."""
     try:
         username = getpass.getuser()
     except Exception:  # noqa: BLE001 - no login name is fine
@@ -200,6 +237,7 @@ def runtime_identity() -> Identity:
         username=username,
         home=str(Path.home()),
         email=git("config", "user.email", check=False).strip(),
+        hostnames=host_names(),
     )
 
 
@@ -349,13 +387,13 @@ def report(findings: list[Finding]) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    mode = ap.add_mutually_exclusive_group(required=True)
+    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--staged", action="store_true")
     mode.add_argument("--tree", action="store_true")
     mode.add_argument("--history", nargs="*", metavar="REV", default=None)
     mode.add_argument("--pre-push", metavar="REMOTE")
-    args = ap.parse_args(argv)
+    args = parser.parse_args(argv)
     root, identity = repo_root(), runtime_identity()
     terms = load_terms(root)
     if args.staged:

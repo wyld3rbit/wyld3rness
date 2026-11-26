@@ -6,3 +6,5 @@
 results/
 tests/
 .pytest_cache/
+# The vault's keys and passes (src/simprod/vault.py): never part of a build context.
+.bao/

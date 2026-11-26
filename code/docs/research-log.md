@@ -406,3 +406,26 @@ Customer minutes after each result. The loop's verdict and the storm driver's ag
 **Meaning.** The rules did what they were written for: in runs 1 to 3 no innocent key was capped and no restart shared a decision, against 3 of 3 and 3 of 3 in entry 013. The budget's byte bound held on every call. What the rules exposed is the model's habit, not the system's state: asked for "1 or 2 actions", the small model proposed two every time, so a whole decision was refused for its second action and the correct first one was lost; told why, it repeated the pattern. Asked for one action by default, it proposed one every time, which resolves the two kinds that need one on the first try and fails the kind that needs two. In both versions the model followed the wording of the prompt rather than the metrics. Production meaning: a deterministic policy makes a weak proposer safe but not effective, and an instruction that shapes the number of actions decides which incidents can be won.
 
 It cannot show anything about held-out storms, other models or the spread: one run per storm and setting, on a seed used in development. Step 6 compares the loop with a script that tries each fix in turn and has no model.
+
+---
+
+## 015. Does every action carry a credential the service checks? (exploratory)
+
+**Question.** Step 4b makes every action carry a credential for exactly that action, signed by OpenBao (the key never leaves it) and checked by the service that runs it. This decides whether the check refuses what it should, lets through what it should, and leaves the loop's results unchanged.
+
+**Protocol.** None: exploratory checks and runs before step 6's protocol, seed 3.
+
+**Ran.** On 2026-11-26, on branch `day7-step4b` over `b81f2a1`, the step's code not yet committed; OpenBao 2.7.2 patched (Grype v0.120.1: 0 Critical, 13 High, against 1 Critical and 21 High as published).
+
+| Run | What |
+|---|---|
+| I | Requests to the gateway by hand: no credential, made-up text, a real credential with a forged signature, a real credential for another key, a real credential, the same again, an undo with its own |
+| P | Against the vault: a signature verified and then the message changed; each pass used for the other's job; the key exported, with the root token; one action unsigned, then signed |
+| 1 | `make oncall` with the vault in dev mode, entry 014's final settings (file SHA-256 `142f479f349ea61a…`) |
+| 2 | `make oncall` after the code review's fixes, OpenBao as a server with in-memory storage (file SHA-256 `bc814f84ddfbc0a9…`) |
+
+**Result.** Run I: the real credential and the undo's ran (200); every other request was refused (403) with its reason ("no credential", "malformed credential", "could not be verified", "credential is for … not …", "credential was already used"), and the gateway's log shows each refusal with the reason and each action with its credential's one-time id. Run P: the signature verified, and failed once the message changed; the verify pass could not sign and the sign pass could not verify or read the key (403); exporting the key failed for the root token too ("private key material is not exportable"); the unsigned action was refused (403) and the signed one ran (200). Runs 1 and 2 gave the results of entry 014's run 3: retry storm and hot shard resolved on try 1 (0.404 and 0.097, then 0.412 and 0.094 customer minutes), compound in the safe state (0.641, then 0.642); every action and undo sent was accepted by the service (9 of 9, then 8 of 8); the loop and the storm driver agreed in 6 of 6.
+
+**Deviations.** The code review found that OpenBao's dev mode prints its root token and unseal key to the container log. Counted without reading them: 4 lines. OpenBao now runs as a server with in-memory storage, initialised and unsealed through its API by `make sim-up`; the log then had 0 such lines. Run 2 is on that set-up. The review's other findings were fixed before run 2 (passes valid 30 days, not 24 h; a check before every experiment that signs a probe and compares the host's clock with the VM's; the controls record an action they cannot sign instead of stopping).
+
+**Meaning.** The check sits where the action runs and refuses everything but a genuine, matching, unexpired, unused credential, and adding it changed no result of the loop. What it cannot show: forged credentials that are well-formed (the forged signature here was rejected as unreadable by the vault, not as invalid), several services sharing used ids (each keeps its own, so a credential that restarted a service is accepted once more by the fresh process within its 60 s), or attacks through the model's input, which step 5 tests.

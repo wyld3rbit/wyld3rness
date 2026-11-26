@@ -39,6 +39,7 @@ import threading
 import time
 import uuid
 
+from simprod.credentials import Guard, guard_from_env
 from simprod.service import (
     JSON,
     Caller,
@@ -299,8 +300,8 @@ class Gateway:
         return Response(200, {"key": key, "rps": rps, "was": before.rate if before else None})
 
 
-def build(gw: Gateway, exit: Callable[[int], None] | None = None) -> Service:
-    """The public service."""
+def build(gw: Gateway, exit: Callable[[int], None] | None = None, guard: Guard | None = None) -> Service:
+    """The public service; `guard` checks each action's credential."""
     restart = restart_route(NAME) if exit is None else restart_route(NAME, exit=exit)
     return Service(
         NAME,
@@ -348,6 +349,7 @@ def build(gw: Gateway, exit: Callable[[int], None] | None = None) -> Service:
             restart,
         ],
         metrics=gw.metrics,
+        guard=guard,
     )
 
 
@@ -366,7 +368,9 @@ def main() -> None:
     )
     gw = Gateway(ledger.call, notify.call, policy, Metrics())
     log(NAME, "config", timeout_ms=policy.timeout_s * 1000, retries=policy.retries, backoff=policy.backoff)
-    run((build(gw), 8000))
+    guard = guard_from_env()
+    log(NAME, "guard", on=guard is not None)
+    run((build(gw, guard=guard), 8000))
 
 
 if __name__ == "__main__":

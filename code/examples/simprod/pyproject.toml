@@ -17,6 +17,7 @@ dependencies = ["wyld3rness"]
 [project.scripts]
 simprod-loadtest = "simprod.loadtest:main"
 simprod-controls = "simprod.controls:main"
+simprod-vault = "simprod.vault:main"
 
 [tool.uv.sources]
 wyld3rness = { workspace = true }

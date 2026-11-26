@@ -7,7 +7,7 @@ system or a past employer. Hostnames, versions and numbers are made up.
 Why a generator and not a model call: the file has to be reproducible. The same
 seed gives byte-identical output, so a test can pin it and a later retrieval
 experiment can be re-run and compared. A model would give a different corpus on
-every run and cost time on a 16 GB machine.
+every run and cost time within the 16 GB the project asks for.
 
 How it is built:
 - 20 scenarios (certificate rotation, pool exhaustion, clock skew, ...). Each
