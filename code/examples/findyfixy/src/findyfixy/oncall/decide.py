@@ -185,6 +185,7 @@ class ModelDecider:
         self.notes, self.max_retries, self.max_output_tokens = tuple(notes), max_retries, max_output_tokens
         self.calls: list[Call] = []
         self.reasons: list[str] = []
+        self._first_call = 0
 
     def decide(self, observation: str, history: Sequence[Try]) -> list[Action]:
         """Ask, validate, retry with the error up to `max_retries`.
@@ -194,6 +195,7 @@ class ModelDecider:
         """
         base = build_prompt(observation, history, self.wait_s, self.notes)
         prompt, attempts = base, 0
+        self._first_call = len(self.calls)  # this decision's calls start here (`last_report`)
         while True:
             attempts += 1
             reply = self._call(prompt)
@@ -219,6 +221,16 @@ class ModelDecider:
             raise
         self.budget.settle(reservation, getattr(reply, "input_tokens", None), getattr(reply, "output_tokens", None))
         return reply
+
+    def last_report(self) -> dict[str, object]:
+        """The latest decision's model calls, its reason when it was valid, and the incident's spend so far.
+
+        What the loop's trace and its watchers show: the spend lets a viewer show
+        the cost as the incident runs, priced by the budget that enforces it.
+        """
+        calls = self.calls[self._first_call :]
+        reason = self.reasons[-1] if calls and calls[-1].valid and self.reasons else None
+        return {"reason": reason, "calls": [asdict(c) for c in calls], "spent_usd": self.budget.spent_usd}
 
     def record(self) -> dict[str, object]:
         """Plain JSON about this decider's work so far: its calls, its reasons and its budget."""

@@ -1,0 +1,160 @@
+# Day 7, step 6: the experiment (ADR 0008). Drawn by tools/diagram.py; edit this file, not the picture.
+# A box is solid when its code exists, dashed when it is planned.
+caption = "Day 7, step 6: every held-out storm through four arms, measured alike. Solid is built, dashed is planned."
+width = 1180
+height = 530
+
+[[box]]
+id = "protocol"
+name = "Protocol"
+sub = "committed first"
+icon = "Triage record"
+x = 40
+y = 40
+status = "built"
+
+[[box]]
+id = "storms"
+name = "24 storms"
+sub = "held out, 8 of each"
+icon = "Faults"
+x = 440
+y = 40
+status = "built"
+
+[[box]]
+id = "analysis"
+name = "Analysis"
+sub = "one command, from the file"
+icon = "Scorecard"
+x = 990
+y = 40
+status = "built"
+
+[[box]]
+id = "nobody"
+name = "Nobody"
+sub = "does nothing"
+icon = "Question"
+x = 40
+y = 210
+status = "built"
+
+[[box]]
+id = "script"
+name = "Script"
+sub = "3 fixed sets, no model"
+icon = "Validate"
+x = 290
+y = 210
+status = "built"
+
+[[box]]
+id = "one"
+name = "Model, one try"
+sub = "proposes once"
+icon = "Small model"
+x = 540
+y = 210
+status = "built"
+
+[[box]]
+id = "loop"
+name = "Model loop"
+sub = "up to 3 tries"
+icon = "Autonomy"
+x = 790
+y = 210
+status = "built"
+
+[[box]]
+id = "harness"
+name = "Loop container"
+sub = "one policy and signer"
+icon = "Policy"
+x = 540
+y = 380
+status = "built"
+
+[[box]]
+id = "services"
+name = "simprod"
+sub = "the storm runs here"
+icon = "Services"
+x = 290
+y = 380
+status = "built"
+
+[[box]]
+id = "measure"
+name = "Customers"
+sub = "240 s after the fault"
+icon = "Verify"
+x = 40
+y = 380
+status = "built"
+
+[[edge]]
+from = "protocol"
+to = "storms"
+label = "then"
+status = "built"
+
+[[edge]]
+from = "storms"
+to = "nobody"
+label = "in random order"
+status = "built"
+
+[[edge]]
+from = "storms"
+to = "script"
+status = "built"
+
+[[edge]]
+from = "storms"
+to = "one"
+status = "built"
+
+[[edge]]
+from = "storms"
+to = "loop"
+status = "built"
+
+[[edge]]
+from = "script"
+to = "harness"
+status = "built"
+
+[[edge]]
+from = "one"
+to = "harness"
+status = "built"
+
+[[edge]]
+from = "loop"
+to = "harness"
+status = "built"
+
+[[edge]]
+from = "harness"
+to = "services"
+label = "act"
+status = "built"
+
+[[edge]]
+from = "nobody"
+to = "measure"
+status = "built"
+
+[[edge]]
+from = "services"
+to = "measure"
+status = "built"
+
+[[edge]]
+from = "measure"
+to = "analysis"
+label = "minutes lost, per arm"
+status = "built"
+via = [[115, 500], [1065, 500]]

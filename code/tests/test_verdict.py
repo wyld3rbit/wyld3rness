@@ -64,6 +64,12 @@ def test_customer_minutes_count_failures_after_the_fault() -> None:
     assert customer_minutes(s, from_t=1, rate=200) == round(200 / (200 * 60), 3)
 
 
+def test_customer_minutes_stop_at_the_window_end() -> None:
+    s = series("gbbb")  # failures at t=2, 3, 4
+    assert customer_minutes(s, from_t=1, rate=200, to_t=3) == round(200 / (200 * 60), 3)
+    assert customer_minutes(s, from_t=1, rate=200, to_t=4) == round(300 / (200 * 60), 3)
+
+
 def test_seconds_are_judged_over_the_last_five() -> None:
     """Entry 010: 2 failed of 188 broke a real recovery. Over 5 s it is 2 of about 1,000."""
     s = [Second(float(t), 200, 0) for t in range(1, 11)]

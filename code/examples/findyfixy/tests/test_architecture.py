@@ -122,6 +122,7 @@ ENTRY_POINTS = {
         "oncall.cli",
         "oncall.attacks",
         "oncall.service",
+        "oncall.experiment",
     )
 }
 # The composition root and the configuration it reads.

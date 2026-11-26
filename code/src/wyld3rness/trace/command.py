@@ -75,6 +75,11 @@ class CommandTrace:
         return self._tracing.tracer() if self._tracing is not None else None
 
     @property
+    def trace_id(self) -> str | None:
+        """The trace's id once the command has started, or None without tracing."""
+        return self._tree.trace_id if self._tree is not None else None
+
+    @property
     def tracing(self) -> Tracing | None:
         """The provider, or None."""
         return self._tracing

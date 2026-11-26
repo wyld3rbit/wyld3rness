@@ -1,12 +1,12 @@
 {
-  "created_utc": "2026-11-26T04:53:45+00:00",
+  "created_utc": "2026-11-26T19:35:32+00:00",
   "files": {
     "examples/findyfixy/data/deploys.json": "c1c9fa59e3c07706a618dc5d65a461b34a08c71b50491cfb537713e135e9b2f8",
     "examples/findyfixy/data/golden.jsonl": "2d005967149bbc1fc3e9572ba042a5edbac13e471f3b4ffc9cbbb4a7d1d22a1f",
     "examples/findyfixy/data/incidents.json": "9aa661d01b6fe69778911f8383132df2cf187299f078ebe893ea27a6080bacc8",
     "examples/findyfixy/data/incidents.jsonl": "8234025bde5ffdf187c83acb35840706fa769fd966fb6c56094a42c3ef0a233f",
     "examples/findyfixy/data/retrieval_eval.jsonl": "8d8d39d44b26fc2650e0803cf7125f736401507423427159208459caea192291",
-    "examples/findyfixy/docker-compose.yml": "564c8b2744fc4106c07fc3214930c65f10c26fc127264844ea147e9b82b9ba13",
+    "examples/findyfixy/docker-compose.yml": "e34d4353a8c4f7c117f3198bbc0ba6791c673700149fbe81c6825cb1cbcfd2b5",
     "examples/findyfixy/evals/baseline.json": "4d75a109152f51d6be6fb856f8c87073a0bf659a07075ae16dbd8024612c07eb",
     "examples/findyfixy/src/findyfixy/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "examples/findyfixy/src/findyfixy/evals/__init__.py": "c038e98061cb097a3e0df5b1ec4b2a9c622bba7d9a25f0d65e9311574e8161d0",
@@ -48,13 +48,13 @@
     "src/wyld3rness/eval/stats.py": "382247f661bfe4613be48d06c9ad4fc44d7adf7ad8dbf9e04d58f795890ad476",
     "src/wyld3rness/eval/sut.py": "df0270344f7fe50deade2742886ae6d1fb85d7440ef7f4bdac8c2627e92fca98",
     "src/wyld3rness/trace/__init__.py": "3db82e46e4cbcf5ca85d277a0e1c3133d63ac7bcffa20d8986f4769d0219c8d4",
-    "src/wyld3rness/trace/command.py": "d13cb87397dd5c17e237b165f3a8c8f5f3b4c4e501a686aeb4c829be51462711",
+    "src/wyld3rness/trace/command.py": "e68b41b2cc7ee4d4827e2563b276d58000bf2e99a857eff53c3a76eda5add22a",
     "src/wyld3rness/trace/scores.py": "afdcf4b6cd99125b22b7b82f1eda0a387a63c15600f6d805c2de3d7bfe237310",
     "src/wyld3rness/trace/spans.py": "145cd0e9a7704bc65d9ef901585ed2d65e2006cc7bdc3d111062133a4bbc3611",
     "src/wyld3rness/trace/tracing.py": "b85dde2f79b487a49496eec541c996c5aeed8f43e6fd7c0a0132448e10a65a8d",
     "uv.lock": "2b05dc1c377eb1caa1596fb9ec7fb7974750264c72c1702fda46da56e8dd8bf0"
   },
-  "fingerprint": "f9624c00b6bce63ef2e5769dfe69389bc7d27adf75452dae73331071e8541801",
+  "fingerprint": "6cdac6a99d40f5d9a9d73aaaf68b383b2139ad7af3c18f971f4737e235a316ee",
   "inputs": {
     "entry_modules": [
       "findyfixy.evals.answers"
@@ -72,21 +72,21 @@
     ]
   },
   "report": {
-    "name": "eval-20261126T045345Z.json",
-    "sha256": "f1076566e0807d59355f90e05158617ce348a15be6b8fafd48f1cdcdde98fb9d"
+    "name": "eval-20261126T193532Z.json",
+    "sha256": "e28edd8b91e332a3bed7639f163e983a52f9181dd2ad6ed2ec5785f8d6eebc14"
   },
   "reuse": {
-    "from": "eval-20261126T041632Z.json",
+    "from": "eval-20261126T075316Z.json",
     "judged": 3,
     "reused": 27
   },
   "run": {
-    "git_sha": "tree-8854ab1c3a20",
+    "git_sha": "28fccc9",
     "judge_digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
     "judge_model": "qwen2.5:7b",
     "large_model": "qwen3:4b-instruct",
     "small_model": "qwen3:4b-instruct",
-    "timestamp_utc": "2026-11-26T04:51:12+00:00"
+    "timestamp_utc": "2026-11-26T19:32:38+00:00"
   },
   "verdict": "pass",
   "version": 2

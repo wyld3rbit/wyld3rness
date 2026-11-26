@@ -2,7 +2,7 @@
 
     loop process                                     agent process (no socket, no keys, no route to the system)
     RemoteDecider.decide(observation, history) ──► POST /decide {"incident", "params", "observation", "history"}
-                                               ◄── {"actions": [{"name", "args"}]}
+                                               ◄── {"actions": [{"name", "args"}], "report": {"reason", "calls"}}
                                                    or 409 {"kind": "budget"} / 422 {"kind": "decider"}
     GET /record?incident=<id>                  ──► what the agent's decider kept (its calls, its budget)
 
@@ -95,6 +95,7 @@ class RemoteDecider:
         """`url` is the agent's base URL, such as http://agent:8000; `incident` must be unique."""
         self.url, self.incident, self.timeout_s = url.rstrip("/"), incident, timeout_s
         self.params = dict(params or {})
+        self._report: JSON = {}  # what the agent said about its latest decision, for the trace
 
     def decide(self, observation: str, history: Sequence[Try]) -> list[Action]:
         """POST the observation and the history; the agent's actions, or its refusal raised as the loop expects."""
@@ -107,6 +108,7 @@ class RemoteDecider:
         req = urllib.request.Request(
             f"{self.url}/decide", json.dumps(body).encode(), {"Content-Type": "application/json"}
         )
+        self._report = {}
         try:
             with urllib.request.urlopen(req, timeout=self.timeout_s) as r:
                 answer = json.load(r)
@@ -115,12 +117,22 @@ class RemoteDecider:
                 error = json.loads(e.read() or b"{}")
             except ValueError:  # not our server's JSON: a proxy's page, the HTTP server's own error page
                 raise RemoteDecisionError(f"agent answered HTTP {e.code}") from None
+            self._keep(error.get("report"))  # a failed decision's calls cost money too: keep them for the trace
             if error.get("kind") == "budget":
                 raise BudgetExceeded(str(error.get("error"))) from None
             raise RemoteDecisionError(str(error.get("error", e))) from None
         except OSError as exc:  # refused, reset, timed out: the agent is not there
             raise RemoteDecisionError(f"agent unreachable: {type(exc).__name__}: {exc}") from None
+        self._keep(answer.get("report"))
         return [decode_action(a) for a in answer["actions"]]
+
+    def _keep(self, report: object) -> None:
+        """Keep the agent's report of this decision, when it sent one."""
+        self._report = report if isinstance(report, dict) else {}
+
+    def last_report(self) -> JSON:
+        """The agent's reason and model calls for the latest decision, failed ones included; {} when it sent none."""
+        return dict(self._report)
 
     def record(self) -> JSON:
         """What the agent kept for this incident (its calls, reasons and budget), read once at the end.
@@ -138,10 +150,14 @@ class RemoteDecider:
 
 
 class Recorded(Decider, Protocol):
-    """A decider that can also say what it kept: its calls, its reasons, its budget."""
+    """A decider that can also say what it kept (its calls, reasons and budget) and what its last decision cost."""
 
     def record(self) -> JSON:
         """Plain JSON about this decider's work so far."""
+        ...
+
+    def last_report(self) -> JSON:
+        """Plain JSON about the latest decision only: its reason and its model calls, for the caller's trace."""
         ...
 
 
@@ -205,12 +221,21 @@ def serve_decider(make: Callable[[str, JSON], Recorded], host: str, port: int) -
             try:
                 actions = decider.decide(observation, history)
             except BudgetExceeded as exc:
-                return self._send(409, {"error": str(exc), "kind": "budget"})
+                return self._send(409, {"error": str(exc), "kind": "budget", "report": _report(decider)})
             except Exception as exc:  # the decider's own failure: invalid after its retries, the model down
-                return self._send(422, {"error": f"{type(exc).__name__}: {exc}", "kind": "decider"})
-            return self._send(200, {"actions": [encode_action(a) for a in actions]})
+                error = f"{type(exc).__name__}: {exc}"
+                return self._send(422, {"error": error, "kind": "decider", "report": _report(decider)})
+            return self._send(200, {"actions": [encode_action(a) for a in actions], "report": _report(decider)})
 
         def log_message(self, format: str, *args: object) -> None:
             """Quiet: the decider keeps its own record."""
 
     return ThreadingHTTPServer((host, port), Handler)
+
+
+def _report(decider: Recorded) -> JSON:
+    """The decider's report of its latest decision; {} when it cannot give one, which must never lose a decision."""
+    try:
+        return decider.last_report()
+    except Exception:
+        return {}

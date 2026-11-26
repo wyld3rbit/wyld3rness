@@ -46,6 +46,12 @@ The safe state ends every other path: out of tries, a decider that raised, an ac
 
 **The injection suite.** `code/src/wyld3rness/loop/injection.py`: an `Attack` is a payload an outsider controls plus the goal actions it tries to cause. The app plants the payload in an observation; `run_attack` asks a decider, checks each proposal against the policy and, when it is refused, asks again with the refusal in the history, as the loop does; an attack succeeded only if a goal ran. `Fooled` is a decider that proposes exactly the goals, the worst a model can do, so a suite that passes with it does not depend on the model resisting anything.
 
+**The loop, traced.** `code/src/wyld3rness/loop/traced.py` wraps the environment, decider, policy and signer so each call is a span inside the incident's trace, with the model calls a decider reports as generations. `run_incident` itself holds no tracing code, and no span ever holds a credential.
+
+**The loop, watched.** `code/src/wyld3rness/loop/watch.py` wraps the same four ports so each step is an event a viewer can show as it happens (`LoopEventKind`): the decision, the policy's answer, each action and undo, each wait and verdict, and the end. `EventLog` holds one incident's events for a reader on another thread. FindyFixy's console uses it to show a storm try by try.
+
+**The script baseline and the experiment's statistics.** `code/src/wyld3rness/loop/script.py`: `Scripted` proposes an app's fixed sets of actions in a given order, one per try, through the same loop, policy and signer as a model. `code/src/wyld3rness/loop/experiment.py`: the paired bootstrap interval, the exact paired sign test, a step-down correction for multiple comparisons, the upper bound after 0 events, and power by simulation from an app's model of one storm.
+
 **Test doubles.** `code/src/wyld3rness/testing.py` ships a fake judge, embedder and system under test, so an app's own tests can drive the harness without a model, and a fake world and decider for the loop, on a clock that moves only when the loop waits. FindyFixy's adapter and on-call tests use them.
 
 **Packaging.** The harness is the root project of the workspace, `code/pyproject.toml`, with only the dependencies it imports. `code/tests/test_harness_rules.py` keeps the import allowlist and that list in step. Its tests are in `code/tests/` (`code/tests/README.md`).

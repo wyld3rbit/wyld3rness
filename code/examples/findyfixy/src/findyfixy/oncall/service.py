@@ -18,6 +18,11 @@ scrapes too, and the two verdicts are compared (`agree`).
 Times in the loop's answer are on the loop's clock, from the start of the
 request; the host adds the time it sent the request.
 
+Each incident's steps are also events (`wyld3rness.loop.watch`), kept for the
+latest incidents and served at `GET /incident/events?incident=<id>&from=<n>`,
+so a viewer (the console) can show a try as it happens. Only the latest
+`KEEP_INCIDENTS` are kept, in memory: this is a view, the answer is the record.
+
 Configuration comes from the environment, read in `main`: AGENT_URL, SIMPROD_EDGE,
 BAO_ADDR and BAO_SIGN_FILE for the loop; OLLAMA_HOST (read by the model client)
 for the agent. The model, the budget and the wait come with each incident from
@@ -27,6 +32,7 @@ the host, so the agent decides with what this run asked for.
 from __future__ import annotations
 
 import argparse
+from collections.abc import Callable
 from dataclasses import asdict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -36,22 +42,54 @@ import sys
 import threading
 import time
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 from findyfixy.llm import ollama_reply
 from findyfixy.oncall.decide import MAX_OUTPUT_TOKENS, Decision, ModelDecider
 from findyfixy.oncall.env import SimprodEnv
 from findyfixy.oncall.policy import rules
+from findyfixy.oncall.script import plan
 from findyfixy.paths import PRICES
+from findyfixy.settings import read_tracing
 from simprod.checker import Scraper
 from wyld3rness.loop.budget import Budget
 from wyld3rness.loop.credential import TransitSigner
 from wyld3rness.loop.policy import Policy
 from wyld3rness.loop.remote import RemoteDecider, serve_decider
-from wyld3rness.loop.run import LoopConfig, Outcome, run_incident
+from wyld3rness.loop.run import TRIES, Decider, LoopConfig, Outcome, run_incident
+from wyld3rness.loop.traced import traced
+from wyld3rness.loop.watch import EventLog, Watch
+from wyld3rness.trace.command import CommandTrace
 from wyld3rness.trace.prices import parse_prices
+from wyld3rness.trace.tracing import Tracing
 
 JSON = dict[str, Any]
 PORT = 8000
+KEEP_INCIDENTS = 8  # events kept for this many latest incidents; a viewer reads them while they run
+
+
+class Incidents:
+    """The event logs of the latest incidents, by id. Thread-safe: the loop writes, a viewer reads."""
+
+    def __init__(self, keep: int = KEEP_INCIDENTS) -> None:
+        """Keep at most `keep` incidents; the oldest is dropped first."""
+        self._lock = threading.Lock()
+        self._logs: dict[str, EventLog] = {}
+        self.keep = keep
+
+    def open(self, incident: str) -> EventLog:
+        """A new log for `incident`, replacing any with the same id."""
+        with self._lock:
+            self._logs.pop(incident, None)
+            self._logs[incident] = log = EventLog()
+            while len(self._logs) > self.keep:
+                del self._logs[next(iter(self._logs))]
+            return log
+
+    def get(self, incident: str) -> EventLog | None:
+        """The log of `incident`, or None when it is unknown or was dropped."""
+        with self._lock:
+            return self._logs.get(incident)
 
 
 def ask_decision(model: str, prompt: str, max_output_tokens: int) -> str:
@@ -73,11 +111,57 @@ def make_agent(model: str, budget_usd: float, wait_s: float) -> ModelDecider:
     return ModelDecider(ask_decision, model, wait_s, budget, notes=notes, max_output_tokens=MAX_OUTPUT_TOKENS)
 
 
-def handle_incident(body: JSON, *, agent_url: str, edge: str, signer: TransitSigner) -> JSON:
-    """Run one incident through the loop, measured by this process's own scraper, and report it."""
+def handle_incident(
+    body: JSON,
+    *,
+    agent_url: str,
+    edge: str,
+    signer: TransitSigner,
+    tracing: Tracing | None = None,
+    log: EventLog | None = None,
+) -> JSON:
+    """Run one incident (`_handle`); its event log is closed however it ends, a refused request included.
+
+    A viewer reads the log until it is closed, so a log left open by a 400
+    would be read for ever.
+    """
+    try:
+        return _handle(body, agent_url=agent_url, edge=edge, signer=signer, tracing=tracing, log=log)
+    finally:
+        if log is not None:
+            log.close()
+
+
+def _handle(
+    body: JSON,
+    *,
+    agent_url: str,
+    edge: str,
+    signer: TransitSigner,
+    tracing: Tracing | None = None,
+    log: EventLog | None = None,
+) -> JSON:
+    """Run one incident through the loop, measured by this process's own scraper, and report it.
+
+    `decider` is "model" (the agent container, the default) or "script" (FindyFixy's
+    script with no model, in the `order` given, built here: it needs no agent).
+    `tries` defaults to the loop's own. Everything else is the same for both, so
+    an experiment's arms differ only in who proposes.
+
+    With `tracing`, the incident is one trace, named for its arm, with a span for
+    every observation, decision (and its model calls), policy check, signature,
+    action and wait (`wyld3rness.loop.traced`); its id goes back in the answer.
+    With `log`, every step is also an event in it (`wyld3rness.loop.watch`).
+    """
     incident = str(body["incident"])
-    config = LoopConfig(wait_s=float(body["wait_s"]), hold_s=float(body["hold_s"]))
+    tries = int(body.get("tries", TRIES))
+    if not 1 <= tries <= TRIES:
+        raise ValueError(f"tries must be 1 to {TRIES}, got {tries}")
+    config = LoopConfig(wait_s=float(body["wait_s"]), hold_s=float(body["hold_s"]), tries=tries)
     params = {"model": str(body["model"]), "budget_usd": float(body["budget_usd"]), "wait_s": config.wait_s}
+    # Everything a bad request can fail on is read before the scraper's thread starts, so a 400 leaves no thread.
+    decider, record = choose_decider(body, agent_url, incident, params)
+    arm = str(body.get("arm", "loop"))
     scraper = Scraper(f"{edge}/customers/metrics")
     stop = threading.Event()
 
@@ -91,20 +175,84 @@ def handle_incident(body: JSON, *, agent_url: str, edge: str, signer: TransitSig
 
     threading.Thread(target=scrape, daemon=True).start()
     env = SimprodEnv(scraper.series, lambda: time.monotonic() - scraper.start, edge=edge)
-    decider = RemoteDecider(agent_url, incident, params)
+    about = {"incident": incident, "arm": arm, "decider": body.get("decider", "model"), "tries": tries}
+    with CommandTrace(tracing, f"incident {arm}", input=about | {"order": body.get("order")}) as trace:
+        try:
+            watch = Watch(log.emit if log is not None else lambda kind, t, data: None)
+            ports = traced(trace.tracer, *watch.ports(env, decider, Policy(rules(edge=edge)), signer))
+            outcome = run_incident(ports[0], ports[1], config, ports[2], ports[3])
+            watch.finish(outcome)
+        finally:
+            stop.set()
+        agent = record()
+        trace.set(
+            **{f"loop.{k}": v for k, v in about.items()},
+            **{"loop.ended": outcome.ended, "loop.reason": outcome.reason, "loop.tries_used": len(outcome.tries)},
+            **{"loop.spent_usd": (agent.get("budget") or {}).get("spent_usd")},
+        )
+        trace.output({"ended": outcome.ended, "reason": outcome.reason, "kept": [a.label() for a in outcome.kept]})
+    return {
+        "loop": outcome_json(outcome),
+        "sent": env.sent,
+        "agent": agent,
+        "scrape_errors": scraper.errors,
+        "trace_id": trace.trace_id,
+    }
+
+
+def choose_decider(body: JSON, agent_url: str, incident: str, params: JSON) -> tuple[Decider, Callable[[], JSON]]:
+    """The incident's decider and how to read its record afterwards. Raises ValueError for an unknown one.
+
+    The script makes no model call, so its record says so, measured: no calls and nothing spent.
+    """
+    kind = body.get("decider", "model")
+    if kind == "model":
+        remote = RemoteDecider(agent_url, incident, params)
+        return remote, remote.record
+    if kind == "script":
+        order = [str(step) for step in body["order"]]
+        budget = {"limit_usd": params["budget_usd"], "spent_usd": 0.0}
+        return plan(order), lambda: {"decider": "script", "order": order, "model_calls": [], "budget": budget}
+    raise ValueError(f"decider must be 'model' or 'script', got {kind!r}")
+
+
+def events_answer(incidents: Incidents, path: str) -> tuple[int, JSON]:
+    """The answer to `GET /incident/events?incident=<id>&from=<n>`: the events from n on, and whether it is over.
+
+    404 for an incident not (or no longer) kept: the viewer then waits for the
+    host's answer, which holds the whole record. 400 for a missing id or a
+    negative or non-integer `from`.
+    """
+    query = parse_qs(urlparse(path).query)
+    incident = (query.get("incident") or [""])[0]
     try:
-        outcome = run_incident(env, decider, config, Policy(rules(edge=edge)), signer)
-    finally:
-        stop.set()
-    return {"loop": outcome_json(outcome), "sent": env.sent, "agent": decider.record(), "scrape_errors": scraper.errors}
+        start = int((query.get("from") or ["0"])[0])
+    except ValueError:
+        start = -1
+    if not incident or start < 0:
+        return 400, {"error": "bad request: incident=<id> and from=<n >= 0> are required"}
+    log = incidents.get(incident)
+    if log is None:
+        return 404, {"error": f"no events kept for incident {incident!r}"}
+    events, done = log.since(start)
+    return 200, {"incident": incident, "events": events, "done": done}
 
 
 def serve_loop(agent_url: str, edge: str, vault: str, sign_file: Path) -> None:
     """POST /incident runs one incident; GET /healthz answers ok. One incident at a time is what the runner sends.
 
+    GET /incident/events serves the steps of the latest incidents as they happen (`events_answer`).
+
     The sign pass is read for every incident, so passes renewed by `make sim-up`
-    need no restart of this container.
+    need no restart of this container. Tracing starts once, from the environment
+    (`read_tracing`: LANGFUSE_HOST and the project's keys); without keys it is off
+    and the loop runs the same. Spans leave on a background thread, so a slow or
+    stopped backend never slows an incident.
     """
+    config = read_tracing()
+    tracing = Tracing.start(config) if config is not None else None
+    incidents = Incidents()
+    print(json.dumps({"tracing": config.host if config else "off"}), flush=True)
 
     class Handler(BaseHTTPRequestHandler):
         """The loop's two routes."""
@@ -119,9 +267,11 @@ def serve_loop(agent_url: str, edge: str, vault: str, sign_file: Path) -> None:
             self.wfile.write(data)
 
         def do_GET(self) -> None:
-            """GET /healthz."""
+            """GET /healthz, or GET /incident/events."""
             if self.path == "/healthz":
                 self._send(200, {"status": "ok"})
+            elif urlparse(self.path).path == "/incident/events":
+                self._send(*events_answer(incidents, self.path))
             else:
                 self._send(404, {"error": "not found"})
 
@@ -132,7 +282,9 @@ def serve_loop(agent_url: str, edge: str, vault: str, sign_file: Path) -> None:
             try:
                 body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)))
                 signer = TransitSigner(vault, sign_file.read_text().strip())
-                return self._send(200, handle_incident(body, agent_url=agent_url, edge=edge, signer=signer))
+                log = incidents.open(str(body["incident"]))  # a body with no id is a 400, as before
+                answer = handle_incident(body, agent_url=agent_url, edge=edge, signer=signer, tracing=tracing, log=log)
+                return self._send(200, answer)
             except (KeyError, TypeError, ValueError) as exc:
                 return self._send(400, {"error": f"bad request: {exc}"})
             except OSError as exc:  # the sign pass cannot be read: answer with the reason, never drop the connection

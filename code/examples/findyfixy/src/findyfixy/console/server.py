@@ -15,8 +15,11 @@ What it does
         GET  /config   questions, fake scenarios, which modes are available
         POST /run      start one run (or a hunt): {"mode", "question"?, "scenario"?}
         POST /eval     start one eval run: {"mode", "cases": 1..N}, N the set's size
+        POST /storm    drive one storm on simprod: {"kind", "decider"} (console/storm.py)
+        POST /replay   replay a saved storm run: {"file", "run", "speed"}
         POST /stop     ask a hunt or an eval run to stop after its current run or
-                       case; answers {"stopping": false} when nothing can stop
+                       case, or a replay at once; answers {"stopping": false} when
+                       nothing can stop (a live storm cannot be stopped here)
         GET  /events   SSE stream of the latest run, replayed from the start
 
     The console is a viewer. An eval run here writes no report and no
@@ -99,6 +102,8 @@ from findyfixy.console.fakes import (
     fake_eval,
     inject_bad_first_reply,
 )
+from findyfixy.console.storm import LoopEvent, ReplayRequest, StormRequest, drive, load_run, play, replay_events
+from findyfixy.console.storm import saved_runs as list_saved_runs
 from findyfixy.console.stress import DESCRIPTIONS, STRESSES, Stress, make_ollama_ask
 from findyfixy.events import Emit, Event, make_emit, make_stamped_emit
 from findyfixy.llm import answer_options, ollama_ask
@@ -135,11 +140,12 @@ _HUNT_TERMINAL = ("hunt_finished",)
 # Harness kinds. The app and harness vocabularies share no kind name
 # (tests/test_page_truth.py checks it), so a kind alone says which run ended.
 _EVAL_TERMINAL = ("eval_finished", "eval_failed")
+_STORM_TERMINAL = ("storm_finished", "storm_failed")  # the loop vocabulary; shares no kind with the others
 
 # Read-only: the console compares a full eval run to it and never writes it.
 BASELINE_PATH = EVALS / "baseline.json"
 
-StreamEvent = Event | HarnessEvent
+StreamEvent = Event | HarnessEvent | LoopEvent
 
 
 class RunRequest(BaseModel):
@@ -239,6 +245,9 @@ class RunHub:
         live_eval: EvalSuite | None = None,
         baseline_path: Path = BASELINE_PATH,
         tracing: Tracing | None = None,
+        storm_driver: Callable[[StormRequest, Callable[..., None]], None] = drive,
+        saved_runs: Callable[[], list[dict[str, object]]] = list_saved_runs,
+        load_saved: Callable[[ReplayRequest], dict[str, object]] = load_run,
     ) -> None:
         """Hold the wiring. Nothing runs until `start` or `start_eval`.
 
@@ -249,7 +258,14 @@ class RunHub:
 
         `tracing`, when set, turns every run into a trace (findyfixy/observability/adapter.py).
         None leaves the run exactly as it was.
+
+        `storm_driver` runs one live storm (console/storm.py `drive`), and
+        `saved_runs` and `load_saved` list and read the runs a replay can show;
+        tests pass fakes, so no storm needs simprod.
         """
+        self._storm_driver = storm_driver
+        self.saved_runs = saved_runs
+        self._load_saved = load_saved
         self._tracing = tracing
         self._live_models = live_models
         self._live_eval = live_eval
@@ -347,6 +363,58 @@ class RunHub:
             run_and_judge(
                 run, n, emit=emit, on_event=on_event, should_stop=self._stop.is_set, baseline_path=self._baseline_path
             )
+        finally:
+            with self._cond:
+                self._running = False
+                self._cond.notify_all()
+
+    def start_storm(self, req: StormRequest) -> int:
+        """Drive one storm in a thread. Raises `Busy`. Not stoppable: an incident in flight is the loop's to end."""
+        run_id = self._begin(_STORM_TERMINAL, stoppable=False)
+        threading.Thread(target=self._storm, args=(req, run_id), daemon=True).start()
+        return run_id
+
+    def _publisher(self, run_id: int) -> Callable[[StreamEvent], None]:
+        """A sink for one run only: it drops what arrives after that run's terminal, or once another run began.
+
+        A storm has threads the console does not own (the storm driver's scraper,
+        the loop's reader), and one may still emit after the storm has ended.
+        """
+
+        def publish(event: StreamEvent) -> None:
+            with self._cond:  # one lock for the check and the append (the condition's lock is reentrant)
+                if run_id == self._run_id and not self._finished:
+                    self._publish(event)
+
+        return publish
+
+    def _storm(self, req: StormRequest, run_id: int) -> None:
+        """The storm thread: the driver emits every event, ending with one terminal. `_running` is cleared last."""
+        emit = make_stamped_emit(self._publisher(run_id), self._clock, LoopEvent)
+        try:
+            self._storm_driver(req, emit)
+        finally:
+            with self._cond:
+                self._running = False
+                self._cond.notify_all()
+
+    def start_replay(self, req: ReplayRequest) -> int:
+        """Replay a saved storm run in a thread. Raises `Busy`, or ValueError (422) for a run that is not saved."""
+        try:  # read and checked before the slot is taken: a record of another shape is a 422, never a crash
+            events = replay_events(self._load_saved(req))
+        except (KeyError, TypeError, AttributeError, IndexError) as exc:
+            raise ValueError(f"{req.file} run {req.run} cannot be replayed: {type(exc).__name__}: {exc}") from exc
+        run_id = self._begin(_STORM_TERMINAL, stoppable=True)
+        threading.Thread(target=self._replay, args=(events, req.speed, run_id), daemon=True).start()
+        return run_id
+
+    def _replay(self, events: list[tuple[float, str, dict[str, object]]], speed: int, run_id: int) -> None:
+        """The replay thread: the saved run's events at `speed` times real time, stoppable between events."""
+        emit = make_stamped_emit(self._publisher(run_id), self._clock, LoopEvent)
+        try:
+            play(events, emit, speed, self._stop.is_set, self._sleep)
+        except Exception as exc:  # a malformed record ends the stream with its reason
+            emit("storm_failed", error=f"{type(exc).__name__}: {exc}")
         finally:
             with self._cond:
                 self._running = False
@@ -644,7 +712,7 @@ def wire(event: StreamEvent) -> dict[str, object]:
     The tag is added here, at the edge, so neither vocabulary needs to know
     about the other or about the page.
     """
-    source = "harness" if isinstance(event, HarnessEvent) else "app"
+    source = "harness" if isinstance(event, HarnessEvent) else "loop" if isinstance(event, LoopEvent) else "app"
     return {"source": source, **asdict(event)}
 
 
@@ -781,6 +849,7 @@ def make_handler(hub: RunHub, page: Path, dev_root: Path | None = None) -> type[
                         "dev_reload": dev_root is not None,
                         "eval_sizes": hub.eval_sizes(),
                         "eval_default": EVAL_DEFAULT,
+                        "saved_runs": hub.saved_runs(),
                     },
                 )
             if url.path == "/events":
@@ -797,7 +866,7 @@ def make_handler(hub: RunHub, page: Path, dev_root: Path | None = None) -> type[
             if path == "/stop":
                 # No body is read, and none is needed. Close, as above.
                 return self._json(HTTPStatus.OK, {"stopping": hub.stop()})
-            if path not in ("/run", "/eval"):
+            if path not in ("/run", "/eval", "/storm", "/replay"):
                 return self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
             if not self.headers.get("Content-Type", "").startswith("application/json"):
                 return self._json(HTTPStatus.UNSUPPORTED_MEDIA_TYPE, {"error": "send JSON"})
@@ -812,6 +881,10 @@ def make_handler(hub: RunHub, page: Path, dev_root: Path | None = None) -> type[
                 body = self.rfile.read(length)
                 if path == "/eval":
                     run_id = hub.start_eval(EvalRequest.model_validate_json(body))
+                elif path == "/storm":
+                    run_id = hub.start_storm(StormRequest.model_validate_json(body))
+                elif path == "/replay":
+                    run_id = hub.start_replay(ReplayRequest.model_validate_json(body))
                 else:
                     run_id = hub.start(RunRequest.model_validate_json(body))
             except (ValidationError, ValueError) as err:

@@ -45,6 +45,7 @@ from findyfixy.tools.investigate import build_investigator
 from findyfixy.triage.graph import build_graph
 import simprod
 from wyld3rness.eval.events import EvalEventKind
+from wyld3rness.loop.watch import LoopEventKind
 
 REPLAY = ROOT / "tests" / "js" / "replay.js"
 SIMPROD_SRC = Path(inspect.getfile(simprod)).resolve().parents[1]  # the simulated production's source root
@@ -138,14 +139,16 @@ def test_the_check_reads_the_real_graph() -> None:
 def test_every_event_kind_the_code_can_emit_has_a_handler_and_none_is_stale() -> None:
     """The page's table equals each vocabulary: nothing undrawn, nothing dead."""
     table = handler_table(PAGE.read_text())
-    assert table.keys() == {"app", "harness"}
+    assert table.keys() == {"app", "harness", "loop"}
     assert table["app"] == set(get_args(EventKind))
     assert table["harness"] == set(get_args(EvalEventKind))
+    assert table["loop"] == set(get_args(LoopEventKind))
 
 
-def test_the_two_vocabularies_share_no_kind() -> None:
-    """The console ends a stream on a kind alone, so the two sets must be disjoint."""
-    assert not set(get_args(EventKind)) & set(get_args(EvalEventKind))
+def test_the_three_vocabularies_share_no_kind() -> None:
+    """The console ends a stream on a kind alone, so the three sets must be disjoint."""
+    app, harness, loop = (set(get_args(k)) for k in (EventKind, EvalEventKind, LoopEventKind))
+    assert not app & harness and not app & loop and not harness & loop
 
 
 # ---- The whole stream through the page's own script ---------------------------

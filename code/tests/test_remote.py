@@ -39,6 +39,9 @@ class Recording(FakeDecider):
     def record(self) -> dict:
         return {"decisions": len(self.seen)}
 
+    def last_report(self) -> dict:
+        return {"reason": f"decision {len(self.seen)}", "calls": [{"model": "m", "input_tokens": 5}]}
+
 
 class Thrifty:
     """A decider whose every call is over budget."""
@@ -49,12 +52,18 @@ class Thrifty:
     def record(self) -> dict:
         return {}
 
+    def last_report(self) -> dict:
+        return {}
+
 
 class Broken(Thrifty):
-    """A decider whose model never gives a valid reply."""
+    """A decider whose model never gives a valid reply, after two calls it reports."""
 
     def decide(self, observation, history):
         raise ValueError("no valid decision in 2 attempts")
+
+    def last_report(self) -> dict:
+        return {"calls": [{"model": "m", "valid": False}, {"model": "m", "valid": False}]}
 
 
 @pytest.fixture
@@ -86,6 +95,7 @@ def test_the_loop_runs_an_incident_through_a_remote_decider(serve) -> None:
     out = run_incident(world, remote, LoopConfig(wait_s=30, hold_s=30), allow("a", "c"), FakeSigner())
     assert out.resolved and [t.verdict for t in out.tries] == ["not verified", "resolved"]
     assert made["inc-1"].seen[1][1][0] == out.tries[0]  # the agent saw the loop's own history, decoded
+    assert remote.last_report() == {"reason": "decision 2", "calls": [{"model": "m", "input_tokens": 5}]}
     assert remote.record() == {"decisions": 2}
     assert remote.record() == {"record_error": "unknown incident"}  # read once, then forgotten
 
@@ -101,9 +111,21 @@ def test_a_budget_refusal_comes_back_as_the_budget(serve) -> None:
     assert out.reason.startswith("budget: worst case")
 
 
-def test_a_decider_failure_is_named(serve) -> None:
+def test_a_decider_failure_is_named_and_its_calls_kept(serve) -> None:
+    remote = RemoteDecider(serve(lambda i, p: Broken()), "inc-3")
     with pytest.raises(RemoteDecisionError, match="ValueError: no valid decision"):
-        RemoteDecider(serve(lambda i, p: Broken()), "inc-3").decide("metrics", [])
+        remote.decide("metrics", [])
+    assert [c["valid"] for c in remote.last_report()["calls"]] == [False, False]
+
+
+def test_a_report_that_fails_never_loses_the_decision(serve) -> None:
+    class NoReport(Recording):
+        def last_report(self) -> dict:
+            raise RuntimeError("cannot report")
+
+    remote = RemoteDecider(serve(lambda i, p: NoReport([["a"]])), "inc-5")
+    assert remote.decide("metrics", []) == [Action("a")]
+    assert remote.last_report() == {}
 
 
 def test_an_agent_that_is_not_there_is_a_decider_failure() -> None:

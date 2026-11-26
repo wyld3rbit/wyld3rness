@@ -36,6 +36,7 @@ reports/
 
 # The on-call image's requirements, exported from uv.lock by make oncall-up
 .oncall-requirements.txt
+.oncall-trace.env
 
 # The vault's root token and passes for simprod (code/examples/simprod/src/simprod/vault.py)
 .bao/

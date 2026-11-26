@@ -128,6 +128,12 @@ def longest_good_stretch(series: Sequence[Second], after_t: float) -> float:
     return round(best, 1)
 
 
-def customer_minutes(series: Sequence[Second], from_t: float, rate: float) -> float:
-    """Failed user requests after `from_t`, as minutes of all users failing at `rate` a second. Pure."""
-    return round(sum(s.failed for s in series if s.t > from_t) / (rate * 60), 3)
+def customer_minutes(series: Sequence[Second], from_t: float, rate: float, to_t: float | None = None) -> float:
+    """Failed user requests after `from_t` (up to `to_t`), as minutes of all users failing at `rate` a second. Pure.
+
+    `to_t` gives every arm of a comparison the same window: counted only until
+    an arm stops, an arm that gives up early would not be charged for the
+    failures it left behind.
+    """
+    end = float("inf") if to_t is None else to_t
+    return round(sum(s.failed for s in series if from_t < s.t <= end) / (rate * 60), 3)
