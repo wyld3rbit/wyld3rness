@@ -552,3 +552,74 @@ They changed one rule. The harm margin was first a fixed 0.03 customer minutes, 
 **Limits.** The same project writes the faults, the fixes, the script and the checker. Three storm kinds from two faults; the script's three sets are exactly the three fixes, which is the case the script is built for. Synthetic data, one small model at temperature 0, one VM. The arm order is random per storm, but the arms of one storm run minutes apart, so a slow drift in the VM is shared rather than removed.
 
 **Ran.** Not yet.
+
+---
+
+## 020. Does the model earn its place against a script with no model? (results of 019)
+
+**Ran.** On 2026-11-26 from 07:58 to 16:22 UTC, `make experiment` at `464f0dd` (the protocol's commit) on branch `day7-step6`, simprod, OpenBao, the on-call containers and Langfuse up, a 2-CPU container VM. `qwen3:4b-instruct` in the agent container. 108 runs (24 storms under 4 arms, and the model loop twice more on the first 6 storms). Results file SHA-256 `d8ed00d1c192491f…`; `make experiment-analyze FILE=<results file>` recomputes every number below.
+
+**The bar is missed.** The model loop lost more customer minutes than the script, not fewer, as the protocol predicted.
+
+| Model loop minus script, customer minutes in the 240 s after the fault | Mean | 95% interval |
+|---|---|---|
+| 24 storms, paired | **+0.269** | +0.134 to +0.414 |
+
+| Kind (8 storms each) | nobody | script | model-1 | model-loop | Model loop minus script |
+|---|---|---|---|---|---|
+| retry storm | 3.901 | 0.285 | 0.382 | 0.390 | +0.105, script lower in 8 of 8 |
+| hot shard | 0.987 | 0.122 | 0.106 | 0.100 | -0.023, model lower in 3 of 8 |
+| compound | 0.990 | 0.174 | 0.991 | 0.897 | +0.727, script lower in 8 of 8 |
+| **resolved** | 0 of 24 | **24 of 24** | 16 of 24 | 17 of 24 | |
+
+Every one of the 108 runs was judged at its first try: no run ran again and no storm was left out. Harm 0 in every arm (upper bound 0.117 each), 0 incidents over budget, 0 disagreements between the loop's verdict and the host's, 0 needless changes kept, 0 runs still acting at 240 s. Every script and model incident has its trace id in the results file (84 of 84).
+
+**Where the difference comes from.** Three mechanisms, one per kind.
+
+- *Retry storm.* Both arms end it with backoff on. The script's first try is ready in 0.04 s on average, the model's in 6.0 to 6.5 s (4.1 to 9.0). A retry storm loses about 0.016 customer minutes a second, so 6 s of deciding costs about 0.1: the whole gap. When the script drew a set with a cap first, the policy refused it (no key sends 5% of R) and the next try started at once, as the protocol said.
+- *Hot shard.* The model capped the runaway key first in 8 of 8. The script drew backoff first in 3 of 8 and paid a wrong applied try (about 0.12 customer minutes each); in the other 5 the script was right first and faster. The model's one advantage, choosing right first, is measured here: 0.023 a storm on average.
+- *Compound.* It needs both actions at once. The model proposed one action a try in 7 of 8 storms: backoff, then a cap, then backoff again, each applied, not verified and undone, so the storm ran on. In s13-08 its second try was backoff and the cap together, and it resolved. Model-1 never resolved one. The script reaches its both-set by try 3 in every order.
+
+| Pair (resolution, won and lost) | Won | Lost | Exact p | After step-down |
+|---|---|---|---|---|
+| script vs nobody | 24 | 0 | 1.2e-7 | rejected |
+| model-loop vs nobody | 17 | 0 | 1.5e-5 | rejected |
+| model-1 vs nobody | 16 | 0 | 3.1e-5 | rejected |
+| script vs model-1 | 8 | 0 | 0.0078 | rejected |
+| script vs model-loop | 7 | 0 | 0.016 | rejected |
+| model-loop vs model-1 | 1 | 0 | 1.0 | not rejected |
+
+Cost: the model loop $0.000161 an incident (interval 0.000124 to 0.000200), $0.000228 per resolved incident; model-1 $0.000092 and $0.000138; the script $0, no model calls. Consistency: on the first 6 storms, all 3 model-loop runs resolved in 4 (the 2 retry storms and 2 hot shards); in both compounds all 3 runs failed with the same three single actions. At temperature 0 the failure is systematic, not noise.
+
+Per storm, customer minutes, and in brackets each try's proposal (B backoff on, C a cap on the busiest key, B+C both; a refused try is listed too):
+
+| Storm | nobody | script | model-1 | model-loop |
+|---|---|---|---|---|
+| s13-00 retry storm | 3.921 | 0.289 (B) | 0.408 (B) | 0.409 (B) |
+| s13-01 hot shard | 1.009 | 0.202 (B, C) | 0.094 (C) | 0.095 (C) |
+| s13-02 compound | 0.996 | 0.080 (C+B) | 0.996 not resolved (B) | 0.996 not resolved (B, C, B) |
+| s13-03 retry storm | 3.905 | 0.278 (B) | 0.348 (B) | 0.382 (B) |
+| s13-04 hot shard | 0.982 | 0.075 (C) | 0.114 (C) | 0.103 (C) |
+| s13-05 compound | 1.000 | 0.207 (B, C+B) | 0.999 not resolved (B) | 1.000 not resolved (B, C, B) |
+| s13-06 retry storm | 3.911 | 0.285 (C+B, B) | 0.394 (B) | 0.403 (B) |
+| s13-07 hot shard | 0.981 | 0.197 (B, C+B) | 0.101 (C) | 0.098 (C) |
+| s13-08 compound | 0.992 | 0.078 (C+B) | 0.993 not resolved (B) | 0.244 (B, B+C) |
+| s13-09 retry storm | 3.925 | 0.287 (C+B, B) | 0.415 (B) | 0.360 (B) |
+| s13-10 hot shard | 0.981 | 0.080 (C) | 0.117 (C) | 0.098 (C) |
+| s13-11 compound | 0.990 | 0.081 (C+B) | 0.988 not resolved (B) | 0.988 not resolved (B, C, B) |
+| s13-12 retry storm | 3.921 | 0.280 (B) | 0.380 (B) | 0.364 (B) |
+| s13-13 hot shard | 1.007 | 0.071 (C+B) | 0.095 (C) | 0.108 (C) |
+| s13-14 compound | 0.994 | 0.330 (B, C, C+B) | 0.994 not resolved (B) | 0.994 not resolved (B, C, B) |
+| s13-15 retry storm | 3.911 | 0.288 (C+B, C, B) | 0.356 (B) | 0.405 (B) |
+| s13-16 hot shard | 0.990 | 0.081 (C) | 0.112 (C) | 0.102 (C) |
+| s13-17 compound | 1.006 | 0.081 (C+B) | 1.007 not resolved (B) | 1.006 not resolved (B, C, B) |
+| s13-18 retry storm | 3.904 | 0.283 (B) | 0.352 (B) | 0.388 (B) |
+| s13-19 hot shard | 0.985 | 0.196 (B, C+B) | 0.102 (C) | 0.088 (C) |
+| s13-20 compound | 0.992 | 0.327 (C, B, C+B) | 0.992 not resolved (B) | 0.990 not resolved (B, C, B) |
+| s13-21 retry storm | 3.939 | 0.289 (C+B, C, B) | 0.399 (B) | 0.408 (B) |
+| s13-22 hot shard | 0.998 | 0.076 (C+B) | 0.115 (C) | 0.105 (C) |
+| s13-23 compound | 0.991 | 0.207 (B, C+B) | 0.992 not resolved (B) | 0.991 not resolved (B, C, B) |
+
+**Deviations.** None to the protocol. The capture tool's metadata names the commit of the main checkout (`846aa3d`); the experiment ran from the step's worktree at `464f0dd`, which the results file records in its conditions. The run took 8 h 24 min against about 8 h. Unlike the exploratory compound run before entry 019 (9% worse than nobody), no compound run this time ended worse than nobody: backoff alone changed nothing, and each cap was undone before it did harm.
+
+**Meaning.** When every kind of incident has its fix among a few sets that can be undone, a script inside the same harness beats this model: it resolves more (24 against 17), loses fewer customer minutes, costs nothing and decides in milliseconds. In production that puts known incident kinds on a runbook script in the harness, with the policy, signer and budget unchanged, and keeps a model for what the script cannot do. The model's measured edge is choosing the right first set (hot shard); it is smaller than its decision time (retry storm) and is lost entirely on any fix that needs two actions together, because the prompt's wording sets how many actions it proposes (entry 014). This cannot show larger or other models, a prompt that asks for sets, faster decoding, or incidents outside the script's catalogue, where the script has no answer at all: that is the case a model would have to win, and it was not tested.
