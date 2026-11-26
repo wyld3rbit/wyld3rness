@@ -178,7 +178,7 @@ code/
 │       ├── tools/           the agent's tools
 │       ├── retrieval/       incident memory: vector, keyword, reranker
 │       ├── evals/           golden set and the adapter the harness drives
-│       ├── console/         the live visualizer
+│       ├── console/         the live console: the storm page and the architecture page
 │       └── wiring.py        the one composition root
 ├── examples/simprod/        the simulated production it acts on: gateway, ledger, notifications,
 │                            edge allow-list, open-loop customers; standard library, no route out

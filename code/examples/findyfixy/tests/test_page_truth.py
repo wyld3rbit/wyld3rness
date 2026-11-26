@@ -37,7 +37,7 @@ from typing import get_args
 import pytest
 
 from findyfixy.console.fakes import ScriptedToolModel, fake_ask
-from findyfixy.console.server import EvalRequest, RunHub, wire
+from findyfixy.console.server import STORM_PAGE, EvalRequest, RunHub, wire
 from findyfixy.events import EventKind
 from findyfixy.paths import PAGE, ROOT, WORKSPACE
 from findyfixy.tools.deploys import make_deploys_tool
@@ -139,10 +139,10 @@ def test_the_check_reads_the_real_graph() -> None:
 def test_every_event_kind_the_code_can_emit_has_a_handler_and_none_is_stale() -> None:
     """The page's table equals each vocabulary: nothing undrawn, nothing dead."""
     table = handler_table(PAGE.read_text())
-    assert table.keys() == {"app", "harness", "loop"}
+    assert table.keys() == {"app", "harness"}
     assert table["app"] == set(get_args(EventKind))
     assert table["harness"] == set(get_args(EvalEventKind))
-    assert table["loop"] == set(get_args(LoopEventKind))
+    assert handler_table(STORM_PAGE.read_text()) == {"loop": set(get_args(LoopEventKind))}  # the storm page
 
 
 def test_the_three_vocabularies_share_no_kind() -> None:

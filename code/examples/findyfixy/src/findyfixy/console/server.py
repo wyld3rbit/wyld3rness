@@ -1,7 +1,7 @@
 """Day 2: the live console server. Run the real graph, stream its events.
 
 What it does
-    Serves the architecture page and runs the triage graph on request. While
+    Serves the storm page (home) and the architecture page, and runs the triage graph on request. While
     a run is in flight it streams every event (findyfixy/events.py) to the browser
     over Server-Sent Events (SSE). The page animates from those events.
 
@@ -11,7 +11,8 @@ What it does
     streamed event is tagged with its `source`, "app" or "harness", so the
     page can tell the two vocabularies apart.
 
-        GET  /         the page (docs/architecture.html)
+        GET  /         the storm page (console/static/storm.html): a storm, live or replayed
+        GET  /architecture  the architecture page, with triage and eval runs (console/static/architecture.html)
         GET  /config   questions, fake scenarios, which modes are available
         POST /run      start one run (or a hunt): {"mode", "question"?, "scenario"?}
         POST /eval     start one eval run: {"mode", "cases": 1..N}, N the set's size
@@ -120,6 +121,9 @@ from findyfixy.wiring import SharedRetrieval, stage_spans
 from wyld3rness.trace.tracing import Tracing
 
 Mode = Literal["live", "fake"]
+
+# The console's home page, a storm as it happens. Kept here, not in paths.py, which the gate attestation hashes.
+STORM_PAGE = PAGE.with_name("storm.html")
 
 # Realistic incidents are log excerpts of a few thousand characters (see
 # findyfixy/retrieval/incidents.py), so the question cap is far above a one-line question.
@@ -726,8 +730,10 @@ QUIET_ROUTES = ("/version", "/favicon.ico")
 UNTRACED_ROUTES = (*QUIET_ROUTES, "/events")
 
 
-def make_handler(hub: RunHub, page: Path, dev_root: Path | None = None) -> type[BaseHTTPRequestHandler]:
-    """Build the request handler class bound to `hub` and the page path.
+def make_handler(
+    hub: RunHub, page: Path, dev_root: Path | None = None, storm_page: Path = STORM_PAGE
+) -> type[BaseHTTPRequestHandler]:
+    """Build the request handler class bound to `hub` and the two pages: the storm at `/`, `page` at `/architecture`.
 
     `dev_root`, when given, turns on dev mode: `/version` reports a fingerprint
     of the watched files and this process's start time, and `/config` says so.
@@ -817,10 +823,11 @@ def make_handler(hub: RunHub, page: Path, dev_root: Path | None = None) -> type[
             if not self._host_ok():
                 return self._json(HTTPStatus.FORBIDDEN, {"error": "bad host"})
             url = urlparse(self.path)
-            if url.path == "/":
-                if not page.is_file():
+            pages = {"/": storm_page, "/architecture": page}
+            if url.path in pages:
+                if not pages[url.path].is_file():
                     return self._send(HTTPStatus.OK, b"page not built yet", "text/plain")
-                return self._send(HTTPStatus.OK, page.read_bytes(), "text/html; charset=utf-8")
+                return self._send(HTTPStatus.OK, pages[url.path].read_bytes(), "text/html; charset=utf-8")
             if url.path == "/favicon.ico":
                 # The page declares an inline icon, so browsers normally never ask.
                 # Some still do. Answer "no content" instead of a 404 in the log.

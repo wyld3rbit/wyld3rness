@@ -258,6 +258,7 @@ def finished(record: Mapping[str, Any]) -> JSON:
         "trace_id": record.get("trace_id"),
         "unjudged": list(record.get("invalid") or []),
         "restored": record.get("restored"),
+        "window_s": HORIZON_S,  # the customer minutes are counted over this many seconds after the fault
     }
 
 
