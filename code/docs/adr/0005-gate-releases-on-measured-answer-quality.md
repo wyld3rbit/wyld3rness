@@ -38,7 +38,7 @@ Answering model: adopted. Qwen3 4B-instruct, Apache-2.0, thinking off, temperatu
 
 ## Staffing
 
-No hire. One engineer and one AI assistant built the phase. The work ran as parallel packages in git worktrees, and the lead ran the gate before any merge.
+One engineer and one AI assistant built the phase. The work ran as parallel packages in git worktrees, and the lead ran the gate before any merge.
 Add people when gates fail builds faster than anyone can investigate them, or when a second system shares the harness.
 
 ## What would change this

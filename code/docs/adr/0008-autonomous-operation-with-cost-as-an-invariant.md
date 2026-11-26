@@ -54,7 +54,7 @@ Adopt the parts with open-source standards: OpenTelemetry for traces, container 
 
 ## Staffing
 
-No hire. People own the goal, the invariants, the allowed actions, the budget and the gate. A person is needed when a safe state has to be resolved afterwards, or when a new kind of action is to be allowed.
+People own the goal, the invariants, the allowed actions, the budget and the gate. A person is needed when a safe state has to be resolved afterwards, or when a new kind of action is to be allowed.
 
 ## What would change this
 

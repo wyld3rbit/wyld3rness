@@ -3,7 +3,7 @@
     observe()  GET /gateway, /ledger, /customers metrics ──► the samples an operator reads
     apply(a,c) read the gateway's settings (for the undo) ──► POST /<service>/actions/... as X-Actor findyfixy,
                with the credential the loop signed for exactly this action
-    series()   the storm driver's scraper, in the host process: what customers saw
+    series()   the loop's own scraper of what customers saw (the loop container's; the host scrapes too, to compare)
     now/wait   the storm's clock, real time
 
 The three typed actions and their undo:
@@ -179,7 +179,7 @@ class SimprodEnv:
         return Applied(action, carried_out, f"{answer['status']} {answer['answer']}", undo)
 
     def series(self) -> Sequence[Second]:
-        """What customers saw, per second, from the storm driver's scraper."""
+        """What customers saw, per second, from the scraper this environment was given (the loop's own)."""
         return self._series()
 
     def now(self) -> float:

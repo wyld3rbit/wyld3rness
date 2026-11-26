@@ -38,7 +38,7 @@ Direct function call: the baseline.
 
 ## Staffing
 
-No hire. One engineer and one AI assistant built the phase.
+One engineer and one AI assistant built the phase.
 
 ## What would change this
 

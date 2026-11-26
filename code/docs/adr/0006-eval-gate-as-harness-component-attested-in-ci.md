@@ -40,7 +40,7 @@ Self-hosted runner on the developer machine: rejected. Code from any pull reques
 
 ## Staffing
 
-No hire. One engineer and one AI coding agent. The agent's work was bounded by the build harness: plan before code, sub-agents for scoped packages, the lead's own verification, and a fresh-agent code review before every commit. Three reviews raised 30 findings across the harness move, the visualizer and the CI gate, and all were fixed before commit.
+One engineer and one AI coding agent. The agent's work was bounded by the build harness: plan before code, sub-agents for scoped packages, the lead's own verification, and a fresh-agent code review before every commit. Three reviews raised 30 findings across the harness move, the visualizer and the CI gate, and all were fixed before commit.
 Add people when more than one developer produces attestations, because the attestation trusts the person who ran it.
 
 ## What would change this
