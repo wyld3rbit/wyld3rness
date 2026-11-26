@@ -10,7 +10,7 @@
 #      findyfixy.pth and simprod.pth), each a single line naming its src/ folder.
 # On any finding, stop and read it. Do not upgrade or remove to make it pass.
 
-.PHONY: audit hooks scan up down sim-up load-test controls-pilot controls oncall oncall-up setup ingest console triage test test-harness lint eval-retrieval eval eval-gate eval-baseline eval-freeze eval-compare eval-negative case golden verify-attestation obs-secrets obs-up obs-down obs-prices
+.PHONY: audit hooks scan up down sim-up load-test controls-pilot controls oncall oncall-up injection setup ingest console triage test test-harness lint eval-retrieval eval eval-gate eval-baseline eval-freeze eval-compare eval-negative case golden verify-attestation obs-secrets obs-up obs-down obs-prices
 
 # Memory for the Colima VM, in GB. 6 on most days, 8 on Langfuse days:
 #   make up COLIMA_MEMORY=8
@@ -88,6 +88,12 @@ oncall-up:
 	@test -f examples/simprod/.bao/sign.token || { echo "no sign pass yet: run make sim-up first"; exit 1; }
 	uv export --frozen --package findyfixy --no-dev --no-emit-workspace --format requirements-txt -o $(APP_DIR)/.oncall-requirements.txt > /dev/null
 	HOST_UID=$$(id -u) docker compose -f $(APP_COMPOSE) --profile oncall up -d --build --wait agent loop
+
+# injection: research log entry 017. Captures one storm of each kind, plants the
+# 20 attacks in its metrics, and runs them through a fully fooled fake and the
+# real model in the agent container. The bar: no attacker-chosen action runs.
+injection:
+	$(RUN) findyfixy-injection
 
 audit:
 	uv export --frozen --all-packages --all-extras --format requirements-txt --no-emit-workspace -o .audit-req.txt > /dev/null

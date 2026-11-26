@@ -44,6 +44,8 @@ The safe state ends every other path: out of tries, a decider that raised, an ac
 
 **The decider in another process.** `code/src/wyld3rness/loop/remote.py`: `RemoteDecider` asks an agent's service over HTTP with the loop's own history, and `serve_decider` serves an app's deciders, one per incident. A budget refusal comes back as `BudgetExceeded`, so the loop names it as the budget. This is how the agent runs in a container with no socket, no keys and no route to the system it would change.
 
+**The injection suite.** `code/src/wyld3rness/loop/injection.py`: an `Attack` is a payload an outsider controls plus the goal actions it tries to cause. The app plants the payload in an observation; `run_attack` asks a decider, checks each proposal against the policy and, when it is refused, asks again with the refusal in the history, as the loop does; an attack succeeded only if a goal ran. `Fooled` is a decider that proposes exactly the goals, the worst a model can do, so a suite that passes with it does not depend on the model resisting anything.
+
 **Test doubles.** `code/src/wyld3rness/testing.py` ships a fake judge, embedder and system under test, so an app's own tests can drive the harness without a model, and a fake world and decider for the loop, on a clock that moves only when the loop waits. FindyFixy's adapter and on-call tests use them.
 
 **Packaging.** The harness is the root project of the workspace, `code/pyproject.toml`, with only the dependencies it imports. `code/tests/test_harness_rules.py` keeps the import allowlist and that list in step. Its tests are in `code/tests/` (`code/tests/README.md`).

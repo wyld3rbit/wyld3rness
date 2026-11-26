@@ -45,6 +45,7 @@ findyfixy-mcp-server = "findyfixy.mcp.server:main"
 findyfixy-mcp-run = "findyfixy.mcp.run:main"
 findyfixy-direct-run = "findyfixy.tools.direct_run:main"
 findyfixy-oncall = "findyfixy.oncall.cli:main"
+findyfixy-injection = "findyfixy.oncall.attacks:main"
 
 [tool.uv.sources]
 wyld3rness = { workspace = true }
