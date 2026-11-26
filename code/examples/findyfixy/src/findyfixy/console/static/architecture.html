@@ -67,6 +67,8 @@
   header { padding: 12px 16px 0; max-width: 1200px; margin: 0 auto; }
   h1 { font-size: 20px; margin: 0 0 4px; }
   header p { margin: 0; color: var(--muted); }
+  header p.back { margin: 0 0 4px; }
+  header p.back a { color: var(--accent); text-decoration: none; }
   /* min-width: 0 lets grid children shrink below their content width. Without
      it, a long label or a pre block pushes the whole page past a phone screen. */
   main > *, .controls > * { min-width: 0; }
@@ -184,27 +186,12 @@
   @media (prefers-reduced-motion: reduce) {
     .node.calling rect { animation: none; }
   }
-  /* The storm panel: what customers saw each second, and one row per try. */
-  #storm-chart { width: 100%; height: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
-  #storm-chart .axis { stroke: var(--line); stroke-width: 1; }
-  #storm-chart .fail { fill: none; stroke: var(--bad); stroke-width: 2; }
-  #storm-chart .mark { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
-  #storm-chart .mark.act { stroke: var(--accent); stroke-dasharray: none; }
-  #storm-chart .mark.undo { stroke: var(--warn); stroke-dasharray: none; }
-  #storm-chart .mark.ok { stroke: var(--ok); stroke-dasharray: none; }
-  #storm-chart text { fill: var(--muted); font-size: 11px; }
-  #storm-tries { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
-  #storm-tries th, #storm-tries td { text-align: left; border-bottom: 1px solid var(--line); padding: 5px 6px; vertical-align: top; }
-  #storm-tries th { color: var(--muted); font-weight: 600; }
-  #storm-tries .ok { color: var(--ok); }
-  #storm-tries .bad { color: var(--bad); }
-  #storm-tries .warn { color: var(--warn); }
-  #storm-note { color: var(--muted); font-size: 13px; margin: 6px 0 0; }
 </style>
 </head>
 <body>
 <header>
-  <h1>FindyFixy</h1>
+  <p class="back"><a href="/">&larr; Storm, live</a></p>
+  <h1>FindyFixy: architecture, triage and eval runs</h1>
   <p>The target: on-call without a human approving each action, inside a cost budget. Solid runs today: fire a run and watch it. Dashed is not built yet.</p>
 </header>
 
@@ -216,8 +203,6 @@
         <select id="kind">
           <option value="triage" selected>Triage run (one question)</option>
           <option value="eval">Eval run (golden cases, scored)</option>
-          <option value="storm">Storm on simprod (the on-call loop, live)</option>
-          <option value="replay">Replay a saved storm run</option>
         </select>
       </div>
       <div class="field" id="mode-field">
@@ -230,30 +215,6 @@
       <div class="field" id="cases-field" hidden>
         <label for="cases">Cases, first N of <span id="cases-size">the set</span></label>
         <input type="number" id="cases" min="1" value="2" title="The gate applies only when every case runs: the baseline is defined on the full set.">
-      </div>
-      <div class="field" id="storm-field" hidden>
-        <label for="stormkind">Storm</label>
-        <select id="stormkind" title="Each kind has one fix among the script's three sets: backoff on, a cap on the busiest key, or both.">
-          <option value="retry_storm">Retry storm</option>
-          <option value="hot_shard">Hot shard</option>
-          <option value="compound">Compound (needs both)</option>
-        </select>
-      </div>
-      <div class="field" id="decider-field" hidden>
-        <label for="decider">Who proposes</label>
-        <select id="decider" title="All three go through the same loop, policy, signer and budget: they differ only in who proposes.">
-          <option value="model-loop">Model, up to 3 tries</option>
-          <option value="model-1">Model, one try</option>
-          <option value="script">Script, no model</option>
-        </select>
-      </div>
-      <div class="field grow" id="saved-field" hidden>
-        <label for="saved">Saved run</label>
-        <select id="saved"></select>
-      </div>
-      <div class="field" id="speed-field" hidden>
-        <label for="speed">Speed, times real time</label>
-        <input type="number" id="speed" min="1" max="60" value="10">
       </div>
       <div class="field grow" id="fake-field">
         <label for="scenario">Scenario</label>
@@ -512,7 +473,7 @@
         <text class="s" x="693" y="564">this action only</text>
       </g>
       <g class="node" id="n_act" data-status="built" data-layer="harness" data-code="wyld3rness/loop/run.py">
-        <title>In: One decision: 1 or 2 typed actions (backoff, a per-key rate cap, a restart), applied, verified and undone together. FindyFixy's on-call decider proposes them (findyfixy/oncall/decide.py), or the script with no model; the policy and a credential for each action come first.&#10;Watch it: choose Storm above. Each try lights the policy, the credential, this box, Verify and Undo as it happens.&#10;Out: Each action sent through the environment port (wyld3rness/loop/env.py), with the undo that puts back the value from before it, or none for a restart.&#10;Logic: Code owns the loop, not the model: at most 3 tries, then the safe state. An action that is not carried out ends the incident; an invalid one is refused before anything is sent. FindyFixy's environment sends through simprod's edge as X-Actor findyfixy, so the service's own log can be checked against the record.&#10;Trust: The model never reaches the HTTP calls. It proposes; this loop applies.</title>
+        <title>In: One decision: 1 or 2 typed actions (backoff, a per-key rate cap, a restart), applied, verified and undone together. FindyFixy's on-call decider proposes them (findyfixy/oncall/decide.py), or the script with no model; the policy and a credential for each action come first.&#10;Watch it: the storm page (/) shows each try as it happens.&#10;Out: Each action sent through the environment port (wyld3rness/loop/env.py), with the undo that puts back the value from before it, or none for a restart.&#10;Logic: Code owns the loop, not the model: at most 3 tries, then the safe state. An action that is not carried out ends the incident; an invalid one is refused before anything is sent. FindyFixy's environment sends through simprod's edge as X-Actor findyfixy, so the service's own log can be checked against the record.&#10;Trust: The model never reaches the HTTP calls. It proposes; this loop applies.</title>
         <rect x="460" y="520" width="130" height="64" rx="8"/>
         <polygon class="i" transform="translate(465 524) scale(.56)" points="6 3 20 12 6 21 6 3"/>
         <text class="t" x="525" y="546">Act</text>
@@ -767,16 +728,6 @@
     </details>
   </section>
 
-  <section class="panel" id="storm-panel" aria-label="Storm" hidden>
-    <h2>Storm<span id="storm-title"></span></h2>
-    <svg id="storm-chart" viewBox="0 0 960 200" role="img" aria-label="Share of customer requests failing each second, with the fault, the detection and every action marked"></svg>
-    <p id="storm-note"></p>
-    <table id="storm-tries">
-      <thead><tr><th>Try</th><th>Proposed</th><th>Policy</th><th>Applied</th><th>Verdict</th><th>Spent so far</th></tr></thead>
-      <tbody></tbody>
-    </table>
-  </section>
-
   <div class="lower">
     <section class="panel" aria-label="Event log">
       <h2>Event log</h2>
@@ -946,28 +897,9 @@ const DESCRIBE = {
     eval_finished: (d) => `${d.summary.n} case(s), ${d.summary.n_run_errors} run error(s); ${evalVerdict(d).text}`,
     eval_failed: (d) => d.reason === "stopped" ? `stopped: ${d.error}` : `${d.error_type}: ${clip(d.error, 120)}`,
   },
-  loop: {
-    storm_started: (d) => `${d.replay ? "REPLAY of " : ""}${d.storm}, ${kindText(d.kind)}, ${deciderText(d)}, up to ${d.tries} tr${d.tries === 1 ? "y" : "ies"}`,
-    storm_phase: (d) => ({ "warm-up": "fresh services, warming up", fault: "fault injected", detected: "detected: the loop may act", cleared: "faults cleared" })[d.phase] || d.phase,
-    customers: (d) => `${d.failed} of ${d.ok + d.failed} requests failed`,
-    incident_sent: (d) => d.incident ? `incident ${d.incident} sent to the loop` : "incident sent to the loop",
-    try_started: (d) => `try ${d.try}: asking for a decision`,
-    decided: (d) => d.error ? `try ${d.try}: no decision, ${clip(d.error, 100)}` : `try ${d.try}: proposed ${d.actions.join(" + ") || "nothing"}${d.reason ? ", because " + clip(d.reason, 90) : ""}`,
-    checked: (d) => d.allowed ? `try ${d.try}: policy allows it` : `try ${d.try}: policy refuses: ${clip(d.reasons.join("; "), 120)}`,
-    applied: (d) => `${d.undo_of ? "undo " + d.undo_of + ": " : ""}${d.action} ${d.ok ? "carried out" : "NOT carried out: " + clip(d.detail, 80)}`,
-    waiting: (d) => `waiting ${d.seconds} s, then checking what customers see`,
-    verdict: (d) => `try ${d.try}: ${d.verdict}${d.recovered_at != null ? `, recovered at ${d.recovered_at.toFixed(1)} s` : ""}`,
-    incident_ended: (d) => `incident ${d.ended}: ${d.reason}${d.kept.length ? "; kept " + d.kept.join(", ") : ""}`,
-    storm_finished: (d) => `host verdict: ${d.recovered ? "recovered" : "not recovered"}${d.customer_minutes != null ? `, ${d.customer_minutes.toFixed(3)} customer minutes lost` : ""}${d.spent_usd != null ? `, $${d.spent_usd.toFixed(6)}` : ""}`,
-    storm_failed: (d) => d.reason === "stopped" ? "replay stopped" : `storm failed: ${clip(d.error, 140)}`,
-  },
 };
 
-function kindText(kind) { return { retry_storm: "retry storm", hot_shard: "hot shard", compound: "compound" }[kind] || kind; }
-function deciderText(d) {
-  if (d.decider === "script") return `script, no model${d.order && d.order.length ? " (" + d.order.join(", ") + ")" : ""}`;
-  return `${d.decider === "model-1" ? "model, one try" : "model loop"}${d.model ? " (" + d.model + ")" : ""}`;
-}
+
 
 function sourceOf(ev) { return ev.source || "app"; }
 
@@ -989,7 +921,6 @@ function traceHref(url) {
 }
 
 function addLog(ev) {
-  if (sourceOf(ev) === "loop" && ev.kind === "customers") return;   // one a second: the chart shows them
   $("empty").hidden = true;
   const li = document.createElement("li");
   const t = document.createElement("span"); t.className = "t"; t.textContent = ev.t.toFixed(2) + "s";
@@ -1003,15 +934,6 @@ function addLog(ev) {
   if (ev.kind === "run_failed" || (ev.kind === "validation" && !ev.data.ok) || (ev.kind === "tool_result" && ev.data.error)) k.classList.add("bad");
   if (ev.kind === "run_finished" || (ev.kind === "validation" && ev.data.ok)) k.classList.add("ok");
   if (ev.kind === "fault_injected") k.classList.add("warn");
-  if (sourceOf(ev) === "loop") {
-    k.classList.add("h");
-    const d = ev.data;
-    if (ev.kind === "storm_failed" || (ev.kind === "checked" && !d.allowed) || (ev.kind === "decided" && d.error) || (ev.kind === "applied" && !d.ok)) k.classList.add("bad");
-    if (ev.kind === "verdict") k.classList.add(d.verdict === "resolved" ? "ok" : "bad");
-    if (ev.kind === "applied" && d.undo_of) k.classList.add("warn");
-    if (ev.kind === "storm_finished") k.classList.add(d.recovered ? "ok" : "bad");
-    if (ev.kind === "storm_phase" && d.phase === "fault") k.classList.add("warn");
-  }
   if (ev.kind === "model_reply" && ev.data.mismatch) k.classList.add("bad");
   if (ev.kind === "hunt_finished") k.classList.add(ev.data.reason === "found" ? "bad" : "ok");
   const s = document.createElement("span"); s.textContent = summarize(ev);
@@ -1056,187 +978,6 @@ function showResult(rows) {
 // ---- animation: one async step per event ---------------------------------
 // `view` tracks which node is "current", so a validation event knows whether
 // to light the Validate box (small model) or just flag the large node.
-// The storm in view: its events on the storm's clock, for the chart and the table.
-const storm = { t: [], fail: [], marks: [], tries: {}, faultAt: null, horizon: 300, info: null, spent: null };
-
-function resetStorm(info) {
-  Object.assign(storm, { t: [], fail: [], marks: [], tries: {}, faultAt: null, horizon: 300, info, spent: null });
-  $("storm-panel").hidden = false;
-  $("storm-title").textContent = info ? `: ${kindText(info.kind)}, ${deciderText(info)}${info.replay ? ", replay of a saved run" : ""}` : "";
-  $("storm-note").textContent = "";
-  $("storm-tries").tBodies[0].replaceChildren();
-  drawStorm();
-}
-
-// A chart label: what an action does, in two or three words (the table has the whole action).
-function shortAction(label) {
-  const key = /key=([^,)]+)/.exec(label);
-  if (label.startsWith("backoff(")) return label.includes("True") ? "backoff on" : "backoff off";
-  if (label.startsWith("rate_cap(")) return key ? `cap ${key[1]}` : "cap";
-  return label.split("(")[0];
-}
-
-function svgEl(tag, attrs, text) {
-  const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
-  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
-  if (text != null) el.textContent = text;
-  return el;
-}
-
-// Failure share per second (0 to 1), with the fault, the detection and each action marked.
-function drawStorm() {
-  const svg = $("storm-chart");
-  const W = 960, H = 200, L = 40, R = 10, T = 22, B = 24;
-  const last = Math.max(storm.horizon, ...storm.t, ...storm.marks.map((m) => m.at));
-  const x = (at) => L + (W - L - R) * Math.max(0, at) / last;
-  const y = (share) => T + (H - T - B) * (1 - share);
-  const kids = [
-    svgEl("line", { class: "axis", x1: L, y1: y(0), x2: W - R, y2: y(0) }),
-    svgEl("line", { class: "axis", x1: L, y1: y(0), x2: L, y2: y(1) }),
-    svgEl("text", { x: 4, y: y(1) + 4 }, "100%"),
-    svgEl("text", { x: 4, y: y(0) + 4 }, "0%"),
-    svgEl("text", { x: L, y: H - 6 }, "0 s"),
-    svgEl("text", { x: W - R - 40, y: H - 6 }, `${Math.round(last)} s`),
-    svgEl("text", { x: L + 6, y: 14 }, "share of customer requests failing, each second"),
-  ];
-  let row = 0;
-  for (const m of storm.marks) {
-    const xm = x(m.at);
-    kids.push(svgEl("line", { class: `mark ${m.cls || ""}`, x1: xm, y1: y(0), x2: xm, y2: y(1) }));
-    kids.push(svgEl("text", { x: xm + 3, y: y(1) + 12 + 12 * (row++ % 4) }, m.label));
-  }
-  if (storm.t.length) {
-    const pts = storm.t.map((at, i) => `${x(at).toFixed(1)},${y(storm.fail[i]).toFixed(1)}`).join(" ");
-    kids.push(svgEl("polyline", { class: "fail", points: pts }));
-  }
-  svg.replaceChildren(...kids);
-}
-
-function tryRow(n) {
-  if (!storm.tries[n]) {
-    const tr = document.createElement("tr");
-    const cells = ["try", "proposed", "policy", "applied", "verdict", "spent"].map((name) => {
-      const td = document.createElement("td"); td.dataset.col = name; tr.append(td); return td;
-    });
-    cells[0].textContent = String(n);
-    $("storm-tries").tBodies[0].append(tr);
-    storm.tries[n] = Object.fromEntries(cells.map((td) => [td.dataset.col, td]));
-  }
-  return storm.tries[n];
-}
-
-function cell(td, text, cls) { td.textContent = text; td.className = cls || ""; }
-function addCell(td, text, cls) {
-  const span = document.createElement("div"); span.textContent = text; if (cls) span.className = cls; td.append(span);
-}
-
-function lightLoop(ids, cls) {
-  for (const id of ["budget", "policy", "identity", "act", "verify", "undo", "safe", "services"]) {
-    nodeEl(id).classList.remove("active", "calling", "ok", "bad", "warn");
-  }
-  for (const id of ids) mark(id, cls);
-}
-
-function showStormResult(d) {
-  const i = storm.info || {};
-  showResult([
-    ["Status", d ? "finished" : "running", d ? (d.recovered ? "ok" : "bad") : ""],
-    ["Storm", i.storm ? `${i.storm}, ${kindText(i.kind)}${i.replay ? " (replay)" : ""}` : "", ""],
-    ["Who proposes", i.decider ? deciderText(i) : "", ""],
-    ["Spent", storm.spent == null ? (i.decider === "script" ? "$0, no model calls" : "not reported yet") : `$${storm.spent.toFixed(6)}`, ""],
-    ...(d ? [
-      ["Host verdict", d.recovered ? "recovered and held" : "not recovered", d.recovered ? "ok" : "bad"],
-      ["Loop verdict", d.resolved ? "resolved" : "not resolved", d.agree === false ? "bad" : ""],
-      ["Customer minutes", d.customer_minutes == null ? "not measured" : d.customer_minutes.toFixed(3), ""],
-      ["Settings put back", d.restored == null ? "not checked" : (d.restored ? "yes" : "no, a change is still in force"), d.restored === false && !d.resolved ? "bad" : ""],
-      ...(d.unjudged && d.unjudged.length ? [["Judged", `no: ${d.unjudged.join("; ")}`, "bad"]] : []),
-      ...(d.trace_id ? [["Trace", d.trace_id, ""]] : []),
-    ] : []),
-  ]);
-}
-
-async function animateLoop(ev) {
-  const d = ev.data;
-  switch (ev.kind) {
-    case "storm_started":
-      resetVisuals();
-      resetStorm(d);
-      view.live = !d.replay;
-      if (!view.replaying) pace = PACE_REALTIME;
-      storm.horizon = 300;
-      showStormResult(null);
-      break;
-    case "storm_phase":
-      if (d.phase === "fault") { storm.faultAt = d.at; storm.marks.push({ at: d.at, label: "fault" }); }
-      if (d.phase === "detected") storm.marks.push({ at: d.at, label: "detected" });
-      if (d.phase === "warm-up" || d.phase === "fault") lightLoop(["services"], d.phase === "fault" ? "bad" : "active");
-      drawStorm();
-      break;
-    case "customers": {
-      const total = d.ok + d.failed;
-      storm.t.push(d.at); storm.fail.push(total ? d.failed / total : 0);
-      drawStorm();
-      break;
-    }
-    case "incident_sent":
-      break;
-    case "try_started":
-      tryRow(d.try);
-      lightLoop(["budget"], "calling");
-      break;
-    case "decided": {
-      const r = tryRow(d.try);
-      cell(r.proposed, d.error ? `no decision: ${d.error}` : (d.actions.join(" + ") || "nothing"), d.error ? "bad" : "");
-      if (d.reason) addCell(r.proposed, clip(d.reason, 140), "");
-      if (d.spent_usd != null) { storm.spent = d.spent_usd; cell(r.spent, `$${d.spent_usd.toFixed(6)}`); }
-      else cell(r.spent, storm.info && storm.info.decider === "script" ? "$0" : "not reported");
-      lightLoop(["budget"], d.error ? "bad" : "ok");
-      showStormResult(null);
-      break;
-    }
-    case "checked": {
-      const r = tryRow(d.try);
-      cell(r.policy, d.allowed ? "allowed" : `refused: ${d.reasons.join("; ")}`, d.allowed ? "ok" : "bad");
-      lightLoop(["policy"], d.allowed ? "ok" : "bad");
-      break;
-    }
-    case "applied": {
-      const r = tryRow(d.try || 1);
-      addCell(r.applied, `${d.undo_of ? "undo: " : ""}${d.action}${d.ok ? "" : " (not carried out)"}`, d.undo_of ? "warn" : (d.ok ? "" : "bad"));
-      storm.marks.push({ at: d.at, label: d.undo_of ? "undo" : shortAction(d.action), cls: d.undo_of ? "undo" : "act" });
-      lightLoop(["identity", d.undo_of ? "undo" : "act"], d.ok ? "active" : "bad");
-      drawStorm();
-      break;
-    }
-    case "waiting":
-      lightLoop(["verify"], "calling");
-      break;
-    case "verdict": {
-      const r = tryRow(d.try);
-      const good = d.verdict === "resolved";
-      cell(r.verdict, d.verdict, good ? "ok" : "bad");
-      if (good && d.recovered_at != null) storm.marks.push({ at: d.at, label: "resolved", cls: "ok" });
-      lightLoop(["verify"], good ? "ok" : "bad");
-      drawStorm();
-      break;
-    }
-    case "incident_ended":
-      if (d.ended !== "resolved") lightLoop(["safe"], "warn");
-      $("storm-note").textContent = `Incident ${d.ended}: ${d.reason}.${d.kept.length ? " Kept in force: " + d.kept.join(", ") + "." : ""}`;
-      break;
-    case "storm_finished":
-      storm.horizon = Math.max(...storm.t, storm.horizon);
-      drawStorm();
-      showStormResult(d);
-      break;
-    case "storm_failed":
-      $("storm-panel").hidden = false;
-      $("storm-note").textContent = d.reason === "stopped" ? "Replay stopped." : `Storm failed: ${d.error}`;
-      showResult([["Status", d.reason === "stopped" ? "stopped" : "failed", "bad"], ["Reason", d.error, "bad"]]);
-      break;
-  }
-}
-
 const view = { recall: null, node: null, forced: false, tools: false, toolStep: null, served: {}, hasMismatch: false, live: false, replaying: false, stress: "none",
                evalRun: { n: 0, index: 0, id: "", fake: false, latest: {} } };
 
@@ -1376,7 +1117,6 @@ async function animateHarness(ev) {
 
 async function animate(ev) {
   if (sourceOf(ev) === "harness") return animateHarness(ev);
-  if (sourceOf(ev) === "loop") return animateLoop(ev);
   const d = ev.data;
   switch (ev.kind) {
     case "run_started":
@@ -1571,9 +1311,7 @@ function openStream() {
     // An eval run ends on its own harness terminal; the graph inside each case
     // never emits run_finished. A hunt ends on hunt_finished. Its inner runs
     // also end with run_finished or run_failed, which must NOT close the stream.
-    const ends = sourceOf(ev) === "loop"
-      ? ev.kind === "storm_finished" || ev.kind === "storm_failed"
-      : !app
+    const ends = !app
       ? ev.kind === "eval_finished" || ev.kind === "eval_failed"
       : hunting
         ? ev.kind === "hunt_finished"
@@ -1595,19 +1333,9 @@ function openStream() {
 
 async function startRun() {
   const mode = $("mode").value;
-  const kind = $("kind").value;
-  const evalRun = kind === "eval";
-  let body = { mode };
-  let route = evalRun ? "/eval" : "/run";
-  if (kind === "storm") {
-    body = { kind: $("stormkind").value, decider: $("decider").value };
-    route = "/storm";
-  } else if (kind === "replay") {
-    const [file, run] = ($("saved").value || "#").split("#");
-    body = { file, run: Number(run), speed: Math.max(1, Math.min(60, Math.round(Number($("speed").value)) || 10)) };
-    $("speed").value = body.speed;
-    route = "/replay";
-  } else if (evalRun) {
+  const evalRun = $("kind").value === "eval";
+  const body = { mode };
+  if (evalRun) {
     // The server checks the range again (1 to the set's size). This only keeps
     // the request sensible when the box holds something odd.
     const n = Math.round(Number($("cases").value));
@@ -1631,7 +1359,7 @@ async function startRun() {
   $("replay").disabled = true;
   let res;
   try {
-    res = await fetch(route, {
+    res = await fetch(evalRun ? "/eval" : "/run", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -1649,8 +1377,7 @@ async function startRun() {
     return;
   }
   lastRunExists = true;
-  $("stop").hidden = !(body.hunt_max || evalRun || kind === "replay");   // the runs that honour /stop
-  if (kind === "storm") say("A storm takes about 4 minutes: fresh services, warm-up, the fault, then the loop. It cannot be stopped from here.");
+  $("stop").hidden = !(body.hunt_max || evalRun);   // the runs that honour /stop
   openStream();
 }
 
@@ -1690,16 +1417,7 @@ function showPreview() {
 // only how many golden cases to run; live or fake still applies.
 function syncMode() {
   const live = $("mode").value === "live";
-  const kind = $("kind").value;
-  const evalRun = kind === "eval";
-  const stormy = kind === "storm" || kind === "replay";
-  $("mode-field").hidden = stormy;
-  for (const id of ["storm-field", "decider-field"]) $(id).hidden = kind !== "storm";
-  for (const id of ["saved-field", "speed-field"]) $(id).hidden = kind !== "replay";
-  if (stormy) {
-    for (const id of ["cases-field", "fake-field", "qset-field", "question-field", "live-extra"]) $(id).hidden = true;
-    return;
-  }
+  const evalRun = $("kind").value === "eval";
   $("cases-field").hidden = !evalRun;
   const size = evalCfg.sizes[$("mode").value];
   if (size) { $("cases").max = size; $("cases-size").textContent = String(size); }
@@ -1758,14 +1476,6 @@ async function init() {
       say($("stress").value === "none" ? "" : `Stress: ${cfg.stresses[$("stress").value]}`);
     });
     for (const s of cfg.scenarios) $("scenario").append(new Option(s.replaceAll("_", " "), s));
-    for (const r of cfg.saved_runs || []) {
-      $("saved").append(new Option(`${r.storm} ${kindText(r.kind)}, ${r.arm}, ${r.resolved ? "resolved" : "not resolved"} (${r.file})`, `${r.file}#${r.run}`));
-    }
-    if (!(cfg.saved_runs || []).length) {
-      const o = new Option("no saved runs: run make experiment or make oncall", "");
-      o.disabled = true;
-      $("saved").append(o);
-    }
     banks.lesson = cfg.questions.map((q) => ({ label: q, text: q }));
     banks.incidents = cfg.incidents.map((i) => ({ label: i.title, text: i.text }));
     $("qset").addEventListener("change", fillQuestions);

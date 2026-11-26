@@ -197,12 +197,15 @@ def test_page_is_served_and_never_uses_innerhtml(server):
     # Event data includes model output, which is untrusted. The page must set
     # it with textContent. This guards against someone "simplifying" it later.
     _, port = server
-    status, data = call(port, "GET", "/")
-    html = data.decode()
-    assert status == 200
-    assert "FindyFixy" in html
-    assert "innerHTML" not in html
-    assert "eval(" not in html
+    for route in ("/", "/architecture"):  # the storm page and the architecture page
+        status, data = call(port, "GET", route)
+        html = data.decode()
+        assert status == 200
+        assert "FindyFixy" in html
+        assert "innerHTML" not in html
+        assert "eval(" not in html
+    assert "Live storm" in call(port, "GET", "/")[1].decode()
+    assert "Eval run" in call(port, "GET", "/architecture")[1].decode()
 
 
 def test_force_escalation_sends_a_confident_answer_to_large(monkeypatch):
@@ -412,8 +415,9 @@ def test_page_keeps_the_hidden_attribute_working(server):
     # `.field { display: grid }` beats the browser's own `[hidden]` rule, so
     # Live and Fake controls both showed at once. This guards the override.
     _, port = server
-    html = call(port, "GET", "/")[1].decode()
-    assert "[hidden] { display: none !important; }" in html
+    for route in ("/", "/architecture"):  # both pages style `.field` as a grid
+        html = call(port, "GET", route)[1].decode()
+        assert "[hidden] { display: none !important; }" in html
 
 
 # ---- force retry: the first small reply is illegal, the retry is real -------
@@ -603,7 +607,7 @@ def test_config_says_whether_the_tool_step_is_available(server, monkeypatch):
 
 def test_page_has_the_tool_step_nodes_and_marks_empty_results_as_a_warning(server):
     _, port = server
-    html = call(port, "GET", "/")[1].decode()
+    html = call(port, "GET", "/architecture")[1].decode()
     for needle in ('id="n_inv"', 'id="n_tool"', 'id="e_inv_tool"', 'id="usetools"'):
         assert needle in html
     # An empty lookup is legal but suspicious (wrong window), so not green.
@@ -636,14 +640,14 @@ def test_fake_mode_says_the_served_model_is_not_reported(server):
 
 def test_page_shows_and_flags_the_served_model(server):
     _, port = server
-    html = call(port, "GET", "/")[1].decode()
+    html = call(port, "GET", "/architecture")[1].decode()
     for needle in ("served by", "MISMATCH", "Served by", "not reported"):
         assert needle in html
 
 
 def test_the_page_declares_an_inline_icon_so_browsers_do_not_ask_for_one(server):
     _, port = server
-    html = call(port, "GET", "/")[1].decode()
+    html = call(port, "GET", "/architecture")[1].decode()
     assert 'rel="icon"' in html and "data:image/svg+xml" in html
 
 
@@ -738,7 +742,7 @@ def test_config_lists_the_stresses_with_descriptions(server):
 
 def test_page_defaults_to_live_mode_and_has_the_stress_control(server):
     _, port = server
-    html = call(port, "GET", "/")[1].decode()
+    html = call(port, "GET", "/architecture")[1].decode()
     assert '<option value="live" selected>' in html
     assert html.index('<option value="live"') < html.index('<option value="fake"')
     assert 'id="stress"' in html

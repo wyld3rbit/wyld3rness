@@ -4,9 +4,9 @@ wyld3rness is being built as a harness and a set of agentic loops for agents tha
 
 **Today FindyFixy diagnoses, and acts only on a simulated production.** The harness's loop applies its proposed actions to [simprod](code/examples/simprod/README.md), which runs under real load and can be inspected by anyone, then checks what customers saw and undoes what did not work (`make oncall`). A policy, a signed credential for every action and a budget per incident sit in front of that loop (`make injection` tests them against 20 planted attacks). In a pre-registered test over 24 held-out storms, a script with no model in the same harness did better than the model: it resolved more storms and lost fewer customer minutes ([research log](code/docs/research-log.md), entries 019 and 020).
 
-![The console replaying a saved storm: the model loop on a compound storm proposes one action a try, each is applied, not verified and undone, and the incident ends in the safe state after three tries; the chart shows customers' failures each second with every action marked](code/docs/demo.gif)
+![The console's storm page replaying a saved storm: customers' failures each second with every action and undo marked, the loop as a strip of steps, the verdict beside it and the model loop's three tries below, each undone, ending in the safe state](code/docs/demo.gif)
 
-The console drives a storm on simprod and shows each try as it happens, or replays a saved run (`make console`, then Storm or Replay).
+The console opens on a storm: it drives one on simprod and shows each try as it happens, or replays a saved run (`make console`). The architecture, triage and eval runs are on its second page.
 
 ## Built and planned
 

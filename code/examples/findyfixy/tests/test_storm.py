@@ -18,7 +18,7 @@ from typing import Any
 from pydantic import ValidationError
 import pytest
 
-from findyfixy.console.server import RunHub, wire
+from findyfixy.console.server import STORM_PAGE, RunHub, wire
 from findyfixy.console.storm import (
     Poller,
     ReplayRequest,
@@ -32,7 +32,7 @@ from findyfixy.console.storm import (
     replay_events,
     saved_runs,
 )
-from findyfixy.paths import PAGE, ROOT
+from findyfixy.paths import ROOT
 from wyld3rness.loop.run import LoopConfig
 
 REPLAY = ROOT / "tests" / "js" / "replay.js"
@@ -305,7 +305,7 @@ def test_a_replayed_storm_plays_through_the_page_and_ends_on_the_hosts_verdict(t
     path.write_text(json.dumps(events))
     env = {k: v for k, v in os.environ.items() if k != "NODE_OPTIONS"}  # as test_page_truth runs the page
     out = subprocess.run(
-        ["node", str(REPLAY), str(PAGE), str(path), "1", "result,storm-note,storm-title", "reduced"],
+        ["node", str(REPLAY), str(STORM_PAGE), str(path), "1", "result,note,title", "reduced"],
         capture_output=True,
         text=True,
         timeout=60,
@@ -315,11 +315,11 @@ def test_a_replayed_storm_plays_through_the_page_and_ends_on_the_hosts_verdict(t
     shown = json.loads(out.stdout)
     assert len(shown["rows"]) == len(events)
     result = shown["text"]["result"]
-    assert result[result.index("Host verdict") + 1] == "recovered and held"
-    assert result[result.index("Loop verdict") + 1] == "resolved"
+    assert result[result.index("Customers") + 1] == "recovered and held"
+    assert result[result.index("Loop says") + 1] == "resolved"
     assert result[result.index("Trace") + 1] == "abc123"
-    assert shown["text"]["storm-note"].startswith("Incident resolved: resolved on try 2.")
-    assert shown["text"]["storm-title"] == ": hot shard, script, no model (backoff, cap, both), replay of a saved run"
+    assert shown["text"]["note"].startswith("Incident resolved: resolved on try 2.")
+    assert shown["text"]["title"] == "hot shard, script, no model (backoff, cap, both), replay of a saved run"
 
 
 def test_a_storm_that_fails_after_the_incident_was_sent_stops_its_reader() -> None:
