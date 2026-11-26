@@ -2,14 +2,16 @@
 
     try 1..TRIES:
       observe ─► decide: 1 to MAX_ACTIONS typed actions, applied, verified and undone together
+        ─► policy: refused ─► nothing applied; next try, told every reason
         ─► apply each ─► wait WAIT ─► verified? (the last VERIFY_S all good)
              no  ─► undo, last first ─► next try, told what failed
              yes ─► hold HOLD ─► recovered within WAIT and held for HOLD?
                                    yes ─► resolved: keep the actions, stop
                                    no  ─► undo, last first ─► next try
     safe state: undo every action still in force that has an undo, last first; stop, unresolved.
-      reached when: out of tries; the decider raised or broke the shape; an action failed;
-      an undo failed; an action without undo did not resolve it; the environment raised.
+      reached when: out of tries; the budget refused a model call; the decider raised or broke
+      the shape; an action failed; an undo failed; an action without undo did not resolve it;
+      the environment raised.
 
 The model proposes; this module decides what happens next, from the environment's
 measurement (`verdict.py`), never from the model's own account. Nothing here
@@ -25,9 +27,14 @@ paging) is the environment's to add when one is approved in advance.
 
 Plain Python, not a graph framework: every step is a line here and every path is
 tested with fakes (`code/tests/test_loop.py`). The trade-off is that branching
-added later (parallel tries, a person in the loop) is written by hand. The policy
-check, the credential and the budget (Day 7, step 4) wrap `apply` and `decide`
-without changing this sequence.
+added later (parallel tries, a person in the loop) is written by hand.
+
+The policy (`policy.py`) is checked on the whole decision before its first action
+is applied, so a refused decision changes nothing; it spends a try, because a
+decider that keeps proposing refused actions must run out. The budget
+(`budget.py`) is the decider's to call before each model call; a refusal
+surfaces here as `BudgetExceeded` and ends the incident in the safe state, named
+as the budget, not as a decider fault.
 """
 
 from __future__ import annotations
@@ -36,7 +43,9 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Literal, Protocol
 
+from wyld3rness.loop.budget import BudgetExceeded
 from wyld3rness.loop.env import Action, Applied, Environment
+from wyld3rness.loop.policy import Policy
 from wyld3rness.loop.verdict import JUDGE_S, VERIFY_S, judged, recovered_at, verified
 
 TRIES = 3
@@ -45,14 +54,15 @@ MAX_ACTIONS = 2
 # a second after it ends, and a series that stops short of the hold window is not held.
 HOLD_MARGIN_S = 2.0
 
-Verdict = Literal["resolved", "not verified", "did not hold", "action failed", "no undo"]
+Verdict = Literal["resolved", "not verified", "did not hold", "action failed", "no undo", "denied"]
 
 
 @dataclass(frozen=True)
 class Try:
     """One try: the actions, what became of them, the verdict, and the undos it took.
 
-    `t_act` is when the last action was applied (when one failed, when it failed).
+    `t_act` is when the last action was applied (when one failed, when it failed; when
+    the policy refused the decision, when it refused it). `reasons` are the policy's.
     """
 
     number: int
@@ -62,6 +72,7 @@ class Try:
     verdict: Verdict
     recovered_at: float | None = None
     undone: tuple[Applied, ...] = ()
+    reasons: tuple[str, ...] = ()
 
 
 class Decider(Protocol):
@@ -164,11 +175,12 @@ def _judge(env: Environment, t_act: float, config: LoopConfig) -> tuple[Verdict,
     return ("resolved", at) if at is not None else ("did not hold", None)
 
 
-def run_incident(env: Environment, decider: Decider, config: LoopConfig) -> Outcome:
+def run_incident(env: Environment, decider: Decider, config: LoopConfig, policy: Policy) -> Outcome:
     """Run one incident through at most `config.tries` tries. Never raises: every failure is the safe state.
 
-    Failure modes, each ending in the safe state with its reason: the decider
-    raised or broke the shape; an action was not carried out, or its apply
+    A decision the policy refuses applies nothing and spends a try. Failure
+    modes, each ending in the safe state with its reason: the budget refused a
+    model call; the decider raised or broke the shape; an action was not carried out, or its apply
     raised (then it is kept as possibly in force); an undo failed;
     an action with no undo did not resolve it; the environment raised; out of tries.
     """
@@ -179,9 +191,15 @@ def run_incident(env: Environment, decider: Decider, config: LoopConfig) -> Outc
             observation = env.observe()
             try:
                 proposed = tuple(decider.decide(observation, list(out.tries)))
+            except BudgetExceeded as exc:  # a refusal by the budget, before the call ran
+                raise _Stop(f"budget: {exc}") from exc
             except Exception as exc:  # the decider's own failure (invalid after its retries, a timeout, not a sequence)
                 raise _Stop(f"decider failed: {type(exc).__name__}: {exc}") from exc
             actions = _check(proposed, config)
+            refused = policy.check(actions)
+            if refused:
+                out.tries.append(Try(number, actions, (), env.now(), "denied", reasons=tuple(refused)))
+                continue
             applied: list[Applied] = []
             for action in actions:
                 result = _apply(env, action)

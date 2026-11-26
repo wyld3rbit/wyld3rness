@@ -30,7 +30,7 @@ def test_the_latest_phase_matches_the_live_page() -> None:
 
 
 def test_flipping_a_node_on_the_page_without_a_new_phase_is_caught() -> None:
-    flipped = as_built(PAGE, "Policy")
+    flipped = as_built(PAGE, "Identity")  # still planned: step 4b builds it
     assert flipped != PAGE
     assert snap.built_in_phase(max(snap.PHASES)) != snap.built_on_page(flipped)
 

@@ -434,8 +434,8 @@
         <text class="t" x="525" y="-70">Gateway</text>
         <text class="s" x="525" y="-52">every model call</text>
       </g>
-      <g class="node" data-status="planned" data-layer="harness" data-code="none">
-        <title>Planned. Not built, no behavior yet.&#10;A model call reserves its worst-case cost before it runs. An unknown cost counts as over budget, never as zero. No budget left means safe state.</title>
+      <g class="node" data-status="built" data-layer="harness" data-code="wyld3rness/loop/budget.py">
+        <title>In: Each model call the on-call decider is about to make: the model, the prompt, the reply's cap (400 tokens).&#10;Out: A reservation of the call's worst case, or a refusal before the call runs; after it, the real cost replaces the reservation.&#10;Logic: Worst case = (the prompt's UTF-8 bytes + 16 template tokens) x the input price + the cap x the output price, from the committed reference prices. A byte-level tokenizer never makes more tokens than bytes, so this is an upper bound: about three times the real count on the decider's prompts (research log, entry 014). $0.005 per incident. No price for the model refuses the call; unknown token counts settle at the reservation, never at zero. A refusal ends the incident in the safe state.&#10;Trust: Day 8's model gateway takes over this port with the same rule.</title>
         <rect x="628" y="-96" width="130" height="64" rx="8"/>
         <circle class="i" transform="translate(633 -92) scale(.56)" cx="8" cy="8" r="6"/><path class="i" transform="translate(633 -92) scale(.56)" d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path class="i" transform="translate(633 -92) scale(.56)" d="M7 6h1v4"/><path class="i" transform="translate(633 -92) scale(.56)" d="m16.71 13.88.7.71-2.82 2.82"/>
         <text class="t" x="693" y="-70">Budget</text>
@@ -455,8 +455,8 @@
         <text class="t" x="521" y="88">Second opinion</text>
         <text class="s" x="511" y="106">evidence disagrees</text>
       </g>
-      <g class="node" data-status="planned" data-layer="harness" data-code="none">
-        <title>Planned. Not built, no behavior yet.&#10;Deterministic. Allowed kinds of action only, with preconditions checked when the action executes.</title>
+      <g class="node" data-status="built" data-layer="harness" data-code="wyld3rness/loop/policy.py">
+        <title>In: A decision: the 1 or 2 actions the decider proposed.&#10;Out: Allowed, or every reason it is not; a refused decision applies nothing and spends a try, and the next try is told why.&#10;Logic: A table declared by the app as data: the allowed kinds, which must be alone, and a precondition read from live state. FindyFixy's: backoff; a rate cap only on a key sending at least 5% of the customers' request rate now (the gateway's busiest-keys gauge); a restart only alone. A precondition that cannot be checked refuses.&#10;Trust: Deterministic code the model cannot change. The credential in front of the gateway (step 4b) checks again where the action executes.</title>
         <rect x="796" y="520" width="130" height="64" rx="8"/>
         <path class="i" transform="translate(801 524) scale(.56)" d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path class="i" transform="translate(801 524) scale(.56)" d="m9 12 2 2 4-4"/>
         <text class="t" x="861" y="546">Policy</text>
@@ -541,6 +541,76 @@
       <span class="l-planned">planned, not built</span>
       <span class="l-harness">harness control</span>
     </div>
+    <details class="where-it-runs">
+      <summary>Where it runs</summary>
+<!-- diagram 0008-step4-where-it-runs -->
+<svg class="dg" xmlns="http://www.w3.org/2000/svg" viewBox="0 -36 1180 706" width="1180" height="706" role="img" aria-label="Day 7, step 4: where each part runs. Solid is built, dashed is planned.">
+<style>
+.dg-zone { fill: #0d1729; stroke: #2a3a5c; stroke-width: 1; }
+.dg-zone.harness { stroke: #c084fc; stroke-opacity: .45; }
+.dg-zone.human { stroke: #e07a5f; stroke-opacity: .6; }
+.dg-zone-label { fill: #8da2c8; font-size: 12px; font-weight: 600; letter-spacing: .04em; }
+.dg-zone-label.harness { fill: #c084fc; }
+.dg-zone-label.human { fill: #e07a5f; }
+.dg-box rect { fill: #0b1220; stroke: #5cc8ff; stroke-width: 1.5; }
+.dg-box .dg-t { fill: #dbe6ff; font-size: 14px; font-weight: 600; text-anchor: middle; }
+.dg-box .dg-s { fill: #8da2c8; font-size: 11px; text-anchor: middle; }
+.dg-box.planned rect { stroke: #7f8fb0; stroke-dasharray: 5 4; }
+.dg-box.planned .dg-t, .dg-box.planned .dg-s { fill: #7f8fb0; }
+.dg-box .i { fill: none; stroke: #e07a5f; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.dg-box.planned .i { stroke: #7f8fb0; }
+.dg-edge { fill: none; stroke: #5b6f99; stroke-width: 2; marker-end: url(#dg-arrow); }
+.dg-edge.planned { stroke: #7f8fb0; stroke-width: 1.5; stroke-dasharray: 5 5; marker-end: url(#dg-arrow-planned); }
+.dg-edge-label { fill: #8da2c8; font-size: 11px; }  /* each label sets its own text-anchor */
+.dg-caption { fill: #dbe6ff; font-size: 14px; font-weight: 600; }
+.dg text { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+</style>
+<defs><marker id="dg-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,1 L10,5 L0,9 z" fill="#5b6f99"/></marker><marker id="dg-arrow-planned" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,1 L10,5 L0,9 z" fill="#7f8fb0"/></marker></defs>
+<rect x="0" y="-36" width="1180" height="706" fill="#0b1220"/>
+<text class="dg-caption" x="14" y="-12">Day 7, step 4: where each part runs. Solid is built, dashed is planned.</text>
+<rect class="dg-zone human" x="10" y="0" width="1160" height="130" rx="10"/>
+<text class="dg-zone-label human" x="22" y="18">Your Mac: only what needs the Docker socket or the GPU</text>
+<rect class="dg-zone" x="10" y="150" width="1160" height="510" rx="10"/>
+<text class="dg-zone-label" x="22" y="168">Colima VM (Docker)</text>
+<rect class="dg-zone harness" x="30" y="180" width="610" height="140" rx="10"/>
+<text class="dg-zone-label harness" x="42" y="198">Harness container (step 4b): no Docker socket</text>
+<rect class="dg-zone harness" x="670" y="180" width="490" height="140" rx="10"/>
+<text class="dg-zone-label harness" x="682" y="198">Agent container (step 4b): no socket, no keys, no route to simprod</text>
+<rect class="dg-zone" x="30" y="500" width="860" height="140" rx="10"/>
+<text class="dg-zone-label" x="42" y="518">simprod: no route out</text>
+<path class="dg-edge" d="M535,104 L535,230"/>
+<text class="dg-edge-label" x="543" y="171" text-anchor="start">run incident</text>
+<path class="dg-edge" d="M460,262 L410,262"/>
+<text class="dg-edge-label" x="435" y="256" text-anchor="middle">check</text>
+<path class="dg-edge" d="M610,262 L730,262"/>
+<text class="dg-edge-label" x="670" y="256" text-anchor="middle">decide?</text>
+<path class="dg-edge" d="M880,262 L990,262"/>
+<text class="dg-edge-label" x="935" y="256" text-anchor="middle">reserve</text>
+<path class="dg-edge" d="M1065,230 L1065,104"/>
+<text class="dg-edge-label" x="1073" y="171" text-anchor="start">model call</text>
+<path class="dg-edge planned" d="M580,294 L580,360 L1065,360 L1065,400"/>
+<text class="dg-edge-label" x="822.5" y="354" text-anchor="middle">sign</text>
+<path class="dg-edge" d="M535,294 L535,550"/>
+<text class="dg-edge-label" x="543" y="426" text-anchor="start">act with token</text>
+<path class="dg-edge planned" d="M610,582 L700,582"/>
+<path class="dg-edge planned" d="M775,550 L775,432 L990,432"/>
+<text class="dg-edge-label" x="882.5" y="426" text-anchor="middle">verify</text>
+<path class="dg-edge" d="M135,550 L135,294"/>
+<text class="dg-edge-label" x="143" y="426" text-anchor="start">scraped each second</text>
+<g class="dg-box"><rect x="460" y="40" width="150" height="64" rx="8"/><g transform="translate(465 44) scale(.56)"><path class="i" d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></g><text class="dg-t" x="545" y="66">Experiment runner</text><text class="dg-s" x="545" y="84">reset, inject, clear</text></g>
+<g class="dg-box"><rect x="990" y="40" width="150" height="64" rx="8"/><g transform="translate(995 44) scale(.56)"><rect class="i" width="16" height="16" x="4" y="4" rx="2"/><rect class="i" width="6" height="6" x="9" y="9" rx="1"/><path class="i" d="M15 2v2"/><path class="i" d="M15 20v2"/><path class="i" d="M2 15h2"/><path class="i" d="M2 9h2"/><path class="i" d="M20 15h2"/><path class="i" d="M20 9h2"/><path class="i" d="M9 2v2"/><path class="i" d="M9 20v2"/></g><text class="dg-t" x="1075" y="66">Ollama</text><text class="dg-s" x="1075" y="84">the model, on the GPU</text></g>
+<g class="dg-box"><rect x="60" y="230" width="150" height="64" rx="8"/><g transform="translate(65 234) scale(.56)"><path class="i" d="m12 14 4-4"/><path class="i" d="M3.34 19a10 10 0 1 1 17.32 0"/></g><text class="dg-t" x="145" y="256">Verify</text><text class="dg-s" x="145" y="274">what customers saw</text></g>
+<g class="dg-box"><rect x="260" y="230" width="150" height="64" rx="8"/><g transform="translate(265 234) scale(.56)"><path class="i" d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path class="i" d="m9 12 2 2 4-4"/></g><text class="dg-t" x="345" y="256">Policy</text><text class="dg-s" x="345" y="274">allowed now?</text></g>
+<g class="dg-box"><rect x="460" y="230" width="150" height="64" rx="8"/><g transform="translate(465 234) scale(.56)"><polygon class="i" points="6 3 20 12 6 21 6 3"/></g><text class="dg-t" x="545" y="256">Loop</text><text class="dg-s" x="545" y="274">act, wait, undo, stop</text></g>
+<g class="dg-box"><rect x="730" y="230" width="150" height="64" rx="8"/><g transform="translate(735 234) scale(.56)"><rect class="i" width="16" height="16" x="4" y="4" rx="2"/><rect class="i" width="6" height="6" x="9" y="9" rx="1"/><path class="i" d="M15 2v2"/><path class="i" d="M15 20v2"/><path class="i" d="M2 15h2"/><path class="i" d="M2 9h2"/><path class="i" d="M20 15h2"/><path class="i" d="M20 9h2"/><path class="i" d="M9 2v2"/><path class="i" d="M9 20v2"/></g><text class="dg-t" x="815" y="256">Agent</text><text class="dg-s" x="815" y="274">proposes actions</text></g>
+<g class="dg-box"><rect x="990" y="230" width="150" height="64" rx="8"/><g transform="translate(995 234) scale(.56)"><circle class="i" cx="8" cy="8" r="6"/><path class="i" d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path class="i" d="M7 6h1v4"/><path class="i" d="m16.71 13.88.7.71-2.82 2.82"/></g><text class="dg-t" x="1075" y="256">Budget</text><text class="dg-s" x="1075" y="274">worst case first</text></g>
+<g class="dg-box planned"><rect x="990" y="400" width="150" height="64" rx="8"/><g transform="translate(995 404) scale(.56)"><path class="i" d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle class="i" cx="16.5" cy="7.5" r=".5"/></g><text class="dg-t" x="1075" y="426">OpenBao</text><text class="dg-s" x="1075" y="444">key never leaves</text></g>
+<g class="dg-box"><rect x="60" y="550" width="150" height="64" rx="8"/><g transform="translate(65 554) scale(.56)"><path class="i" d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path class="i" d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></g><text class="dg-t" x="145" y="576">Customers</text><text class="dg-s" x="145" y="594">what they saw</text></g>
+<g class="dg-box"><rect x="460" y="550" width="150" height="64" rx="8"/><g transform="translate(465 554) scale(.56)"><ellipse class="i" cx="12" cy="5" rx="9" ry="3"/><path class="i" d="M3 5V19A9 3 0 0 0 21 19V5"/><path class="i" d="M3 12A9 3 0 0 0 21 12"/></g><text class="dg-t" x="545" y="576">Services</text><text class="dg-s" x="545" y="594">edge, gateway, ledger</text></g>
+<g class="dg-box planned"><rect x="700" y="550" width="150" height="64" rx="8"/><g transform="translate(705 554) scale(.56)"><circle class="i" cx="12" cy="12" r="10"/><path class="i" d="m9 12 2 2 4-4"/></g><text class="dg-t" x="785" y="576">Token check</text><text class="dg-s" x="785" y="594">gateway asks OpenBao</text></g>
+</svg>
+<!-- /diagram -->
+    </details>
   </section>
 
   <div class="lower">

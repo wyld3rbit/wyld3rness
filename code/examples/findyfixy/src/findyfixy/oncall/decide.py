@@ -28,10 +28,17 @@ from typing import Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from findyfixy.oncall.env import KEY
+from wyld3rness.loop.budget import Budget
 from wyld3rness.loop.env import Action
 from wyld3rness.loop.run import MAX_ACTIONS, Try
 
-Ask = Callable[[str, str], str]  # (model, prompt) -> reply text, possibly a `Reply` with token counts
+Ask = Callable[[str, str, int], str]  # (model, prompt, output cap) -> reply text, possibly a `Reply` with tokens
+# The reply's cap: about twice the longest decider reply measured (research log, entry 014).
+# It is what lets the budget price a call before it runs; a reply cut at the cap fails validation.
+MAX_OUTPUT_TOKENS = 400
+# The largest prompt a call can carry, for checking the budget before a run: a first prompt
+# (about 2 KB measured in entry 014) plus a retry's echoed invalid reply (_MAX_ECHO_CHARS) and its error.
+PROMPT_BYTES_BOUND = 5000
 MAX_RETRIES = 1
 _MAX_ECHO_CHARS = 2000
 
@@ -90,7 +97,8 @@ recovered and stayed recovered.
 The system: customers pay through a gateway. The gateway writes each payment to a ledger of 4 \
 shards (an account key always lands on the same shard), retries a failed write, then notifies.
 
-Customers are failing now. Choose 1 or 2 actions that end the failures.
+Customers are failing now. Choose one action that ends the failures. Add a second action only if one alone \
+cannot end them.
 
 Actions:
 - {{"name": "backoff", "enabled": true or false}}: gateway retries back off with jitter, within a retry budget.
@@ -98,6 +106,8 @@ Actions:
 requests above this many a second.
 - {{"name": "restart", "service": "gateway", "ledger" or "notifications"}}: restart one service. It \
 cannot be undone: if it does not work, there are no more tries.
+
+{rules}
 
 Metrics now:
 {observation}
@@ -118,16 +128,31 @@ Reply again with valid JSON only."""
 
 
 def format_history(history: Sequence[Try]) -> str:
-    """The earlier tries, one line each, for the prompt. Pure."""
+    """The earlier tries, one line each, for the prompt: what was undone and why, or what the policy refused. Pure."""
     if not history:
         return "Tried so far: nothing."
-    lines = [f"- Try {t.number}: {', '.join(a.label() for a in t.actions)}: {t.verdict}, undone." for t in history]
-    return "Tried so far, each undone because customers did not recover and stay recovered:\n" + "\n".join(lines)
+    lines = []
+    for t in history:
+        actions = ", ".join(a.label() for a in t.actions)
+        if t.verdict == "denied":
+            lines.append(
+                f"- Try {t.number}: {actions}: refused by the rules, nothing applied ({'; '.join(t.reasons)})."
+            )
+        else:
+            lines.append(f"- Try {t.number}: {actions}: {t.verdict}, undone.")
+    return "Tried so far:\n" + "\n".join(lines)
 
 
-def build_prompt(observation: str, history: Sequence[Try], wait_s: float) -> str:
+def format_rules(notes: Sequence[str]) -> str:
+    """The rules the code enforces, from the policy table, for the prompt. Pure."""
+    return "Rules the code enforces:\n" + "\n".join(f"- {n}" for n in notes) if notes else ""
+
+
+def build_prompt(observation: str, history: Sequence[Try], wait_s: float, notes: Sequence[str] = ()) -> str:
     """The full prompt for one decision. Pure."""
-    return PROMPT.format(wait_s=wait_s, observation=observation, history=format_history(history))
+    return PROMPT.format(
+        wait_s=wait_s, observation=observation, history=format_history(history), rules=format_rules(notes)
+    )
 
 
 @dataclass(frozen=True)
@@ -142,21 +167,36 @@ class Call:
 
 
 class ModelDecider:
-    """The `Decider` behind a model. Records every call, for the scorecard and the budget (step 4)."""
+    """The `Decider` behind a model. Every call reserves its worst case on the budget first, and settles after."""
 
-    def __init__(self, ask: Ask, model: str, wait_s: float, max_retries: int = MAX_RETRIES) -> None:
-        """`ask` is `findyfixy.llm.ollama_reply` bound to `Decision` in production, a fake in tests."""
-        self.ask, self.model, self.wait_s, self.max_retries = ask, model, wait_s, max_retries
+    def __init__(
+        self,
+        ask: Ask,
+        model: str,
+        wait_s: float,
+        budget: Budget,
+        *,
+        notes: Sequence[str] = (),
+        max_retries: int = MAX_RETRIES,
+        max_output_tokens: int = MAX_OUTPUT_TOKENS,
+    ) -> None:
+        """`ask` calls the model (`findyfixy.llm.ollama_reply` bound to `Decision`); `notes` are the policy's rules."""
+        self.ask, self.model, self.wait_s, self.budget = ask, model, wait_s, budget
+        self.notes, self.max_retries, self.max_output_tokens = tuple(notes), max_retries, max_output_tokens
         self.calls: list[Call] = []
         self.reasons: list[str] = []
 
     def decide(self, observation: str, history: Sequence[Try]) -> list[Action]:
-        """Ask, validate, retry with the error up to `max_retries`. Raises `DecisionError` when all are invalid."""
-        base = build_prompt(observation, history, self.wait_s)
+        """Ask, validate, retry with the error up to `max_retries`.
+
+        Raises `DecisionError` when every attempt is invalid, and `BudgetExceeded`
+        when a call does not fit the budget, before that call runs.
+        """
+        base = build_prompt(observation, history, self.wait_s, self.notes)
         prompt, attempts = base, 0
         while True:
             attempts += 1
-            reply = self.ask(self.model, prompt)
+            reply = self._call(prompt)
             try:
                 decision = Decision.model_validate_json(reply)
             except ValidationError as err:
@@ -168,6 +208,17 @@ class ModelDecider:
             self._record(reply, valid=True)
             self.reasons.append(decision.reason)
             return [c.to_action() for c in decision.actions]
+
+    def _call(self, prompt: str) -> str:
+        """One model call inside its reservation. A call that raises is charged its reservation: it may have run."""
+        reservation = self.budget.reserve(self.model, prompt, self.max_output_tokens)
+        try:
+            reply = self.ask(self.model, prompt, self.max_output_tokens)
+        except Exception:
+            self.budget.settle(reservation, None, None)
+            raise
+        self.budget.settle(reservation, getattr(reply, "input_tokens", None), getattr(reply, "output_tokens", None))
+        return reply
 
     def _record(self, reply: str, *, valid: bool) -> None:
         """Keep one call's model and tokens, as the reply reports them."""
