@@ -4,12 +4,20 @@ import json
 
 import pytest
 
-from findyfixy.oncall.cli import budget_refusal, last_action_at, line, outcome_json
+from findyfixy.oncall.cli import (
+    budget_refusal,
+    incident_timeout_s,
+    last_action_at,
+    line,
+    on_storm_clock,
+    services_ready,
+)
 from findyfixy.oncall.decide import Decision, DecisionError, ModelDecider, build_prompt, format_history
 from findyfixy.oncall.env import SimprodEnv, observation, to_request, undo_for
 from findyfixy.oncall.policy import cap_refusal, customer_rate, rules, top_keys
+from findyfixy.oncall.service import make_agent, outcome_json
 from wyld3rness.loop.budget import Budget, BudgetExceeded
-from wyld3rness.loop.env import Action
+from wyld3rness.loop.env import Action, Applied
 from wyld3rness.loop.policy import Policy
 from wyld3rness.loop.run import LoopConfig, Try, run_incident
 from wyld3rness.testing import FakeDecider, FakeSigner, FakeWorld, allow
@@ -347,6 +355,65 @@ def test_the_driver_measures_from_the_last_try_that_applied_something() -> None:
     config = LoopConfig(wait_s=30, hold_s=30)
     out = run_incident(FakeWorld(fix=["z"]), FakeDecider([["a"], ["b"], ["b"]]), config, allow("a"), FakeSigner())
     assert [t.verdict for t in out.tries] == ["not verified", "denied", "denied"]
-    assert last_action_at(out) == out.tries[0].t_act != out.tries[-1].t_act
+    assert last_action_at(out.tries) == out.tries[0].t_act != out.tries[-1].t_act
     refused_only = run_incident(FakeWorld(), FakeDecider([["b"]] * 3), config, allow("a"), FakeSigner())
-    assert last_action_at(refused_only) is None
+    assert last_action_at(refused_only.tries) is None
+
+
+def test_the_agent_for_an_incident_has_a_fresh_budget_and_states_the_rules() -> None:
+    agent = make_agent("qwen3:4b-instruct", 0.005, 30)
+    assert agent.budget.limit_usd == 0.005 and agent.budget.spent_usd == 0.0
+    assert any("rate_cap" in n for n in agent.notes)
+    assert agent.record()["budget"]["limit_usd"] == 0.005
+
+
+def test_a_missing_loop_container_stops_the_run_before_any_storm(monkeypatch) -> None:
+    import findyfixy.oncall.cli as cli
+
+    monkeypatch.setattr(cli, "LOOP_URL", "http://127.0.0.1:9")
+    assert "make oncall-up" in str(services_ready())
+
+
+def test_the_loops_times_are_moved_onto_the_storms_clock() -> None:
+    """The loop's clock starts when the host sends the incident; the host's verdict is on the storm's clock."""
+    applied = Try(1, (Action("a"),), (Applied(Action("a"), True, "200", None),), 7.5, "resolved")
+    refused = Try(2, (Action("b"),), (), 9.0, "denied")
+    assert on_storm_clock(35.0, [applied, refused]) == 42.5
+    assert on_storm_clock(35.0, [refused]) is None
+
+
+def test_the_host_waits_at_least_as_long_as_an_incident_can_take() -> None:
+    """The review's case: 3 tries of two 120 s model calls, WAIT 30, HOLD 30: about 906 s, past the old 600 s."""
+    assert incident_timeout_s(LoopConfig(wait_s=30, hold_s=30)) >= 3 * (2 * 120 + 30 + 30 + 2)
+
+
+def test_an_agent_without_its_runs_parameters_refuses() -> None:
+    with pytest.raises(ValueError, match="needs a model, a budget and a wait"):
+        make_agent("", 0.005, 30)
+
+
+def test_a_record_line_says_when_the_agents_record_is_unknown() -> None:
+    record = {
+        "storm": {"id": "s3-00", "kind": "retry_storm"},
+        "loop": {"ended": "resolved", "reason": "resolved on try 1", "tries": []},
+        "recovered": True,
+        "customer_minutes": 0.4,
+        "model_calls": None,
+        "budget": None,
+        "agent_record_error": "URLError: refused",
+    }
+    assert "agent record unknown: URLError: refused" in line(record)
+
+
+def test_the_undo_comes_from_the_services_own_answer_first() -> None:
+    """Entry 016: a separate settings read failed under load, so the loop had no undo and could not retry."""
+    cap = Action("rate_cap", {"key": "acct-0930", "rps": 1.0})
+    env = SimprodEnv(
+        lambda: [],
+        lambda: 0.0,
+        post=lambda path, body, actor, credential: {"path": path, "body": body, "status": 200, "answer": {"was": None}},
+        get=lambda url: "",
+        settings=lambda: {"error": "TimeoutError"},  # the read that failed
+    )
+    applied = env.apply(cap, "cred")
+    assert applied.ok and applied.undo == Action("rate_cap", {"key": "acct-0930", "rps": None})

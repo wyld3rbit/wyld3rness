@@ -83,7 +83,7 @@ The harness never imports the app. Each control is a port the app implements or 
 
 - `SystemUnderTest` (built): describe, answer, summarise. The eval gate runs the app through it.
 - The event adapter (built): the app reports its steps, and the harness turns them into spans.
-- The environment port (built): the app supplies observe, its typed actions, and for each the undo that puts back the state from before, or the declaration that it has none, plus the user stream measured where the agent cannot write. The harness owns the loop, the recovery check and the stop. The decider port beside it holds the model.
+- The environment port (built): the app supplies observe, its typed actions, and for each the undo that puts back the state from before, or the declaration that it has none, plus the user stream measured where the agent cannot write. The harness owns the loop, the recovery check and the stop. The decider port beside it holds the model, and can sit in another process (`RemoteDecider`), so the agent runs where it can only propose.
 - The policy table (built): the app declares each kind of action it allows, whether it must be alone, and the precondition the harness checks before the action runs. Blast radius per kind is planned.
 - The model port (planned): the app asks the gateway for a completion. The gateway routes, meters and refuses, and the app holds no model client.
 

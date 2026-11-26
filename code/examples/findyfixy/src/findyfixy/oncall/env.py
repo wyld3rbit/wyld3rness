@@ -14,7 +14,9 @@ The three typed actions and their undo:
     restart(service)                POST /<service>/actions/restart             none
 
 Why the undo is the previous value and not the opposite action: turning backoff
-on when it was already on is undone by leaving it on. Why a failed settings read
+on when it was already on is undone by leaving it on. The previous value comes
+from the service's own answer (`was`), read in the same request; the settings read
+before the action is the fallback, for an action whose answer was lost. Why a failed settings read
 gives no undo: a guessed undo could leave a change nobody chose, and no undo makes
 the loop stop retrying instead (`code/src/wyld3rness/loop/run.py`).
 
@@ -104,6 +106,23 @@ def undo_for(action: Action, before: Mapping[str, object]) -> Action | None:
     return None
 
 
+def undo_from_answer(action: Action, answer: object) -> Action | None:
+    """The undo from the service's own answer, which says what the setting was before; None when it does not. Pure.
+
+    The gateway answers a backoff or a cap with `was`, the value it replaced, in
+    the same request: the one source that cannot race with another change or
+    fail on its own, as a separate read of the settings can under load (research
+    log, entry 016).
+    """
+    if not isinstance(answer, dict) or "was" not in answer:
+        return None
+    if action.name == "backoff":
+        return Action("backoff", {"enabled": bool(answer["was"])})
+    if action.name == "rate_cap":
+        return Action("rate_cap", {"key": action.args["key"], "rps": answer["was"]})
+    return None
+
+
 def fetch_text(url: str) -> str:
     """GET one URL through the edge; raises on any failure, which the loop turns into the safe state."""
     with urllib.request.urlopen(url, timeout=5) as r:
@@ -120,19 +139,26 @@ class SimprodEnv:
         now: Callable[[], float],
         *,
         actor: str = ACTOR,
-        post: Callable[[str, Mapping[str, object], str, str], JSON] = act,
+        edge: str = EDGE,
+        post: Callable[[str, Mapping[str, object], str, str], JSON] | None = None,
         get: Callable[[str], str] = fetch_text,
-        settings: Callable[[], Mapping[str, object]] = read_settings,
+        settings: Callable[[], Mapping[str, object]] | None = None,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
-        """`series` and `now` come from the storm driver (`simprod.controls.live_storm`)."""
-        self._series, self._now, self.actor = series, now, actor
+        """`series` and `now` come from a scraper of what customers saw; `edge` is simprod's edge as seen from here.
+
+        On the host the edge is 127.0.0.1:8100; inside the loop's container it is
+        http://edge:8000. `post` and `settings` default to the real calls at `edge`.
+        """
+        self._series, self._now, self.actor, self.edge = series, now, actor, edge
+        post = post or (lambda path, body, actor, credential: act(path, body, actor, credential, edge))
+        settings = settings or (lambda: read_settings(edge))
         self._post, self._get, self._settings, self._sleep = post, get, settings, sleep
         self.sent: list[JSON] = []  # every request sent, actions and undos, as `act` answered it
 
     def observe(self) -> str:
         """The observed metrics of the gateway, the ledger and the customers, now."""
-        return observation({s: self._get(f"{EDGE}/{s}/metrics") for s in OBSERVED})
+        return observation({s: self._get(f"{self.edge}/{s}/metrics") for s in OBSERVED})
 
     def apply(self, action: Action, credential: str) -> Applied:
         """Validate, read the settings for the undo, send with its credential. An invalid action is never sent."""
@@ -146,6 +172,7 @@ class SimprodEnv:
         except Exception as exc:  # sent, then the reply was lost or unreadable: it may be in force
             answer = {"path": path, "body": body, "status": 0, "answer": f"{type(exc).__name__}: {exc}"}
         self.sent.append(answer)
+        undo = undo_from_answer(action, answer["answer"]) or undo  # the service's own word first, the read second
         # Any 2xx is carried out: a restart answers 202 (accepted, then the process exits). Whether
         # it worked is the verdict's to say, not the status code's.
         carried_out = isinstance(answer["status"], int) and 200 <= answer["status"] < 300

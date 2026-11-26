@@ -277,38 +277,43 @@ version = "0.1.0"
 source = { editable = "examples/findyfixy" }
 dependencies = [
     { name = "langchain-core" },
-    { name = "langchain-mcp-adapters" },
     { name = "langchain-ollama" },
-    { name = "langgraph" },
-    { name = "mcp" },
     { name = "opentelemetry-api" },
-    { name = "pgvector" },
-    { name = "psycopg", extra = ["binary"] },
     { name = "pydantic" },
     { name = "python-dotenv" },
-    { name = "rank-bm25" },
-    { name = "sentence-transformers" },
     { name = "simprod" },
     { name = "wyld3rness" },
+]
+
+[package.optional-dependencies]
+triage = [
+    { name = "langchain-mcp-adapters" },
+    { name = "langgraph" },
+    { name = "mcp" },
+    { name = "pgvector" },
+    { name = "psycopg", extra = ["binary"] },
+    { name = "rank-bm25" },
+    { name = "sentence-transformers" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "langchain-core", specifier = ">=1.6.12" },
-    { name = "langchain-mcp-adapters", specifier = ">=0.3.2" },
+    { name = "langchain-mcp-adapters", marker = "extra == 'triage'", specifier = ">=0.3.2" },
     { name = "langchain-ollama", specifier = ">=1.1.0" },
-    { name = "langgraph", specifier = ">=1.2.16" },
-    { name = "mcp", specifier = ">=1.30.0,<2" },
+    { name = "langgraph", marker = "extra == 'triage'", specifier = ">=1.2.16" },
+    { name = "mcp", marker = "extra == 'triage'", specifier = ">=1.30.0,<2" },
     { name = "opentelemetry-api", specifier = ">=1.45.2" },
-    { name = "pgvector", specifier = ">=0.5.1" },
-    { name = "psycopg", extras = ["binary"], specifier = ">=3.3.6" },
+    { name = "pgvector", marker = "extra == 'triage'", specifier = ">=0.5.1" },
+    { name = "psycopg", extras = ["binary"], marker = "extra == 'triage'", specifier = ">=3.3.6" },
     { name = "pydantic", specifier = ">=2.14.1" },
     { name = "python-dotenv", specifier = ">=1.2.4" },
-    { name = "rank-bm25", specifier = ">=0.2.2" },
-    { name = "sentence-transformers", specifier = ">=6.1.0" },
+    { name = "rank-bm25", marker = "extra == 'triage'", specifier = ">=0.2.2" },
+    { name = "sentence-transformers", marker = "extra == 'triage'", specifier = ">=6.1.0" },
     { name = "simprod", editable = "examples/simprod" },
     { name = "wyld3rness", editable = "." },
 ]
+provides-extras = ["triage"]
 
 [[package]]
 name = "fsspec"

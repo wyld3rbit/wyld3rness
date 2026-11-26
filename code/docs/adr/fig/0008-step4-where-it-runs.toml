@@ -1,5 +1,5 @@
 # Day 7, step 4: where each part runs (ADR 0008). Drawn by tools/diagram.py; edit this file, not the picture.
-# A box is solid when its code exists, dashed when it is planned. The two containers arrive in step 4c.
+# A box is solid when its code exists, dashed when it is planned.
 caption = "Day 7, step 4: where each part runs. Solid is built, dashed is planned."
 width = 1180
 height = 670
@@ -21,7 +21,7 @@ w = 1160
 h = 510
 
 [[zone]]
-label = "Harness container (step 4c): no Docker socket"
+label = "Loop container: no Docker socket, a sign-only pass"
 kind = "harness"
 x = 30
 y = 180
@@ -29,7 +29,7 @@ w = 610
 h = 140
 
 [[zone]]
-label = "Agent container (step 4c): no socket, no keys, no route to simprod"
+label = "Agent container: no socket, no keys, no route to simprod"
 kind = "harness"
 x = 670
 y = 180

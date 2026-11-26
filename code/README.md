@@ -1,6 +1,6 @@
 # Code
 
-A uv workspace: the wyld3rness harness at the root, and under `code/examples/` the app it is tested on and the simulated production that app operates. One `code/uv.lock` pins every dependency of all three, and one `code/.venv` holds them (`uv sync --all-packages`).
+A uv workspace: the wyld3rness harness at the root, and under `code/examples/` the app it is tested on and the simulated production that app operates. One `code/uv.lock` pins every dependency of all three, and one `code/.venv` holds them (`uv sync --all-packages --all-extras`; the `triage` extra is what the on-call image leaves out).
 
 - `code/src/wyld3rness/` is the harness package: evaluation (`code/src/wyld3rness/eval/`), tracing (`code/src/wyld3rness/trace/`) and test doubles for apps (`code/src/wyld3rness/testing.py`). It never imports an app. `code/src/wyld3rness/README.md` explains the seam.
 - `code/tests/` holds the harness's tests. `make test-harness` runs them with no app installed.

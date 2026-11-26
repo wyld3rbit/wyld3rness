@@ -34,6 +34,8 @@ def direct_dependencies(root: dict, members: list[dict]) -> set[str]:
     names: set[str] = set()
     for data in [root, *members]:
         names |= package_names(data.get("project", {}).get("dependencies", []))
+        for extra in data.get("project", {}).get("optional-dependencies", {}).values():
+            names |= package_names(extra)
         for group in data.get("dependency-groups", {}).values():
             names |= package_names([g for g in group if isinstance(g, str)])
     return names

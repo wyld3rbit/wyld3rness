@@ -429,3 +429,35 @@ It cannot show anything about held-out storms, other models or the spread: one r
 **Deviations.** The code review found that OpenBao's dev mode prints its root token and unseal key to the container log. Counted without reading them: 4 lines. OpenBao now runs as a server with in-memory storage, initialised and unsealed through its API by `make sim-up`; the log then had 0 such lines. Run 2 is on that set-up. The review's other findings were fixed before run 2 (passes valid 30 days, not 24 h; a check before every experiment that signs a probe and compares the host's clock with the VM's; the controls record an action they cannot sign instead of stopping).
 
 **Meaning.** The check sits where the action runs and refuses everything but a genuine, matching, unexpired, unused credential, and adding it changed no result of the loop. What it cannot show: forged credentials that are well-formed (the forged signature here was rejected as unreadable by the vault, not as invalid), several services sharing used ids (each keeps its own, so a credential that restarted a service is accepted once more by the fresh process within its 60 s), or attacks through the model's input, which step 5 tests.
+
+---
+
+## 016. Does the loop work with the agent and the loop in their own containers? (exploratory)
+
+**Question.** Step 4c moves the agent (the model call and its budget) and the loop (scraper, policy, signer) into their own containers, with the agent unable to reach simprod or the vault. This decides whether the boundary holds by construction and whether the loop's results survive the move.
+
+**Protocol.** None: exploratory checks and runs, seed 3.
+
+**Ran.** On 2026-11-26, on branch `day7-step4c` over `ef4cf12`, the step's code not yet committed. Image `findyfixy-oncall:local`: simprod's pinned and patched Python base, 47 locked packages with hashes, no `triage` extra.
+
+| Run | What | Results file SHA-256 |
+|---|---|---|
+| B | Probes from inside each container: the edge, the vault, Ollama, the Docker socket, the sign pass, the user | (output in the evidence only) |
+| S | Grype v0.120.1 on the saved image | (output in the evidence only) |
+| 1 | `make oncall` through the containers, before the code review's fixes | `a71ef6c6c79d8d97…` |
+| 2 | after the review's fixes | `87407347723a2707…` |
+| 3 | after taking each undo from the service's answer | `963033a6d6635531…` |
+
+**Result.** Run B: the agent could not reach the edge or the vault, had no Docker socket and no sign pass, and reached Ollama; the loop reached the edge and the vault and held the sign pass; neither ran as root. Run S: 0 Critical, 82 High, every one in Debian base packages with no fix available (55 Debian will not fix, 27 OpenSSL with no fix released), none in a Python package. The image is 69 MB; the full app with CPU torch measured 416 MB.
+
+| Storm | Run 1 | Run 2 | Run 3 |
+|---|---|---|---|
+| s3-00 retry storm | resolved on try 1, 0.410 | resolved on try 1, 0.359 | resolved on try 1, 0.368 |
+| s3-01 hot shard | resolved on try 1, 0.099 | resolved on try 1, 0.109 | resolved on try 1, 0.094 |
+| s3-02 compound | safe state after 3 tries, 0.636 | safe state after try 1 ("no undo"), 0.890, **not judged**: late sends 4.6% | safe state after 3 tries, 0.643 |
+
+Customer minutes after each result. Every action and undo sent was accepted by the service (8 of 8 in runs 1 and 3, 3 of 3 in run 2). The loop's verdict and the host's agreed in 9 of 9. Each incident's model cost is in its record: at most $0.00033.
+
+**Deviations.** In run 2 the loop container's read of the gateway's settings, made before the cap to know its undo, failed while the VM was overloaded (the same moment the customers' generator fell 4.6% behind). With no undo known, the loop did not retry, as its rules say. The undo now comes from the service's own answer (`was`, the value it replaced, in the same request), with the read as a fallback; run 3 is on that code. The code review's other fixes went in before run 2 (the host's wait covers the loop's worst case; the run's model, budget and wait travel with each incident; an incident the agent lost mid-way is refused, not restarted; an unreadable record is stored as unknown, never as zero).
+
+**Meaning.** The boundary holds by construction: the part that talks to the model has no path to the system or to the key, and the loop's results are those of entry 014's run 3. Two scrapers in two processes judged every storm alike. It cannot show the boundary under an attack through the model's input, which step 5 tests, or the VM's headroom with every container busy: run 2 shows it can run out.

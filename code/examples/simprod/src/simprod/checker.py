@@ -14,14 +14,15 @@ The runaway client's requests are not customers and are left out.
 
 The agent can read the same metrics through the edge, as an operator reads
 synthetic monitoring. It cannot change them, and it cannot change the verdict:
-the checker runs on the host, in the process that drives the storm (the
-controls, and the loop's environment in FindyFixy), never in the agent's.
+the scraper runs in the host process that drives the storm, and a second one in
+FindyFixy's loop container for the loop's own verdict; never in the agent's
+container, which has no route to simprod.
 
 The verdict rules lived here until Day 7 step 3 and moved to the harness
 unchanged, so the loop keeps or undoes a fix by the rule the controls were
 scored on. This module keeps what is simprod's: the metrics format, the
 scraper, and the measurement checks (late sends, scrape gaps). The services'
-image copies this file but never imports it: only the host does.
+image copies this file but never imports it; the host and the loop container do.
 """
 
 from __future__ import annotations

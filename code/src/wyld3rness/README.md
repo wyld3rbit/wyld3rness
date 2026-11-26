@@ -42,6 +42,8 @@ The safe state ends every other path: out of tries, a decider that raised, an ac
 
 **Credential.** `code/src/wyld3rness/loop/credential.py`: before the loop sends any action or undo, a `Signer` makes a credential for exactly that action and its arguments, valid 60 s, with a one-time id. `TransitSigner` asks OpenBao's Transit engine to sign, so the key never leaves the vault and the agent holds nothing that can sign. The environment sends it with the action, and the service that runs the action checks it. An action that cannot be signed is not sent, and is not recorded as possibly in force. `run_incident` takes the signer as its last argument; the fakes include `FakeSigner`.
 
+**The decider in another process.** `code/src/wyld3rness/loop/remote.py`: `RemoteDecider` asks an agent's service over HTTP with the loop's own history, and `serve_decider` serves an app's deciders, one per incident. A budget refusal comes back as `BudgetExceeded`, so the loop names it as the budget. This is how the agent runs in a container with no socket, no keys and no route to the system it would change.
+
 **Test doubles.** `code/src/wyld3rness/testing.py` ships a fake judge, embedder and system under test, so an app's own tests can drive the harness without a model, and a fake world and decider for the loop, on a clock that moves only when the loop waits. FindyFixy's adapter and on-call tests use them.
 
 **Packaging.** The harness is the root project of the workspace, `code/pyproject.toml`, with only the dependencies it imports. `code/tests/test_harness_rules.py` keeps the import allowlist and that list in step. Its tests are in `code/tests/` (`code/tests/README.md`).

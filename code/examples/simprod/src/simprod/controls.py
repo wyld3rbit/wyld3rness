@@ -133,7 +133,7 @@ def chaos(*args: str) -> JSON:
     return result
 
 
-def act(path: str, body: Mapping[str, object], actor: str = ACTOR, credential: str = "") -> JSON:
+def act(path: str, body: Mapping[str, object], actor: str = ACTOR, credential: str = "", edge: str = EDGE) -> JSON:
     """One typed action through the edge, with its credential, logged by the service under `actor`.
 
     Never raises: a failure is status 0. Without a credential the service
@@ -142,7 +142,7 @@ def act(path: str, body: Mapping[str, object], actor: str = ACTOR, credential: s
     headers = {"Content-Type": "application/json", "X-Actor": actor}
     if credential:
         headers[HEADER] = credential
-    req = urllib.request.Request(EDGE + path, data=json.dumps(body).encode(), method="POST", headers=headers)
+    req = urllib.request.Request(edge + path, data=json.dumps(body).encode(), method="POST", headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=10) as r:
             return {"path": path, "body": dict(body), "status": r.status, "answer": json.loads(r.read())}
@@ -184,10 +184,10 @@ def gateway_settings(metrics_text: str) -> JSON:
     return state
 
 
-def read_settings() -> JSON:
+def read_settings(edge: str = EDGE) -> JSON:
     """The gateway's settings now, through the edge. A failed read is an error record, never equal to settings."""
     try:
-        with urllib.request.urlopen(EDGE + "/gateway/metrics", timeout=5) as r:
+        with urllib.request.urlopen(edge + "/gateway/metrics", timeout=5) as r:
             return gateway_settings(r.read().decode())
     except OSError as e:
         return {"error": f"{type(e).__name__}: {e}"}

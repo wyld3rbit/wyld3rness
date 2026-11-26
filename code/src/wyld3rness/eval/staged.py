@@ -258,7 +258,7 @@ def gate_commit(
         raise Refused("no gate command given after --")
     link_ignored(source, exported, links)
     env_dir = gate_dir / "env"
-    _uv(exported, env_dir, ["sync", "--frozen", "--all-packages", "--quiet"], environ, run)
+    _uv(exported, env_dir, ["sync", "--frozen", "--all-packages", "--all-extras", "--quiet"], environ, run)
     try:
         roots = attested_inputs(load_attestation(exported / attestation)).source_roots
     except AttestationInvalid as err:

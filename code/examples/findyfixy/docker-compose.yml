@@ -61,5 +61,71 @@ services:
       db:
         condition: service_healthy
 
+  # On call (ADR 0008, step 4): the agent and the loop, each in its own container,
+  # profile "oncall" so `make up` does not start them; `make oncall-up` does.
+  # The agent reaches only Ollama on the host: no Docker socket, no keys, and no
+  # network shared with simprod. The loop reaches simprod's edge and vault on
+  # simprod's outside network, holds the sign-only pass, and takes incidents from
+  # the host on 127.0.0.1:8300. Both: read-only, no capabilities, not root.
+  agent:
+    profiles: [oncall]
+    build:
+      context: ../..
+      dockerfile: examples/findyfixy/Dockerfile
+    image: findyfixy-oncall:local
+    command: ["python", "-m", "findyfixy.oncall.service", "agent"]
+    environment:
+      # The model, the budget and the wait come with each incident from the host (make oncall).
+      OLLAMA_HOST: http://host.docker.internal:11434
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    networks: [agent]
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  loop:
+    profiles: [oncall]
+    image: findyfixy-oncall:local
+    pull_policy: never  # built by the agent's build above; there is nothing to pull
+    command: ["python", "-m", "findyfixy.oncall.service", "loop"]
+    # The sign pass is readable only by its owner on the host (0600); the loop runs
+    # as that user id, passed in by `make oncall-up`, never written here.
+    user: "${HOST_UID:-10001}"
+    environment:
+      AGENT_URL: http://agent:8000
+      SIMPROD_EDGE: http://edge:8000
+      BAO_ADDR: http://openbao:8200
+      BAO_SIGN_FILE: /run/bao/sign.token
+    volumes:
+      - ../simprod/.bao/sign.token:/run/bao/sign.token:ro
+    networks: [agent, simprod]
+    ports:
+      - "127.0.0.1:8300:8000"
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+    depends_on:
+      agent: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+networks:
+  agent: {}
+  simprod:
+    external: true
+    name: simprod_outside
+
 volumes:
   pgdata:

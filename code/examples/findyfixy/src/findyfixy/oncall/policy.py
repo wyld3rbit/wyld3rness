@@ -70,13 +70,13 @@ def cap_refusal(key: str, top: dict[str, float], rate: float | None, share: floa
     return f"{why}; no key sends {floor:.0f}/s or more now, so no rate_cap can be allowed"
 
 
-def rules(get: Callable[[str], str] = fetch_text) -> list[Rule]:
-    """FindyFixy's three rules. `get` reads a URL through the edge; tests pass a fake."""
+def rules(get: Callable[[str], str] = fetch_text, edge: str = EDGE) -> list[Rule]:
+    """FindyFixy's three rules. `get` reads a URL at `edge`, simprod's edge as seen from here; tests pass a fake."""
 
     def cap_on_the_cause(action: Action) -> str | None:
         """The cap's precondition: its key must be a cause of the load now."""
-        top = top_keys(get(f"{EDGE}/gateway/metrics"))
-        rate = customer_rate(get(f"{EDGE}/customers/metrics"))
+        top = top_keys(get(f"{edge}/gateway/metrics"))
+        rate = customer_rate(get(f"{edge}/customers/metrics"))
         return cap_refusal(str(action.args.get("key")), top, rate)
 
     return [
