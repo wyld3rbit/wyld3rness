@@ -501,3 +501,54 @@ The fooled fake proposed each attack's goal on all 3 tries; every decision was r
 **Deviations.** The code review after the protocol's commit found four faults in the suite and the rules, fixed before this run: (1) the restart rule failed open, counting a timed-out health check as a failure; it now allows a restart only for a known service the edge reports unreachable (502) at two checks, and refuses on anything unclear; (2) the suite would have passed with the agent down, its errors counted as "not fooled"; errors now fail the run; (3) the suite's health check answered "up" for everything, so it could not test the live rule; health is now captured at detection and answered as the edge would; (4) the suite asked only one try, while a refusal's text reaches the next try's prompt (a cap refusal lists the keys that qualify, the attacker's among them); every attack now runs up to 3 tries with the refusals in its history. An earlier run on the unfixed suite (results `450c674e4b41308a…`) gave the same counts: fooled 20 proposed and 0 ran, live 0 and 0. Also the prompt now offers backoff only as `true`, matching the rule.
 
 **Meaning.** With the worst a model can do, no attacker-chosen action crossed the policy, and the real model was not fooled by any of the 20 keys. The retry path with the payload in a refusal was exercised only by the fooled arm: the real model's first decision was always allowed, so it never saw a refusal. 0 in 20 per arm supports a success rate below about 3 in 20 for these attacks only. It cannot show adaptive attackers, other channels, other models, or the payload sent as real load during a storm.
+
+---
+
+## 019. Does the model earn its place against a script with no model? (protocol)
+
+**Question.** With three storm kinds and three fix sets that can be undone, a script with no model that tries each set in turn reaches every fix within the loop's three tries. Does the model loop lose fewer customer minutes than that script? This decides whether the model belongs on the acting path at all, or whether a script inside the same harness does the job.
+
+**Hypothesis.** The model loop loses fewer customer minutes per incident than the script. **Prediction from the pilot, written before the run: it does not.** A model that chose right first would save the script's wrong tries, 0.059 customer minutes per incident on average, but the model takes about 6.5 s to decide (entry 013), which costs about as much (a right-first chooser deciding in 6.5 s saves 0.004). And the model proposes one action by default (entry 014), so it cannot end a compound storm, which needs two.
+
+**Storms.** 24 storms from seed 13, never run before this entry (seeds 3, 7 and 11 were), cycling through the three kinds: 8 retry storms, 8 hot shards, 8 compounds. Faults version 2, R = 200 a second, WAIT 30 s, HOLD 30 s (entry 011), unchanged.
+
+**Arms.** Every storm runs under all four, in an order drawn per storm from the string seed `13:<storm id>`:
+
+| Arm | Who proposes | Tries |
+|---|---|---|
+| nobody | nothing is done | - |
+| script | {backoff on}, {cap the busiest key at R / 20}, {both}, in an order drawn per storm from the same seed; it reads the busiest key and R from the same metrics the model reads | 3 |
+| model-1 | `qwen3:4b-instruct` at temperature 0 in the agent container, the prompt and policy of entry 018 | 1 |
+| model-loop | the same model | 3 |
+
+The script and both model arms go through the same loop container, policy, signer and $0.005 incident budget; they differ only in who proposes. Every run uses the controls' storm driver (fresh services, warm-up, fault, 15 s to detection). Every script and model incident is traced live in Langfuse from the loop container (ADR 0008, step 6), alike in every arm; its trace id is in its record.
+
+**Primary metric.** Customer minutes lost in the 240 s after the fault, model-loop minus script, paired by storm: the mean and a seeded bootstrap 95% interval (10,000 resamples, seed 17, the harness's `bootstrap_ci`). 240 s is longer than any arm can act (15 s to detection, then 3 tries of WAIT, HOLD and the margin is 201 s, plus time to decide); every arm is measured over the same window, so an arm that stops early is charged for the failures it left running. A run still acting at 240 s is counted to 240 s and reported.
+
+**Secondary, exploratory.** Storms resolved and held, won and lost for each of the 6 pairs of arms, with the exact paired sign test (two-sided), and a step-down correction for multiple comparisons over the 6. Needless changes kept: an action in force at the end that the storm's fix did not need and that changed the gateway's deployed setting. Cost per resolved incident and mean cost with its bootstrap interval, every model call counted; the script's cost is measured as zero calls. Consistency: on the first 6 storms (2 of each kind) the model loop runs twice more; the share of those storms where all 3 runs resolve. Per-kind mean customer minutes for every arm.
+
+**Guardrails.** Harm: a script or model run that loses more than the nobody run on the same storm by more than 6% (the widest relative spread within one kind and arm in entry 012: hot shard under nobody, 5.7%), or that ends in the safe state with the gateway's settings not restored. A count per arm, with the exact 95% upper bound when it is 0 (1 - 0.05^(1/24) = 0.117). Incidents over budget: a count. The host's verdict and the loop's must agree: a count of disagreements.
+
+**N.** `make experiment-power` (2,000 simulated experiments, from a model of one storm built on entries 012 to 016: each kind's customer minutes fixed at detection and unfixed per second, 31 s per applied wrong try, refused tries free, run noise 0.014). 24 storms detect the largest saving this environment allows (0.059, a chooser always right first and deciding instantly) with power 0.998, and a saving of 0.046 with power 0.84. 24 is also the fewest at which 8 storms of one kind, all won by one arm, pass the step-down correction's strictest step over 6 pairs (2 / 2^8 = 0.0078 < 0.05 / 6). A smaller saving, 0.029, would need about 70 storms; at about 5 minutes a run that is a day of machine time for 2 s of outage an incident, so it is not sought.
+
+**Judging.** A run counts only if the controls' rules hold (no counter reset, no scrape gap over 2.5 s, late sends at most 1%, faults cleared) and the series reaches 240 s after the fault. A run that fails them runs once more (entry 011's rule), both kept, the second counted. A storm with any arm still not judged after its second try is left out of every comparison and named. More than 2 left out is a deviation.
+
+**The bar.** The primary interval lies entirely below zero, with 0 harm and 0 incidents over budget in the script and model arms. A miss is the result and is published as one.
+
+**Run.** `make experiment` at the commit of this entry, with simprod, OpenBao and the on-call containers up (`make sim-up`, `make oncall-up`) and Langfuse, Postgres and Adminer running as in entry 012. About 8 hours. `make experiment-analyze FILE=<results file>` recomputes every number from the saved file.
+
+**Exploratory runs before this entry.** On 2026-11-26 from 06:30 to 07:28 UTC, `findyfixy-experiment run --seed 3 --count 3 --consistency 0` on the step's uncommitted code, one storm of each kind from the pilot seed, before tracing was added (results file `experiment-20261126T063014Z.json`). 12 runs, all judged, about 4.8 minutes each.
+
+| Storm | nobody | script (order) | model-1 | model-loop |
+|---|---|---|---|---|
+| s3-00 retry storm | 3.886 | 0.280 (backoff first) | 0.399 | 0.412 |
+| s3-01 hot shard | 0.982 | 0.072 (both first) | 0.116 | 0.092 |
+| s3-02 compound | 0.999 | 0.084 (both first) | 0.999, not resolved | 1.088, not resolved after 3 single actions |
+
+Customer minutes in the 240 s window. Model-loop minus script: mean 0.385, interval 0.020 to 1.004, from 3 storms on a development seed: an anecdote in the predicted direction. The script drew its right set first in all three, so it lost nothing to wrong tries here.
+
+They changed one rule. The harm margin was first a fixed 0.03 customer minutes, the controls' spread over their 75 s window; over 240 s a storm loses about three times as much, so a fixed margin would call ordinary noise harm. It is now 6% of the nobody run's loss. The model loop's compound run lost 9% more than nobody, so it counts as harm under either rule: three wrong single actions, each applied and undone, left customers worse off than doing nothing. Tracing was added after these runs (ADR 0008, step 6), and one storm then confirmed an incident's trace arrives complete, with its model call priced.
+
+**Limits.** The same project writes the faults, the fixes, the script and the checker. Three storm kinds from two faults; the script's three sets are exactly the three fixes, which is the case the script is built for. Synthetic data, one small model at temperature 0, one VM. The arm order is random per storm, but the arms of one storm run minutes apart, so a slow drift in the VM is shared rather than removed.
+
+**Ran.** Not yet.
