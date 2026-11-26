@@ -59,7 +59,7 @@ def ollama_ask(model: str, prompt: str) -> str:
 
     We build the client on every call. That is cheap because it is only a
     thin HTTP client. The expensive part is Ollama loading model weights into
-    memory. On a 16 GB Mac, switching from the 1.5B to the 7B model can add a
+    memory. Within the 16 GB the project asks for, switching from the 1.5B to the 7B model can add a
     load delay, so an escalated run pays for a model swap on top of two calls.
 
     The call is greedy (temperature 0) and has a read timeout; see

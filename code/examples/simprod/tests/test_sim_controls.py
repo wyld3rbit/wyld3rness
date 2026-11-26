@@ -212,3 +212,12 @@ def test_the_faults_are_cleared_when_an_arm_raises(monkeypatch) -> None:
     with pytest.raises(RuntimeError), controls.live_storm(storms(1, 200, 1)[0], "loop", 200, 30, 30) as live:
         raise RuntimeError("the arm failed")
     assert sent == ["inject", "clear"] and "recovered" not in live.record  # a run cut short has no verdict
+
+
+def test_an_action_that_cannot_be_signed_is_recorded_not_raised(monkeypatch) -> None:
+    def no_pass():
+        raise RuntimeError("no sign pass: run `make sim-up`")
+
+    monkeypatch.setattr(controls.vault, "signer", no_pass)
+    r = controls.signed_act("/gateway/actions/backoff", {"enabled": True})
+    assert r["status"] == 0 and r["answer"].startswith("not signed, not sent: RuntimeError")

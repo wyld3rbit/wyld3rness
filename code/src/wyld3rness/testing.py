@@ -169,14 +169,16 @@ class FakeWorld:
         self.good_s = 0.0
         self.seconds: list[Second] = []
         self.log: list[str] = []  # every action and undo applied, in order
+        self.credentials: list[str] = []  # the credential each was sent with, in the same order
 
     def observe(self) -> str:
         """What is in force, sorted."""
         return f"in force: {sorted(self.in_force)}"
 
-    def apply(self, action: Action) -> Applied:
-        """Apply one action or undo; an undo of `x` is `undo:x`."""
+    def apply(self, action: Action, credential: str) -> Applied:
+        """Apply one action or undo; an undo of `x` is `undo:x`. Keeps the credential each was sent with."""
         self.log.append(action.name)
+        self.credentials.append(credential)
         self.wait(self.apply_s)
         if action.name in self.raise_on:
             self.in_force.add(action.name)  # the change went through; only the reply was lost
@@ -237,3 +239,19 @@ class FakeDecider:
 def allow(*kinds: str) -> Policy:
     """A policy that allows exactly `kinds`, alone or together, with no preconditions: for tests of everything else."""
     return Policy([Rule(k) for k in kinds])
+
+
+class FakeSigner:
+    """Signs every action as `signed:<label>`, except those named in `refuse`, which raise."""
+
+    def __init__(self, refuse: Sequence[str] = ()) -> None:
+        """`refuse` names actions (or undos) the vault will not sign."""
+        self.refuse = set(refuse)
+        self.signed: list[str] = []
+
+    def sign(self, action: Action) -> str:
+        """A predictable token, so tests can check which credential went with which action."""
+        if action.name in self.refuse:
+            raise ConnectionError(f"vault refused {action.name}")
+        self.signed.append(action.label())
+        return f"signed:{action.label()}"

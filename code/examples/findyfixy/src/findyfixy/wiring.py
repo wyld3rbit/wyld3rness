@@ -120,7 +120,7 @@ class SharedRetrieval:
     Why shared: the console runs triage (recall) and, from Day 5, eval runs
     whose judge also needs the embedder. Built separately, they held two copies
     of the embedding model and the reranker (about 1.3 GB) and two database
-    connections, on a 16 GB machine that also holds two answering models and a
+    connections, within the 16 GB the project asks for, which also holds two answering models and a
     judge. One instance serves both.
 
     Why lazy: building it loads two models and opens the database. Doing that

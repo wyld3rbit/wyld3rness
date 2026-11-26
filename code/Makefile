@@ -47,11 +47,15 @@ down:
 	@echo "Colima is stopped."
 
 # sim-up: build and start the simulated production (gateway, ledger,
-# notifications, edge) and wait until every service is healthy. Separate from
+# notifications, edge, and OpenBao with the actions' signing key) and wait until
+# every service is healthy. The vault steps write its root token and two passes
+# to the git-ignored examples/simprod/.bao/ and print none of them. Separate from
 # `up` because it costs VM memory only the step 2 to 6 runs need. Inspect it on
 # 127.0.0.1:8100 (examples/simprod/README.md). `make down` stops it too.
 sim-up:
+	$(RUN) simprod-vault init
 	docker compose -f $(SIM_COMPOSE) up -d --build --wait
+	$(RUN) simprod-vault setup
 
 # load-test: research log entry 006. A rate ramp, then three soaks at the chosen
 # rate, about 25 minutes. Needs `make up` and `make sim-up`. Prints the verdict and

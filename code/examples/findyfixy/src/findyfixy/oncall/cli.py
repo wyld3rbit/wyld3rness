@@ -28,7 +28,7 @@ from findyfixy.oncall.env import SimprodEnv
 from findyfixy.oncall.policy import rules
 from findyfixy.paths import PRICES
 from findyfixy.settings import MissingEnvironment, load_env, read_models
-from simprod import controls, loadtest
+from simprod import controls, loadtest, vault
 from simprod.faults import Storm, storms
 from wyld3rness.loop.budget import Budget, BudgetExceeded
 from wyld3rness.loop.policy import Policy
@@ -79,7 +79,7 @@ def run_one(storm: Storm, model: str, config: LoopConfig, prices: list[ModelPric
         policy = Policy(rules())
         budget = Budget(LIMIT_USD, prices)
         decider = ModelDecider(ask_decision, model, config.wait_s, budget, notes=policy.notes())
-        outcome = run_incident(env, decider, config, policy)
+        outcome = run_incident(env, decider, config, policy, vault.signer())
         live.judge_from = last_action_at(outcome)
         live.record.update(
             model=model,
@@ -147,6 +147,11 @@ def main(argv: list[str] | None = None) -> int:
     refusal = budget_refusal(model, prices, config)
     if refusal:
         print(refusal, file=sys.stderr)
+        return 2
+    try:
+        vault.check()  # an expired pass, a sealed vault or a skewed clock stops the run before any storm
+    except Exception as exc:
+        print(f"the vault is not ready ({exc}): run `make sim-up`", file=sys.stderr)
         return 2
     report: JSON = {
         "started_utc": datetime.now(UTC).isoformat(timespec="seconds"),

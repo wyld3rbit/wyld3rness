@@ -1,7 +1,8 @@
 """FindyFixy's environment over simprod: the harness's `Environment` port, through the edge only.
 
     observe()  GET /gateway, /ledger, /customers metrics ──► the samples an operator reads
-    apply(a)   read the gateway's settings (for the undo) ──► POST /<service>/actions/... as X-Actor findyfixy
+    apply(a,c) read the gateway's settings (for the undo) ──► POST /<service>/actions/... as X-Actor findyfixy,
+               with the credential the loop signed for exactly this action
     series()   the storm driver's scraper, in the host process: what customers saw
     now/wait   the storm's clock, real time
 
@@ -119,7 +120,7 @@ class SimprodEnv:
         now: Callable[[], float],
         *,
         actor: str = ACTOR,
-        post: Callable[[str, Mapping[str, object], str], JSON] = act,
+        post: Callable[[str, Mapping[str, object], str, str], JSON] = act,
         get: Callable[[str], str] = fetch_text,
         settings: Callable[[], Mapping[str, object]] = read_settings,
         sleep: Callable[[float], None] = time.sleep,
@@ -133,15 +134,15 @@ class SimprodEnv:
         """The observed metrics of the gateway, the ledger and the customers, now."""
         return observation({s: self._get(f"{EDGE}/{s}/metrics") for s in OBSERVED})
 
-    def apply(self, action: Action) -> Applied:
-        """Validate, read the settings for the undo, send. An invalid action is refused before anything is sent."""
+    def apply(self, action: Action, credential: str) -> Applied:
+        """Validate, read the settings for the undo, send with its credential. An invalid action is never sent."""
         try:
             path, body = to_request(action)
         except ValueError as exc:
             return Applied(action, False, f"refused: {exc}", None)
         undo = undo_for(action, self._settings())
         try:
-            answer = self._post(path, body, self.actor)
+            answer = self._post(path, body, self.actor, credential)
         except Exception as exc:  # sent, then the reply was lost or unreadable: it may be in force
             answer = {"path": path, "body": body, "status": 0, "answer": f"{type(exc).__name__}: {exc}"}
         self.sent.append(answer)

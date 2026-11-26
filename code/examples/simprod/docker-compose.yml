@@ -13,6 +13,11 @@
 # capabilities, no privilege escalation, a non-root user (Dockerfile), and an init
 # process as PID 1 that reaps orphans (research log, entry 004).
 #
+# Credentials. Every action needs a credential for exactly that action
+# (src/simprod/credentials.py). OpenBao holds the signing key; the services that
+# run actions ask it to verify, with a pass that may only verify, mounted
+# read-only. `make sim-up` creates the key and the passes (src/simprod/vault.py).
+#
 # Restart policy. `unless-stopped` restarts a service whatever its exit code,
 # which is how the restart action works: the service exits itself, Docker starts
 # it fresh. `make down` stops everything for good.
@@ -55,12 +60,24 @@ services:
       LEDGER_WORKERS: ${LEDGER_WORKERS:-1}
       LEDGER_SERVICE_MS: ${LEDGER_SERVICE_MS:-10}
       LEDGER_QUEUE_LIMIT: ${LEDGER_QUEUE_LIMIT:-100}
+      BAO_ADDR: http://openbao:8200
+      BAO_TOKEN_FILE: /run/bao/verify.token
+    volumes:
+      - ./.bao/verify.token:/run/bao/verify.token:ro
+    depends_on:
+      openbao: {condition: service_healthy}
 
   notifications:
     <<: *service
     command: ["python", "-m", "simprod.notifications"]
     environment:
       NOTIFY_SERVICE_MS: ${NOTIFY_SERVICE_MS:-5}
+      BAO_ADDR: http://openbao:8200
+      BAO_TOKEN_FILE: /run/bao/verify.token
+    volumes:
+      - ./.bao/verify.token:/run/bao/verify.token:ro
+    depends_on:
+      openbao: {condition: service_healthy}
 
   gateway:
     <<: *service
@@ -70,9 +87,14 @@ services:
       GATEWAY_RETRIES: ${GATEWAY_RETRIES:-3}
       # 0: retries fire at once, as shipped. A hot-shard storm deploys it at 1.
       GATEWAY_BACKOFF: ${GATEWAY_BACKOFF:-0}
+      BAO_ADDR: http://openbao:8200
+      BAO_TOKEN_FILE: /run/bao/verify.token
+    volumes:
+      - ./.bao/verify.token:/run/bao/verify.token:ro
     depends_on:
       ledger: {condition: service_healthy}
       notifications: {condition: service_healthy}
+      openbao: {condition: service_healthy}
 
   edge:
     <<: *service
@@ -82,6 +104,32 @@ services:
       - "127.0.0.1:8100:8000"
     depends_on:
       gateway: {condition: service_healthy}
+
+  # The vault (src/simprod/vault.py): a real server with in-memory storage
+  # (openbao/simprod.hcl), so a restart starts it empty and sealed. Not dev mode,
+  # which prints its root token and unseal key to this log. `make sim-up`
+  # initialises and unseals it through the API. On both networks, like the edge:
+  # the services reach it inside, the harness signs from the host on 127.0.0.1:8200.
+  openbao:
+    build: ./openbao
+    image: simprod-openbao:local
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+    command: ["server", "-config=/openbao/config/simprod.hcl"]
+    environment:
+      SKIP_SETCAP: "true"
+    networks: [prod, outside]
+    ports:
+      - "127.0.0.1:8200:8200"
+    healthcheck:
+      # Healthy once it serves, sealed or not: `make sim-up` initialises it after compose is up.
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8200/v1/sys/health?uninitcode=200&sealedcode=200"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   # Customers all the time, for storms (src/simprod/customers.py), and the
   # runaway client of the hot-shard fault on its sealed port 9000. Profile

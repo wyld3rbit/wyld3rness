@@ -30,6 +30,7 @@ import threading
 import time
 import zlib
 
+from simprod.credentials import Guard, guard_from_env
 from simprod.service import (
     JSON,
     Labels,
@@ -172,8 +173,10 @@ class Ledger:
         }
 
 
-def build(ledger: Ledger, exit: Callable[[int], None] | None = None) -> tuple[Service, Service]:
-    """The public service and the sealed admin service."""
+def build(
+    ledger: Ledger, exit: Callable[[int], None] | None = None, guard: Guard | None = None
+) -> tuple[Service, Service]:
+    """The public service, whose actions `guard` checks, and the sealed admin service."""
     restart = restart_route(NAME) if exit is None else restart_route(NAME, exit=exit)
     public = Service(
         NAME,
@@ -197,6 +200,7 @@ def build(ledger: Ledger, exit: Callable[[int], None] | None = None) -> tuple[Se
             restart,
         ],
         metrics=ledger.metrics,
+        guard=guard,
     )
     admin = Service(
         f"{NAME}-admin",
@@ -234,7 +238,9 @@ def main() -> None:
         workers=int(env_float("LEDGER_WORKERS", 1)),
         queue_limit=int(env_float("LEDGER_QUEUE_LIMIT", 100)),
     )
-    public, admin = build(ledger)
+    guard = guard_from_env()
+    log(NAME, "guard", on=guard is not None)
+    public, admin = build(ledger, guard=guard)
     run((public, 8000), (admin, int(env_float("ADMIN_PORT", 9000))))
 
 

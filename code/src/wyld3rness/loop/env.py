@@ -1,9 +1,9 @@
 """The environment port: what the loop may see and do in one system, and how it is judged.
 
-    loop ──observe()──────► text the decider reads (metrics, settings)
-         ──apply(action)──► Applied: carried out or not, and its undo (or None: no undo)
-         ──series()───────► the user stream, per second, the verdict reads
-         ──now(), wait(s)─► the incident's clock
+    loop ──observe()──────────────────► text the decider reads (metrics, settings)
+         ──apply(action, credential)──► Applied: carried out or not, and its undo (or None: no undo)
+         ──series()───────────────────────► the user stream, per second, the verdict reads
+         ──now(), wait(s)─────────────────► the incident's clock
 
 An app implements this for the system it operates: FindyFixy's over simprod is
 `code/examples/findyfixy/src/findyfixy/oncall/env.py`. The harness never
@@ -62,8 +62,8 @@ class Environment(Protocol):
         """What the decider may read now, as text."""
         ...
 
-    def apply(self, action: Action) -> Applied:
-        """Carry out one action and report it, with the action that undoes it."""
+    def apply(self, action: Action, credential: str) -> Applied:
+        """Carry out one action, sending its credential to the service that runs it; report it, with its undo."""
         ...
 
     def series(self) -> Sequence[Second]:
