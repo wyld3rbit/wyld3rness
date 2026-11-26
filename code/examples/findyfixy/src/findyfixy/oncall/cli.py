@@ -80,16 +80,27 @@ def line(r: JSON) -> str:
     )
 
 
-def run_one(storm: Storm, model: str, config: LoopConfig) -> JSON:
+def run_one(
+    storm: Storm,
+    model: str,
+    config: LoopConfig,
+    *,
+    arm: str = ARM,
+    script: Sequence[str] = (),
+    until_s: float = 0.0,
+) -> JSON:
     """One storm: the host runs it and keeps its own verdict; the loop container handles the incident.
 
     The loop's times are on its own clock from the request; adding the time the
     request was sent puts them on the storm's clock, where the host's verdict is.
+    `script` (an order of FindyFixy's script steps) makes the script decide instead
+    of the model. The series is measured at least `until_s` after the fault, so
+    an experiment can give every arm the same window.
     """
     incident = f"{storm.id}-{uuid.uuid4().hex[:12]}"  # unique, so no agent can mistake it for another
-    with controls.live_storm(storm, ARM, controls.RATE, config.wait_s, config.hold_s) as live:
+    with controls.live_storm(storm, arm, controls.RATE, config.wait_s, config.hold_s) as live:
         sent_at = live.now()
-        answer = post_incident(incident, config, model)
+        answer = post_incident(incident, config, model, script, arm)
         live.judge_from = on_storm_clock(sent_at, [decode_try(t) for t in answer["loop"]["tries"]])
         agent = answer.get("agent") or {"record_error": "the loop sent no agent record"}
         live.record.update(
@@ -104,10 +115,11 @@ def run_one(storm: Storm, model: str, config: LoopConfig) -> JSON:
             budget=agent.get("budget"),
             agent_record_error=agent.get("record_error"),
             loop_scrape_errors=answer.get("scrape_errors"),
+            trace_id=answer.get("trace_id"),  # the incident's trace in Langfuse, None with tracing off
             settings_after=controls.read_settings(),
         )
         live.record["restored"] = live.record["settings_after"] == live.before
-        live.cover((live.judge_from or live.t_act) + config.wait_s + config.hold_s + 2)
+        live.cover(max((live.judge_from or live.t_act) + config.wait_s + config.hold_s + 2, live.t_fault + until_s))
     live.record["agree"] = live.record["recovered"] == answer["loop"]["resolved"]
     return live.record
 
@@ -122,15 +134,19 @@ def incident_timeout_s(config: LoopConfig) -> float:
     return config.tries * per_try + 60
 
 
-def post_incident(incident: str, config: LoopConfig, model: str) -> JSON:
-    """Ask the loop container to handle one incident now, with this run's model, budget and windows."""
-    body = {
+def post_incident(incident: str, config: LoopConfig, model: str, script: Sequence[str] = (), arm: str = ARM) -> JSON:
+    """Ask the loop container to handle one incident now, with this run's decider, budget, tries and windows."""
+    body: JSON = {
         "incident": incident,
         "wait_s": config.wait_s,
         "hold_s": config.hold_s,
+        "tries": config.tries,
         "model": model,
         "budget_usd": LIMIT_USD,
+        "arm": arm,
     }
+    if script:
+        body.update(decider="script", order=list(script))
     req = urllib.request.Request(
         f"{LOOP_URL}/incident", json.dumps(body).encode(), {"Content-Type": "application/json"}
     )
@@ -169,6 +185,30 @@ def budget_refusal(model: str, prices: list[ModelPrice], config: LoopConfig) -> 
     return None
 
 
+def preflight(model_arg: str | None) -> tuple[str, LoopConfig] | str:
+    """The model and the loop's windows, or why no storm may start: checked before any storm, in this order.
+
+    The model is named; the windows are set; the budget carries the model's worst
+    case; the loop container answers; the vault signs and its clock agrees.
+    """
+    load_env()
+    try:
+        model = model_arg or read_models().small
+    except MissingEnvironment as exc:
+        return f"set {exc} in code/examples/findyfixy/.env, or pass --model"
+    if controls.WAIT_S is None or controls.HOLD_S is None:
+        return "WAIT_S and HOLD_S are not set in simprod/controls.py"
+    config = LoopConfig(wait_s=controls.WAIT_S, hold_s=controls.HOLD_S)
+    refusal = budget_refusal(model, parse_prices(PRICES.read_text()), config) or services_ready()
+    if refusal:
+        return refusal
+    try:
+        vault.check()  # an expired pass, a sealed vault or a skewed clock stops the run before any storm
+    except Exception as exc:
+        return f"the vault is not ready ({exc}): run `make sim-up`"
+    return model, config
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run `--count` storms from `--seed` through the loop; print a line each and save the results."""
     parser = argparse.ArgumentParser(prog="findyfixy-oncall", description=__doc__.splitlines()[0])
@@ -176,30 +216,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--count", type=int, default=EXPLORE_STORMS)
     parser.add_argument("--model", help="the model that decides (default: SMALL_MODEL)")
     args = parser.parse_args(argv)
-    load_env()
-    try:
-        model = args.model or read_models().small
-    except MissingEnvironment as exc:
-        print(f"set {exc} in code/examples/findyfixy/.env, or pass --model", file=sys.stderr)
+    ready = preflight(args.model)
+    if isinstance(ready, str):
+        print(ready, file=sys.stderr)
         return 2
-    if controls.WAIT_S is None or controls.HOLD_S is None:
-        print("WAIT_S and HOLD_S are not set in simprod/controls.py", file=sys.stderr)
-        return 2
-    config = LoopConfig(wait_s=controls.WAIT_S, hold_s=controls.HOLD_S)
-    prices = parse_prices(PRICES.read_text())
-    refusal = budget_refusal(model, prices, config)
-    if refusal:
-        print(refusal, file=sys.stderr)
-        return 2
-    not_ready = services_ready()
-    if not_ready:
-        print(not_ready, file=sys.stderr)
-        return 2
-    try:
-        vault.check()  # an expired pass, a sealed vault or a skewed clock stops the run before any storm
-    except Exception as exc:
-        print(f"the vault is not ready ({exc}): run `make sim-up`", file=sys.stderr)
-        return 2
+    model, config = ready
     report: JSON = {
         "started_utc": datetime.now(UTC).isoformat(timespec="seconds"),
         "rate": controls.RATE,

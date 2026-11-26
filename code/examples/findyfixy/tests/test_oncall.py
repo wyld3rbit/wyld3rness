@@ -1,5 +1,6 @@
 """Tests for findyfixy/oncall: the environment over simprod, the model decider, and both inside the harness's loop."""
 
+from dataclasses import asdict
 import json
 
 import pytest
@@ -192,6 +193,37 @@ def test_a_reply_still_invalid_after_its_retry_raises() -> None:
     with pytest.raises(DecisionError, match="no valid decision in 2 attempts"):
         d.decide("metrics", [])
     assert len(d.calls) == 2
+    assert d.last_report() == {"reason": None, "calls": [asdict(c) for c in d.calls]}  # the failed calls, reported
+
+
+def test_the_last_report_is_only_the_latest_decision() -> None:
+    replies = iter(
+        ["not json", decision({"name": "backoff", "enabled": True}), decision({"name": "backoff", "enabled": True})]
+    )
+    d = ModelDecider(lambda m, p, n: next(replies), "m", 30, budget())
+    d.decide("metrics", [])
+    assert [c["valid"] for c in d.last_report()["calls"]] == [False, True]
+    d.decide("metrics", [])
+    assert d.last_report() == {"reason": "the ledger is retrying", "calls": [asdict(d.calls[-1])]}
+
+
+def test_the_model_decider_traced_in_the_loop_reports_its_calls() -> None:
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+    from wyld3rness.loop.traced import traced
+    from wyld3rness.trace.command import CommandTrace
+    from wyld3rness.trace.tracing import TraceConfig, Tracing
+
+    exporter = InMemorySpanExporter()
+    tracing = Tracing.start(TraceConfig("http://127.0.0.1:1", "pk", "sk", "t"), exporter=exporter)
+    d = ModelDecider(lambda m, p, n: decision({"name": "backoff", "enabled": True}), "m", 30, budget())
+    world = FakeWorld(fix=["backoff"])
+    with CommandTrace(tracing, "incident") as trace:
+        ports = traced(trace.tracer, world, d, allow("backoff"), FakeSigner())
+        out = run_incident(ports[0], ports[1], LoopConfig(wait_s=30, hold_s=30), ports[2], ports[3])
+    assert out.resolved and tracing.flush()
+    assert [s.name for s in exporter.get_finished_spans()].count("model m") == 1
+    tracing.close()
 
 
 def test_the_reason_comes_before_the_actions_in_the_schema() -> None:

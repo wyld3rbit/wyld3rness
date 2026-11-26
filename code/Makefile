@@ -10,7 +10,7 @@
 #      findyfixy.pth and simprod.pth), each a single line naming its src/ folder.
 # On any finding, stop and read it. Do not upgrade or remove to make it pass.
 
-.PHONY: audit hooks scan up down sim-up load-test controls-pilot controls oncall oncall-up injection setup ingest console triage test test-harness lint eval-retrieval eval eval-gate eval-baseline eval-freeze eval-compare eval-negative case golden verify-attestation obs-secrets obs-up obs-down obs-prices
+.PHONY: audit hooks scan up down sim-up load-test controls-pilot controls oncall oncall-up injection experiment experiment-power experiment-analyze setup ingest console triage test test-harness lint eval-retrieval eval eval-gate eval-baseline eval-freeze eval-compare eval-negative case golden verify-attestation obs-secrets obs-up obs-down obs-prices
 
 # Memory for the Colima VM, in GB. 6 on most days, 8 on Langfuse days:
 #   make up COLIMA_MEMORY=8
@@ -83,10 +83,12 @@ oncall:
 # oncall-up: build and start the on-call agent and loop containers (profile
 # "oncall" in examples/findyfixy/docker-compose.yml), after `make sim-up`. The
 # image's requirements are exported from uv.lock with hashes, without the
-# `triage` extra. The loop runs as your user id so it can read the sign pass.
+# `triage` extra. The loop runs as your user id so it can read the sign pass, and
+# gets the local Langfuse project keys in a private file, so its incidents are traced.
 oncall-up:
 	@test -f examples/simprod/.bao/sign.token || { echo "no sign pass yet: run make sim-up first"; exit 1; }
 	uv export --frozen --package findyfixy --no-dev --no-emit-workspace --format requirements-txt -o $(APP_DIR)/.oncall-requirements.txt > /dev/null
+	@umask 077; if [ -f infra/langfuse/.env ]; then sed -nE 's/^LANGFUSE_INIT_PROJECT_(PUBLIC_KEY|SECRET_KEY)=/LANGFUSE_\1=/p; s/^LANGFUSE_INIT_PROJECT_ID=/LANGFUSE_PROJECT_ID=/p' infra/langfuse/.env > $(APP_DIR)/.oncall-trace.env; else : > $(APP_DIR)/.oncall-trace.env; fi; chmod 600 $(APP_DIR)/.oncall-trace.env
 	HOST_UID=$$(id -u) docker compose -f $(APP_COMPOSE) --profile oncall up -d --build --wait agent loop
 
 # injection: research log entry 017. Captures one storm of each kind, plants the
@@ -94,6 +96,20 @@ oncall-up:
 # real model in the agent container. The bar: no attacker-chosen action runs.
 injection:
 	$(RUN) findyfixy-injection
+
+# experiment: research log entry 019, the protocol. 24 held-out storms (seed 13), each
+# through nobody, the script, the model with one try and the model loop, in an order
+# drawn per storm, every arm measured over the same 240 s; about 8 hours. Then the
+# analysis. experiment-power prints the table the 24 comes from (a few minutes);
+# experiment-analyze FILE=<results file> recomputes every number from a saved run.
+experiment:
+	$(RUN) findyfixy-experiment run
+
+experiment-power:
+	$(RUN) findyfixy-experiment power
+
+experiment-analyze:
+	$(RUN) findyfixy-experiment analyze $(FILE)
 
 audit:
 	uv export --frozen --all-packages --all-extras --format requirements-txt --no-emit-workspace -o .audit-req.txt > /dev/null

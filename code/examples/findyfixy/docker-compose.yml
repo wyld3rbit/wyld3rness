@@ -65,8 +65,8 @@ services:
   # profile "oncall" so `make up` does not start them; `make oncall-up` does.
   # The agent reaches only Ollama on the host: no Docker socket, no keys, and no
   # network shared with simprod. The loop reaches simprod's edge and vault on
-  # simprod's outside network, holds the sign-only pass, and takes incidents from
-  # the host on 127.0.0.1:8300. Both: read-only, no capabilities, not root.
+  # simprod's outside network, holds the sign-only pass and the trace keys, and takes
+  # incidents from the host on 127.0.0.1:8300. Both: read-only, no capabilities, not root.
   agent:
     profiles: [oncall]
     build:
@@ -107,6 +107,15 @@ services:
       SIMPROD_EDGE: http://edge:8000
       BAO_ADDR: http://openbao:8200
       BAO_SIGN_FILE: /run/bao/sign.token
+      # Traces go to the local Langfuse on the host. Its project keys come from
+      # .oncall-trace.env (git-ignored, 0600), written by `make oncall-up` from
+      # infra/langfuse/.env; without it tracing is off and the loop runs the same.
+      # The agent gets no keys: it reports its model calls to the loop instead.
+      LANGFUSE_HOST: http://host.docker.internal:3000
+    env_file:
+      - path: .oncall-trace.env
+        required: false
+    extra_hosts: ["host.docker.internal:host-gateway"]
     volumes:
       - ../simprod/.bao/sign.token:/run/bao/sign.token:ro
     networks: [agent, simprod]
