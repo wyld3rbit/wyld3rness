@@ -16,7 +16,7 @@ from findyfixy.oncall.cli import (
 from findyfixy.oncall.decide import Decision, DecisionError, ModelDecider, build_prompt, format_history
 from findyfixy.oncall.env import SimprodEnv, observation, to_request, undo_for
 from findyfixy.oncall.policy import cap_refusal, customer_rate, rules, top_keys
-from findyfixy.oncall.service import make_agent, outcome_json
+from findyfixy.oncall.service import Incidents, events_answer, make_agent, outcome_json
 from wyld3rness.loop.budget import Budget, BudgetExceeded
 from wyld3rness.loop.env import Action, Applied
 from wyld3rness.loop.policy import Policy
@@ -193,7 +193,8 @@ def test_a_reply_still_invalid_after_its_retry_raises() -> None:
     with pytest.raises(DecisionError, match="no valid decision in 2 attempts"):
         d.decide("metrics", [])
     assert len(d.calls) == 2
-    assert d.last_report() == {"reason": None, "calls": [asdict(c) for c in d.calls]}  # the failed calls, reported
+    report = d.last_report()  # the failed calls, reported, and what they cost
+    assert report == {"reason": None, "calls": [asdict(c) for c in d.calls], "spent_usd": d.budget.spent_usd}
 
 
 def test_the_last_report_is_only_the_latest_decision() -> None:
@@ -203,8 +204,11 @@ def test_the_last_report_is_only_the_latest_decision() -> None:
     d = ModelDecider(lambda m, p, n: next(replies), "m", 30, budget())
     d.decide("metrics", [])
     assert [c["valid"] for c in d.last_report()["calls"]] == [False, True]
+    first = d.last_report()["spent_usd"]
     d.decide("metrics", [])
-    assert d.last_report() == {"reason": "the ledger is retrying", "calls": [asdict(d.calls[-1])]}
+    report = d.last_report()
+    assert (report["reason"], report["calls"]) == ("the ledger is retrying", [asdict(d.calls[-1])])
+    assert report["spent_usd"] == d.budget.spent_usd >= first  # the incident's spend so far, never less
 
 
 def test_the_model_decider_traced_in_the_loop_reports_its_calls() -> None:
@@ -546,3 +550,37 @@ def test_the_suite_answers_health_as_the_edge_would_so_the_live_rule_is_tested()
     assert "could not be checked clearly" in unknown.check([Action("restart", {"service": "ledger"})])[0]
     up = policy_over(CAPTURED, UP)
     assert "answers its health check" in up.check([Action("restart", {"service": "ledger"})])[0]
+
+
+def test_the_loop_keeps_the_latest_incidents_events_and_serves_them_from_an_index() -> None:
+    incidents = Incidents(keep=2)
+    log = incidents.open("i1")
+    log.emit("try_started", 1.0, {"try": 1})
+    log.emit("decided", 7.0, {"try": 1})
+    assert events_answer(incidents, "/incident/events?incident=i1&from=1") == (
+        200,
+        {"incident": "i1", "events": [{"kind": "decided", "t": 7.0, "data": {"try": 1}}], "done": False},
+    )
+    log.close()
+    assert events_answer(incidents, "/incident/events?incident=i1&from=2")[1]["done"] is True
+    incidents.open("i2")
+    incidents.open("i3")  # keeps 2: i1 is dropped
+    assert events_answer(incidents, "/incident/events?incident=i1&from=0")[0] == 404
+    for bad in (
+        "/incident/events?from=0",
+        "/incident/events?incident=i2&from=-1",
+        "/incident/events?incident=i2&from=x",
+    ):
+        assert events_answer(incidents, bad)[0] == 400
+
+
+def test_a_refused_incident_still_closes_its_event_log() -> None:
+    """A 400 (tries out of range) raises before the loop runs; the log still closes, or a viewer reads it for ever."""
+    from findyfixy.oncall.service import handle_incident
+    from wyld3rness.loop.watch import EventLog
+
+    log = EventLog()
+    body = {"incident": "i9", "wait_s": 30, "hold_s": 30, "model": "m", "budget_usd": 0.005, "tries": 9}
+    with pytest.raises(ValueError, match="tries must be 1 to"):
+        handle_incident(body, agent_url="http://127.0.0.1:1", edge="http://127.0.0.1:1", signer=None, log=log)
+    assert log.since(0) == ([], True)

@@ -31,6 +31,9 @@ after its ADR, freeze the older pictures the same way.
 The target design. code/docs/target-design.svg is the same page drawn with its
 planned paths, so the README, the design document and the console show one picture.
 
+A record frozen as a direction (0008) gets a second picture for its Outcome, the
+phase at its day's close (`AT_CLOSE`), drawn from the page like any other.
+
 The drift guard is a test (tools/test_adr_snapshot.py): the nodes the page marks
 built must equal the nodes of the latest phase here. Flip a node on the page
 without adding the phase here, and `make check` fails.
@@ -60,12 +63,17 @@ FIRST_BUILT = {
 PHASES = range(1, 8)
 # The phase being built, whose ADR is written when it closes. Until then the
 # newest ADR shows the phase before it. Set to None when the day's ADR lands.
-OPEN_PHASE: int | None = 7
+OPEN_PHASE: int | None = None
 
 # ADR number -> the phase its picture shows. Usually the same number. Day 5 was
 # rebuilt after ADR 0005 was accepted, so ADR 0006 records the rebuilt phase 5
 # and ADR 0005 keeps the picture it was accepted with.
 RECORDS: dict[int, int] = {1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 5, 7: 6, 8: 6}
+
+# ADR number -> the phase its Outcome shows, for a record whose own picture is
+# frozen as accepted (a direction drawn before its day was built). Its Outcome
+# gets a second picture, drawn from the page at the day's close.
+AT_CLOSE: dict[int, int] = {8: 7}
 
 # ADR pictures kept byte for byte, by ADR number (see the docstring). 1 to 4 were
 # drawn from the one-lane page; 5 is the in-app eval gate as first accepted.
@@ -252,6 +260,17 @@ def image_path(record: int) -> Path:
     return OUT / f"{record:04d}-architecture.svg"
 
 
+def close_path(record: int) -> Path:
+    """Where the picture of ADR `record`'s Outcome lives, for a record in `AT_CLOSE`."""
+    return OUT / f"{record:04d}-at-close.svg"
+
+
+def newest_phase() -> int:
+    """The phase the newest ADR shows: its Outcome's when it has one, else its own picture's."""
+    newest = max(RECORDS)
+    return AT_CLOSE.get(newest, RECORDS[newest])
+
+
 def render(record: int, page: str) -> str:
     """The picture for ADR `record`, drawn from the page. Refuses a frozen record."""
     if record in FROZEN:
@@ -282,6 +301,9 @@ def main() -> int:
             continue
         path.write_text(render(record, page))
         print(f"wrote {path.relative_to(ROOT)}")
+    for record, phase in AT_CLOSE.items():
+        close_path(record).write_text(snapshot(phase, page))
+        print(f"wrote {close_path(record).relative_to(ROOT)}")
     TARGET.write_text(target(page))
     print(f"wrote {TARGET.relative_to(ROOT)}")
     return 0

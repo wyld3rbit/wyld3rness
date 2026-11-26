@@ -48,8 +48,8 @@ text { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-se
 <path id="p_small_gateway" class="edge planned" d="M400,228 L400,20 L525,20 L525,-31"/>
 <path id="p_val_second" class="edge planned" d="M511,228 L511,127"/>
 <path id="p_rec_policy" class="edge planned" d="M880,292 L880,519"/>
-<path id="p_policy_identity" class="edge planned" d="M796,552 L759,552"/>
-<path id="p_identity_act" class="edge planned" d="M628,552 L591,552"/>
+<path id="p_policy_identity" class="edge" d="M796,552 L759,552"/>
+<path id="p_identity_act" class="edge" d="M628,552 L591,552"/>
 <path id="p_act_verify" class="edge" d="M460,552 L423,552"/>
 <path id="p_verify_undo" class="edge" d="M292,552 L255,552"/>
 <path id="p_verify_safe" class="edge" d="M300,584 L300,618 L40,618 L40,585"/>
@@ -168,7 +168,7 @@ text { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-se
         <text class="t" x="525" y="-70">Gateway</text>
         <text class="s" x="525" y="-52">every model call</text>
       </g>
-<g class="node" data-status="built">
+<g class="node" id="n_budget" data-status="built">
         <rect x="628" y="-96" width="130" height="64" rx="8"/>
         <circle class="i" transform="translate(633 -92) scale(.56)" cx="8" cy="8" r="6"/><path class="i" transform="translate(633 -92) scale(.56)" d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path class="i" transform="translate(633 -92) scale(.56)" d="M7 6h1v4"/><path class="i" transform="translate(633 -92) scale(.56)" d="m16.71 13.88.7.71-2.82 2.82"/>
         <text class="t" x="693" y="-70">Budget</text>
@@ -186,37 +186,37 @@ text { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-se
         <text class="t" x="521" y="88">Second opinion</text>
         <text class="s" x="511" y="106">evidence disagrees</text>
       </g>
-<g class="node" data-status="built">
+<g class="node" id="n_policy" data-status="built">
         <rect x="796" y="520" width="130" height="64" rx="8"/>
         <path class="i" transform="translate(801 524) scale(.56)" d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path class="i" transform="translate(801 524) scale(.56)" d="m9 12 2 2 4-4"/>
         <text class="t" x="861" y="546">Policy</text>
         <text class="s" x="861" y="564">allowed kind?</text>
       </g>
-<g class="node" data-status="built">
+<g class="node" id="n_identity" data-status="built">
         <rect x="628" y="520" width="130" height="64" rx="8"/>
         <path class="i" transform="translate(633 524) scale(.56)" d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle class="i" transform="translate(633 524) scale(.56)" cx="16.5" cy="7.5" r=".5"/>
         <text class="t" x="693" y="546">Identity</text>
         <text class="s" x="693" y="564">this action only</text>
       </g>
-<g class="node" data-status="built">
+<g class="node" id="n_act" data-status="built">
         <rect x="460" y="520" width="130" height="64" rx="8"/>
         <polygon class="i" transform="translate(465 524) scale(.56)" points="6 3 20 12 6 21 6 3"/>
         <text class="t" x="525" y="546">Act</text>
         <text class="s" x="525" y="564">typed, one at a time</text>
       </g>
-<g class="node" data-status="built">
+<g class="node" id="n_verify" data-status="built">
         <rect x="292" y="520" width="130" height="64" rx="8"/>
         <path class="i" transform="translate(297 524) scale(.56)" d="m12 14 4-4"/><path class="i" transform="translate(297 524) scale(.56)" d="M3.34 19a10 10 0 1 1 17.32 0"/>
         <text class="t" x="357" y="546">Verify</text>
         <text class="s" x="357" y="564">did it recover?</text>
       </g>
-<g class="node" data-status="built">
+<g class="node" id="n_undo" data-status="built">
         <rect x="124" y="520" width="130" height="64" rx="8"/>
         <circle class="i" transform="translate(129 524) scale(.56)" cx="18" cy="18" r="3"/><circle class="i" transform="translate(129 524) scale(.56)" cx="6" cy="6" r="3"/><path class="i" transform="translate(129 524) scale(.56)" d="M6 21V9a9 9 0 0 0 9 9"/>
         <text class="t" x="189" y="546">Undo</text>
         <text class="s" x="189" y="564">then try again</text>
       </g>
-<g class="node" data-status="built">
+<g class="node" id="n_safe" data-status="built">
         <rect x="-44" y="520" width="130" height="64" rx="8"/>
         <path class="i" transform="translate(-39 524) scale(.56)" d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path class="i" transform="translate(-39 524) scale(.56)" d="m9 12 2 2 4-4"/>
         <text class="t" x="21" y="546">Safe state</text>
@@ -240,7 +240,7 @@ text { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-se
         <text class="t" x="189" y="788">Alerts</text>
         <text class="s" x="189" y="806">error budget burn</text>
       </g>
-<g class="node" data-status="built">
+<g class="node" id="n_services" data-status="built">
         <rect x="460" y="762" width="130" height="64" rx="8"/>
         <ellipse class="i" transform="translate(465 766) scale(.56)" cx="12" cy="5" rx="9" ry="3"/><path class="i" transform="translate(465 766) scale(.56)" d="M3 5V19A9 3 0 0 0 21 19V5"/><path class="i" transform="translate(465 766) scale(.56)" d="M3 12A9 3 0 0 0 21 12"/>
         <text class="t" x="525" y="788">Services</text>

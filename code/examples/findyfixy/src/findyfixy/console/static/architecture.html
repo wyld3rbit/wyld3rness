@@ -184,6 +184,22 @@
   @media (prefers-reduced-motion: reduce) {
     .node.calling rect { animation: none; }
   }
+  /* The storm panel: what customers saw each second, and one row per try. */
+  #storm-chart { width: 100%; height: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
+  #storm-chart .axis { stroke: var(--line); stroke-width: 1; }
+  #storm-chart .fail { fill: none; stroke: var(--bad); stroke-width: 2; }
+  #storm-chart .mark { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
+  #storm-chart .mark.act { stroke: var(--accent); stroke-dasharray: none; }
+  #storm-chart .mark.undo { stroke: var(--warn); stroke-dasharray: none; }
+  #storm-chart .mark.ok { stroke: var(--ok); stroke-dasharray: none; }
+  #storm-chart text { fill: var(--muted); font-size: 11px; }
+  #storm-tries { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
+  #storm-tries th, #storm-tries td { text-align: left; border-bottom: 1px solid var(--line); padding: 5px 6px; vertical-align: top; }
+  #storm-tries th { color: var(--muted); font-weight: 600; }
+  #storm-tries .ok { color: var(--ok); }
+  #storm-tries .bad { color: var(--bad); }
+  #storm-tries .warn { color: var(--warn); }
+  #storm-note { color: var(--muted); font-size: 13px; margin: 6px 0 0; }
 </style>
 </head>
 <body>
@@ -200,9 +216,11 @@
         <select id="kind">
           <option value="triage" selected>Triage run (one question)</option>
           <option value="eval">Eval run (golden cases, scored)</option>
+          <option value="storm">Storm on simprod (the on-call loop, live)</option>
+          <option value="replay">Replay a saved storm run</option>
         </select>
       </div>
-      <div class="field">
+      <div class="field" id="mode-field">
         <label for="mode">Mode</label>
         <select id="mode">
           <option value="live" selected>Live (Ollama)</option>
@@ -212,6 +230,30 @@
       <div class="field" id="cases-field" hidden>
         <label for="cases">Cases, first N of <span id="cases-size">the set</span></label>
         <input type="number" id="cases" min="1" value="2" title="The gate applies only when every case runs: the baseline is defined on the full set.">
+      </div>
+      <div class="field" id="storm-field" hidden>
+        <label for="stormkind">Storm</label>
+        <select id="stormkind" title="Each kind has one fix among the script's three sets: backoff on, a cap on the busiest key, or both.">
+          <option value="retry_storm">Retry storm</option>
+          <option value="hot_shard">Hot shard</option>
+          <option value="compound">Compound (needs both)</option>
+        </select>
+      </div>
+      <div class="field" id="decider-field" hidden>
+        <label for="decider">Who proposes</label>
+        <select id="decider" title="All three go through the same loop, policy, signer and budget: they differ only in who proposes.">
+          <option value="model-loop">Model, up to 3 tries</option>
+          <option value="model-1">Model, one try</option>
+          <option value="script">Script, no model</option>
+        </select>
+      </div>
+      <div class="field grow" id="saved-field" hidden>
+        <label for="saved">Saved run</label>
+        <select id="saved"></select>
+      </div>
+      <div class="field" id="speed-field" hidden>
+        <label for="speed">Speed, times real time</label>
+        <input type="number" id="speed" min="1" max="60" value="10">
       </div>
       <div class="field grow" id="fake-field">
         <label for="scenario">Scenario</label>
@@ -308,8 +350,8 @@
       <path id="p_small_gateway" class="edge planned" d="M400,228 L400,20 L525,20 L525,-31"/>
       <path id="p_val_second" class="edge planned" d="M511,228 L511,127"/>
       <path id="p_rec_policy" class="edge planned" d="M880,292 L880,519"/>
-      <path id="p_policy_identity" class="edge planned" d="M796,552 L759,552"/>
-      <path id="p_identity_act" class="edge planned" d="M628,552 L591,552"/>
+      <path id="p_policy_identity" class="edge" d="M796,552 L759,552"/>
+      <path id="p_identity_act" class="edge" d="M628,552 L591,552"/>
       <path id="p_act_verify" class="edge" d="M460,552 L423,552"/>
       <path id="p_verify_undo" class="edge" d="M292,552 L255,552"/>
       <path id="p_verify_safe" class="edge" d="M300,584 L300,618 L40,618 L40,585"/>
@@ -434,7 +476,7 @@
         <text class="t" x="525" y="-70">Gateway</text>
         <text class="s" x="525" y="-52">every model call</text>
       </g>
-      <g class="node" data-status="built" data-layer="harness" data-code="wyld3rness/loop/budget.py">
+      <g class="node" id="n_budget" data-status="built" data-layer="harness" data-code="wyld3rness/loop/budget.py">
         <title>In: Each model call the on-call decider is about to make: the model, the prompt, the reply's cap (400 tokens).&#10;Out: A reservation of the call's worst case, or a refusal before the call runs; after it, the real cost replaces the reservation.&#10;Logic: Worst case = (the prompt's UTF-8 bytes + 16 template tokens) x the input price + the cap x the output price, from the committed reference prices. A byte-level tokenizer never makes more tokens than bytes, so this is an upper bound: about three times the real count on the decider's prompts (research log, entry 014). $0.005 per incident. No price for the model refuses the call; unknown token counts settle at the reservation, never at zero. A refusal ends the incident in the safe state.&#10;Trust: Day 8's model gateway takes over this port with the same rule.</title>
         <rect x="628" y="-96" width="130" height="64" rx="8"/>
         <circle class="i" transform="translate(633 -92) scale(.56)" cx="8" cy="8" r="6"/><path class="i" transform="translate(633 -92) scale(.56)" d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path class="i" transform="translate(633 -92) scale(.56)" d="M7 6h1v4"/><path class="i" transform="translate(633 -92) scale(.56)" d="m16.71 13.88.7.71-2.82 2.82"/>
@@ -455,42 +497,42 @@
         <text class="t" x="521" y="88">Second opinion</text>
         <text class="s" x="511" y="106">evidence disagrees</text>
       </g>
-      <g class="node" data-status="built" data-layer="harness" data-code="wyld3rness/loop/policy.py">
+      <g class="node" id="n_policy" data-status="built" data-layer="harness" data-code="wyld3rness/loop/policy.py">
         <title>In: A decision: the 1 or 2 actions the decider proposed.&#10;Out: Allowed, or every reason it is not; a refused decision applies nothing and spends a try, and the next try is told why.&#10;Logic: A table declared by the app as data: the allowed kinds, which must be alone, and a precondition read from live state. FindyFixy's: backoff; a rate cap only on a key sending at least 5% of the customers' request rate now (the gateway's busiest-keys gauge); a restart only alone. A precondition that cannot be checked refuses.&#10;Trust: Deterministic code the model cannot change. The credential in front of the gateway (step 4b) checks again where the action executes.</title>
         <rect x="796" y="520" width="130" height="64" rx="8"/>
         <path class="i" transform="translate(801 524) scale(.56)" d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path class="i" transform="translate(801 524) scale(.56)" d="m9 12 2 2 4-4"/>
         <text class="t" x="861" y="546">Policy</text>
         <text class="s" x="861" y="564">allowed kind?</text>
       </g>
-      <g class="node" data-status="built" data-layer="harness" data-code="wyld3rness/loop/credential.py">
+      <g class="node" id="n_identity" data-status="built" data-layer="harness" data-code="wyld3rness/loop/credential.py">
         <title>In: Each action, and each undo, just before the loop sends it.&#10;Out: A credential for exactly that action with its arguments, valid 60 s, usable once, signed by OpenBao; the key never leaves the vault, and the agent holds nothing that can sign.&#10;Logic: The service that runs the action checks it before acting (simprod's credentials.py): asks OpenBao whether the signature is genuine, then that the action and arguments match the request, that it has not expired, and that its one-time id is new. Anything missing, forged, expired, reused or meant for another action is refused with 403 and logged; a vault that cannot be reached refuses every action. An action that cannot be signed is not sent.&#10;Trust: Here the vault keeps its storage in memory and starts empty at each start; it is initialised and unsealed through its API, so no key is printed. Production keeps storage that persists and an unseal procedure.</title>
         <rect x="628" y="520" width="130" height="64" rx="8"/>
         <path class="i" transform="translate(633 524) scale(.56)" d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle class="i" transform="translate(633 524) scale(.56)" cx="16.5" cy="7.5" r=".5"/>
         <text class="t" x="693" y="546">Identity</text>
         <text class="s" x="693" y="564">this action only</text>
       </g>
-      <g class="node" data-status="built" data-layer="harness" data-code="wyld3rness/loop/run.py">
-        <title>In: One decision: 1 or 2 typed actions (backoff, a per-key rate cap, a restart), applied, verified and undone together. Today FindyFixy's on-call decider proposes them (findyfixy/oncall/decide.py, make oncall); the policy and the credential in front of this box are not built yet.&#10;Out: Each action sent through the environment port (wyld3rness/loop/env.py), with the undo that puts back the value from before it, or none for a restart.&#10;Logic: Code owns the loop, not the model: at most 3 tries, then the safe state. An action that is not carried out ends the incident; an invalid one is refused before anything is sent. FindyFixy's environment sends through simprod's edge as X-Actor findyfixy, so the service's own log can be checked against the record.&#10;Trust: The model never reaches the HTTP calls. It proposes; this loop applies.</title>
+      <g class="node" id="n_act" data-status="built" data-layer="harness" data-code="wyld3rness/loop/run.py">
+        <title>In: One decision: 1 or 2 typed actions (backoff, a per-key rate cap, a restart), applied, verified and undone together. FindyFixy's on-call decider proposes them (findyfixy/oncall/decide.py), or the script with no model; the policy and a credential for each action come first.&#10;Watch it: choose Storm above. Each try lights the policy, the credential, this box, Verify and Undo as it happens.&#10;Out: Each action sent through the environment port (wyld3rness/loop/env.py), with the undo that puts back the value from before it, or none for a restart.&#10;Logic: Code owns the loop, not the model: at most 3 tries, then the safe state. An action that is not carried out ends the incident; an invalid one is refused before anything is sent. FindyFixy's environment sends through simprod's edge as X-Actor findyfixy, so the service's own log can be checked against the record.&#10;Trust: The model never reaches the HTTP calls. It proposes; this loop applies.</title>
         <rect x="460" y="520" width="130" height="64" rx="8"/>
         <polygon class="i" transform="translate(465 524) scale(.56)" points="6 3 20 12 6 21 6 3"/>
         <text class="t" x="525" y="546">Act</text>
         <text class="s" x="525" y="564">typed, one at a time</text>
       </g>
-      <g class="node" data-status="built" data-layer="harness" data-code="wyld3rness/loop/verdict.py">
+      <g class="node" id="n_verify" data-status="built" data-layer="harness" data-code="wyld3rness/loop/verdict.py">
         <title>In: What customers saw, one interval a second, from a scraper in the host process that drives the storm, never in the agent's.&#10;Out: Verified (the last 5 s all good, 30 s after acting), then recovered and held (good from a time within the 30 s wait, for 30 s).&#10;Logic: A good second has at most 1% of the requests of the 5 s ending at it failed. The same rule scored the storm controls, 63 of 63 (research log, entry 012); re-scoring them with the rule moved into the harness changed none of their 252 verdicts (entry 013).&#10;Trust: The agent can read the same metrics through the edge and cannot change them or this verdict.</title>
         <rect x="292" y="520" width="130" height="64" rx="8"/>
         <path class="i" transform="translate(297 524) scale(.56)" d="m12 14 4-4"/><path class="i" transform="translate(297 524) scale(.56)" d="M3.34 19a10 10 0 1 1 17.32 0"/>
         <text class="t" x="357" y="546">Verify</text>
         <text class="s" x="357" y="564">did it recover?</text>
       </g>
-      <g class="node" data-status="built" data-layer="harness" data-code="wyld3rness/loop/run.py">
+      <g class="node" id="n_undo" data-status="built" data-layer="harness" data-code="wyld3rness/loop/run.py">
         <title>In: A try that was not verified, or did not hold.&#10;Out: Every action of the try undone, last first, before the next try; the next decision sees the state put back and what was tried.&#10;Logic: Only for actions that can be undone: a try with a restart in it that did not resolve the incident goes to the safe state with no retry. A failed undo goes to the safe state too.</title>
         <rect x="124" y="520" width="130" height="64" rx="8"/>
         <circle class="i" transform="translate(129 524) scale(.56)" cx="18" cy="18" r="3"/><circle class="i" transform="translate(129 524) scale(.56)" cx="6" cy="6" r="3"/><path class="i" transform="translate(129 524) scale(.56)" d="M6 21V9a9 9 0 0 0 9 9"/>
         <text class="t" x="189" y="546">Undo</text>
         <text class="s" x="189" y="564">then try again</text>
       </g>
-      <g class="node" data-status="built" data-layer="harness" data-code="wyld3rness/loop/run.py">
+      <g class="node" id="n_safe" data-status="built" data-layer="harness" data-code="wyld3rness/loop/run.py">
         <title>In: Out of tries, a decision invalid after its retry, an action not carried out, a failed undo, a restart that did not resolve it, or the environment failing.&#10;Out: Every change still in force that has an undo is undone, last first, and nothing else changes. The record names what could not be put back.&#10;Logic: No path waits for a person. A containment beyond putting things back (shedding a tenant, paging) is added only when one is approved before runtime.</title>
         <rect x="-44" y="520" width="130" height="64" rx="8"/>
         <path class="i" transform="translate(-39 524) scale(.56)" d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path class="i" transform="translate(-39 524) scale(.56)" d="m9 12 2 2 4-4"/>
@@ -518,7 +560,7 @@
         <text class="t" x="189" y="788">Alerts</text>
         <text class="s" x="189" y="806">error budget burn</text>
       </g>
-      <g class="node" data-status="built" data-code="simprod/gateway.py">
+      <g class="node" id="n_services" data-status="built" data-code="simprod/gateway.py">
         <title>In: Synthetic customers paying, from an open-loop load generator: Poisson arrivals at a fixed rate, each sent on time whatever the gateway does.&#10;Out: Real signals for anyone to read through the edge proxy on 127.0.0.1:8100: health, Prometheus-text metrics, an OpenAPI spec per service, and JSON logs in docker compose logs. The service that executes an action logs it with its actor.&#10;Logic: A gateway writes each payment to a ledger of 4 shards with fixed capacity, retrying failures, then notifies. Standard-library Python in hardened containers on a Docker network with no route out; the edge forwards an allow-list and never a fault control. Three typed actions: retry backoff and a per-key rate cap, each with an undo, and a restart with none.&#10;Trust: Simulated, and labeled so. Sleeps stand in for database work, so the capacity is a parameter and the faults reproduce on any machine. Research log entry 006 measures whether the VM can serve it.</title>
         <rect x="460" y="762" width="130" height="64" rx="8"/>
         <ellipse class="i" transform="translate(465 766) scale(.56)" cx="12" cy="5" rx="9" ry="3"/><path class="i" transform="translate(465 766) scale(.56)" d="M3 5V19A9 3 0 0 0 21 19V5"/><path class="i" transform="translate(465 766) scale(.56)" d="M3 12A9 3 0 0 0 21 12"/>
@@ -668,6 +710,71 @@
 </svg>
 <!-- /diagram -->
     </details>
+    <details class="where-it-runs">
+      <summary>How a storm is shown</summary>
+<!-- diagram 0008-step7-console-storm -->
+<svg class="dg" xmlns="http://www.w3.org/2000/svg" viewBox="0 -36 1180 506" width="1180" height="506" role="img" aria-label="Day 7, step 7: the console drives a storm and shows each try as it happens, or replays a saved one. Solid is built, dashed is planned.">
+<style>
+.dg-zone { fill: #0d1729; stroke: #2a3a5c; stroke-width: 1; }
+.dg-zone.harness { stroke: #c084fc; stroke-opacity: .45; }
+.dg-zone.human { stroke: #e07a5f; stroke-opacity: .6; }
+.dg-zone-label { fill: #8da2c8; font-size: 12px; font-weight: 600; letter-spacing: .04em; }
+.dg-zone-label.harness { fill: #c084fc; }
+.dg-zone-label.human { fill: #e07a5f; }
+.dg-box rect { fill: #0b1220; stroke: #5cc8ff; stroke-width: 1.5; }
+.dg-box .dg-t { fill: #dbe6ff; font-size: 14px; font-weight: 600; text-anchor: middle; }
+.dg-box .dg-s { fill: #8da2c8; font-size: 11px; text-anchor: middle; }
+.dg-box.planned rect { stroke: #7f8fb0; stroke-dasharray: 5 4; }
+.dg-box.planned .dg-t, .dg-box.planned .dg-s { fill: #7f8fb0; }
+.dg-box .i { fill: none; stroke: #e07a5f; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.dg-box.planned .i { stroke: #7f8fb0; }
+.dg-edge { fill: none; stroke: #5b6f99; stroke-width: 2; marker-end: url(#dg-arrow); }
+.dg-edge.planned { stroke: #7f8fb0; stroke-width: 1.5; stroke-dasharray: 5 5; marker-end: url(#dg-arrow-planned); }
+.dg-edge-label { fill: #8da2c8; font-size: 11px; }  /* each label sets its own text-anchor */
+.dg-caption { fill: #dbe6ff; font-size: 14px; font-weight: 600; }
+.dg text { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+</style>
+<defs><marker id="dg-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,1 L10,5 L0,9 z" fill="#5b6f99"/></marker><marker id="dg-arrow-planned" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,1 L10,5 L0,9 z" fill="#7f8fb0"/></marker></defs>
+<rect x="0" y="-36" width="1180" height="506" fill="#0b1220"/>
+<text class="dg-caption" x="14" y="-12">Day 7, step 7: the console drives a storm and shows each try as it happens, or replays a saved one. Solid is built, dashed is planned.</text>
+
+<path class="dg-edge planned" d="M190,72 L440,72"/>
+<text class="dg-edge-label" x="315" y="66" text-anchor="middle">POST /storm</text>
+<path class="dg-edge" d="M590,72 L990,72"/>
+<text class="dg-edge-label" x="790" y="66" text-anchor="middle">reset, fault</text>
+<path class="dg-edge" d="M515,104 L515,210"/>
+<text class="dg-edge-label" x="523" y="161" text-anchor="start">the incident</text>
+<path class="dg-edge planned" d="M515,274 L515,370"/>
+<path class="dg-edge" d="M590,402 L990,402"/>
+<text class="dg-edge-label" x="790" y="396" text-anchor="middle">decide</text>
+<path class="dg-edge" d="M1065,104 L1065,210"/>
+<path class="dg-edge planned" d="M440,402 L115,402 L115,104"/>
+<text class="dg-edge-label" x="277.5" y="396" text-anchor="middle">events, polled</text>
+<path class="dg-edge planned" d="M1065,274 L1065,330 L170,330 L170,104"/>
+<text class="dg-edge-label" x="617.5" y="324" text-anchor="middle">each second</text>
+<path class="dg-edge planned" d="M240,210 L190,104"/>
+<text class="dg-edge-label" x="215" y="151" text-anchor="middle">replay</text>
+<g class="dg-box planned"><rect x="40" y="40" width="150" height="64" rx="8"/><g transform="translate(45 44) scale(.56)"><circle class="i" cx="8" cy="8" r="6"/><path class="i" d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path class="i" d="M7 6h1v4"/><path class="i" d="m16.71 13.88.7.71-2.82 2.82"/></g><text class="dg-t" x="125" y="66">Console</text><text class="dg-s" x="125" y="84">Storm run, or Replay</text></g>
+<g class="dg-box"><rect x="440" y="40" width="150" height="64" rx="8"/><g transform="translate(445 44) scale(.56)"><path class="i" d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></g><text class="dg-t" x="525" y="66">Storm driver</text><text class="dg-s" x="525" y="84">fresh services, fault</text></g>
+<g class="dg-box"><rect x="990" y="40" width="150" height="64" rx="8"/><g transform="translate(995 44) scale(.56)"><ellipse class="i" cx="12" cy="5" rx="9" ry="3"/><path class="i" d="M3 5V19A9 3 0 0 0 21 19V5"/><path class="i" d="M3 12A9 3 0 0 0 21 12"/></g><text class="dg-t" x="1075" y="66">simprod</text><text class="dg-s" x="1075" y="84">the storm runs here</text></g>
+<g class="dg-box"><rect x="240" y="210" width="150" height="64" rx="8"/><g transform="translate(245 214) scale(.56)"><path class="i" d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path class="i" d="M9 18h6"/><path class="i" d="M10 22h4"/></g><text class="dg-t" x="325" y="236">Saved runs</text><text class="dg-s" x="325" y="254">results files</text></g>
+<g class="dg-box"><rect x="990" y="210" width="150" height="64" rx="8"/><g transform="translate(995 214) scale(.56)"><path class="i" d="m12 14 4-4"/><path class="i" d="M3.34 19a10 10 0 1 1 17.32 0"/></g><text class="dg-t" x="1075" y="236">Customers</text><text class="dg-s" x="1075" y="254">failures each second</text></g>
+<g class="dg-box"><rect x="440" y="210" width="150" height="64" rx="8"/><g transform="translate(445 214) scale(.56)"><path class="i" d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path class="i" d="m9 12 2 2 4-4"/></g><text class="dg-t" x="525" y="236">Loop container</text><text class="dg-s" x="525" y="254">one incident at a time</text></g>
+<g class="dg-box planned"><rect x="440" y="370" width="150" height="64" rx="8"/><g transform="translate(445 374) scale(.56)"><path class="i" d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></g><text class="dg-t" x="525" y="396">Watch</text><text class="dg-s" x="525" y="414">an event per step</text></g>
+<g class="dg-box"><rect x="990" y="370" width="150" height="64" rx="8"/><g transform="translate(995 374) scale(.56)"><rect class="i" width="16" height="16" x="4" y="4" rx="2"/><rect class="i" width="6" height="6" x="9" y="9" rx="1"/><path class="i" d="M15 2v2"/><path class="i" d="M15 20v2"/><path class="i" d="M2 15h2"/><path class="i" d="M2 9h2"/><path class="i" d="M20 15h2"/><path class="i" d="M20 9h2"/><path class="i" d="M9 2v2"/><path class="i" d="M9 20v2"/></g><text class="dg-t" x="1075" y="396">Model or script</text><text class="dg-s" x="1075" y="414">proposes</text></g>
+</svg>
+<!-- /diagram -->
+    </details>
+  </section>
+
+  <section class="panel" id="storm-panel" aria-label="Storm" hidden>
+    <h2>Storm<span id="storm-title"></span></h2>
+    <svg id="storm-chart" viewBox="0 0 960 200" role="img" aria-label="Share of customer requests failing each second, with the fault, the detection and every action marked"></svg>
+    <p id="storm-note"></p>
+    <table id="storm-tries">
+      <thead><tr><th>Try</th><th>Proposed</th><th>Policy</th><th>Applied</th><th>Verdict</th><th>Spent so far</th></tr></thead>
+      <tbody></tbody>
+    </table>
   </section>
 
   <div class="lower">
@@ -839,7 +946,28 @@ const DESCRIBE = {
     eval_finished: (d) => `${d.summary.n} case(s), ${d.summary.n_run_errors} run error(s); ${evalVerdict(d).text}`,
     eval_failed: (d) => d.reason === "stopped" ? `stopped: ${d.error}` : `${d.error_type}: ${clip(d.error, 120)}`,
   },
+  loop: {
+    storm_started: (d) => `${d.replay ? "REPLAY of " : ""}${d.storm}, ${kindText(d.kind)}, ${deciderText(d)}, up to ${d.tries} tr${d.tries === 1 ? "y" : "ies"}`,
+    storm_phase: (d) => ({ "warm-up": "fresh services, warming up", fault: "fault injected", detected: "detected: the loop may act", cleared: "faults cleared" })[d.phase] || d.phase,
+    customers: (d) => `${d.failed} of ${d.ok + d.failed} requests failed`,
+    incident_sent: (d) => d.incident ? `incident ${d.incident} sent to the loop` : "incident sent to the loop",
+    try_started: (d) => `try ${d.try}: asking for a decision`,
+    decided: (d) => d.error ? `try ${d.try}: no decision, ${clip(d.error, 100)}` : `try ${d.try}: proposed ${d.actions.join(" + ") || "nothing"}${d.reason ? ", because " + clip(d.reason, 90) : ""}`,
+    checked: (d) => d.allowed ? `try ${d.try}: policy allows it` : `try ${d.try}: policy refuses: ${clip(d.reasons.join("; "), 120)}`,
+    applied: (d) => `${d.undo_of ? "undo " + d.undo_of + ": " : ""}${d.action} ${d.ok ? "carried out" : "NOT carried out: " + clip(d.detail, 80)}`,
+    waiting: (d) => `waiting ${d.seconds} s, then checking what customers see`,
+    verdict: (d) => `try ${d.try}: ${d.verdict}${d.recovered_at != null ? `, recovered at ${d.recovered_at.toFixed(1)} s` : ""}`,
+    incident_ended: (d) => `incident ${d.ended}: ${d.reason}${d.kept.length ? "; kept " + d.kept.join(", ") : ""}`,
+    storm_finished: (d) => `host verdict: ${d.recovered ? "recovered" : "not recovered"}${d.customer_minutes != null ? `, ${d.customer_minutes.toFixed(3)} customer minutes lost` : ""}${d.spent_usd != null ? `, $${d.spent_usd.toFixed(6)}` : ""}`,
+    storm_failed: (d) => d.reason === "stopped" ? "replay stopped" : `storm failed: ${clip(d.error, 140)}`,
+  },
 };
+
+function kindText(kind) { return { retry_storm: "retry storm", hot_shard: "hot shard", compound: "compound" }[kind] || kind; }
+function deciderText(d) {
+  if (d.decider === "script") return `script, no model${d.order && d.order.length ? " (" + d.order.join(", ") + ")" : ""}`;
+  return `${d.decider === "model-1" ? "model, one try" : "model loop"}${d.model ? " (" + d.model + ")" : ""}`;
+}
 
 function sourceOf(ev) { return ev.source || "app"; }
 
@@ -861,6 +989,7 @@ function traceHref(url) {
 }
 
 function addLog(ev) {
+  if (sourceOf(ev) === "loop" && ev.kind === "customers") return;   // one a second: the chart shows them
   $("empty").hidden = true;
   const li = document.createElement("li");
   const t = document.createElement("span"); t.className = "t"; t.textContent = ev.t.toFixed(2) + "s";
@@ -874,6 +1003,15 @@ function addLog(ev) {
   if (ev.kind === "run_failed" || (ev.kind === "validation" && !ev.data.ok) || (ev.kind === "tool_result" && ev.data.error)) k.classList.add("bad");
   if (ev.kind === "run_finished" || (ev.kind === "validation" && ev.data.ok)) k.classList.add("ok");
   if (ev.kind === "fault_injected") k.classList.add("warn");
+  if (sourceOf(ev) === "loop") {
+    k.classList.add("h");
+    const d = ev.data;
+    if (ev.kind === "storm_failed" || (ev.kind === "checked" && !d.allowed) || (ev.kind === "decided" && d.error) || (ev.kind === "applied" && !d.ok)) k.classList.add("bad");
+    if (ev.kind === "verdict") k.classList.add(d.verdict === "resolved" ? "ok" : "bad");
+    if (ev.kind === "applied" && d.undo_of) k.classList.add("warn");
+    if (ev.kind === "storm_finished") k.classList.add(d.recovered ? "ok" : "bad");
+    if (ev.kind === "storm_phase" && d.phase === "fault") k.classList.add("warn");
+  }
   if (ev.kind === "model_reply" && ev.data.mismatch) k.classList.add("bad");
   if (ev.kind === "hunt_finished") k.classList.add(ev.data.reason === "found" ? "bad" : "ok");
   const s = document.createElement("span"); s.textContent = summarize(ev);
@@ -918,6 +1056,187 @@ function showResult(rows) {
 // ---- animation: one async step per event ---------------------------------
 // `view` tracks which node is "current", so a validation event knows whether
 // to light the Validate box (small model) or just flag the large node.
+// The storm in view: its events on the storm's clock, for the chart and the table.
+const storm = { t: [], fail: [], marks: [], tries: {}, faultAt: null, horizon: 300, info: null, spent: null };
+
+function resetStorm(info) {
+  Object.assign(storm, { t: [], fail: [], marks: [], tries: {}, faultAt: null, horizon: 300, info, spent: null });
+  $("storm-panel").hidden = false;
+  $("storm-title").textContent = info ? `: ${kindText(info.kind)}, ${deciderText(info)}${info.replay ? ", replay of a saved run" : ""}` : "";
+  $("storm-note").textContent = "";
+  $("storm-tries").tBodies[0].replaceChildren();
+  drawStorm();
+}
+
+// A chart label: what an action does, in two or three words (the table has the whole action).
+function shortAction(label) {
+  const key = /key=([^,)]+)/.exec(label);
+  if (label.startsWith("backoff(")) return label.includes("True") ? "backoff on" : "backoff off";
+  if (label.startsWith("rate_cap(")) return key ? `cap ${key[1]}` : "cap";
+  return label.split("(")[0];
+}
+
+function svgEl(tag, attrs, text) {
+  const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  if (text != null) el.textContent = text;
+  return el;
+}
+
+// Failure share per second (0 to 1), with the fault, the detection and each action marked.
+function drawStorm() {
+  const svg = $("storm-chart");
+  const W = 960, H = 200, L = 40, R = 10, T = 22, B = 24;
+  const last = Math.max(storm.horizon, ...storm.t, ...storm.marks.map((m) => m.at));
+  const x = (at) => L + (W - L - R) * Math.max(0, at) / last;
+  const y = (share) => T + (H - T - B) * (1 - share);
+  const kids = [
+    svgEl("line", { class: "axis", x1: L, y1: y(0), x2: W - R, y2: y(0) }),
+    svgEl("line", { class: "axis", x1: L, y1: y(0), x2: L, y2: y(1) }),
+    svgEl("text", { x: 4, y: y(1) + 4 }, "100%"),
+    svgEl("text", { x: 4, y: y(0) + 4 }, "0%"),
+    svgEl("text", { x: L, y: H - 6 }, "0 s"),
+    svgEl("text", { x: W - R - 40, y: H - 6 }, `${Math.round(last)} s`),
+    svgEl("text", { x: L + 6, y: 14 }, "share of customer requests failing, each second"),
+  ];
+  let row = 0;
+  for (const m of storm.marks) {
+    const xm = x(m.at);
+    kids.push(svgEl("line", { class: `mark ${m.cls || ""}`, x1: xm, y1: y(0), x2: xm, y2: y(1) }));
+    kids.push(svgEl("text", { x: xm + 3, y: y(1) + 12 + 12 * (row++ % 4) }, m.label));
+  }
+  if (storm.t.length) {
+    const pts = storm.t.map((at, i) => `${x(at).toFixed(1)},${y(storm.fail[i]).toFixed(1)}`).join(" ");
+    kids.push(svgEl("polyline", { class: "fail", points: pts }));
+  }
+  svg.replaceChildren(...kids);
+}
+
+function tryRow(n) {
+  if (!storm.tries[n]) {
+    const tr = document.createElement("tr");
+    const cells = ["try", "proposed", "policy", "applied", "verdict", "spent"].map((name) => {
+      const td = document.createElement("td"); td.dataset.col = name; tr.append(td); return td;
+    });
+    cells[0].textContent = String(n);
+    $("storm-tries").tBodies[0].append(tr);
+    storm.tries[n] = Object.fromEntries(cells.map((td) => [td.dataset.col, td]));
+  }
+  return storm.tries[n];
+}
+
+function cell(td, text, cls) { td.textContent = text; td.className = cls || ""; }
+function addCell(td, text, cls) {
+  const span = document.createElement("div"); span.textContent = text; if (cls) span.className = cls; td.append(span);
+}
+
+function lightLoop(ids, cls) {
+  for (const id of ["budget", "policy", "identity", "act", "verify", "undo", "safe", "services"]) {
+    nodeEl(id).classList.remove("active", "calling", "ok", "bad", "warn");
+  }
+  for (const id of ids) mark(id, cls);
+}
+
+function showStormResult(d) {
+  const i = storm.info || {};
+  showResult([
+    ["Status", d ? "finished" : "running", d ? (d.recovered ? "ok" : "bad") : ""],
+    ["Storm", i.storm ? `${i.storm}, ${kindText(i.kind)}${i.replay ? " (replay)" : ""}` : "", ""],
+    ["Who proposes", i.decider ? deciderText(i) : "", ""],
+    ["Spent", storm.spent == null ? (i.decider === "script" ? "$0, no model calls" : "not reported yet") : `$${storm.spent.toFixed(6)}`, ""],
+    ...(d ? [
+      ["Host verdict", d.recovered ? "recovered and held" : "not recovered", d.recovered ? "ok" : "bad"],
+      ["Loop verdict", d.resolved ? "resolved" : "not resolved", d.agree === false ? "bad" : ""],
+      ["Customer minutes", d.customer_minutes == null ? "not measured" : d.customer_minutes.toFixed(3), ""],
+      ["Settings put back", d.restored == null ? "not checked" : (d.restored ? "yes" : "no, a change is still in force"), d.restored === false && !d.resolved ? "bad" : ""],
+      ...(d.unjudged && d.unjudged.length ? [["Judged", `no: ${d.unjudged.join("; ")}`, "bad"]] : []),
+      ...(d.trace_id ? [["Trace", d.trace_id, ""]] : []),
+    ] : []),
+  ]);
+}
+
+async function animateLoop(ev) {
+  const d = ev.data;
+  switch (ev.kind) {
+    case "storm_started":
+      resetVisuals();
+      resetStorm(d);
+      view.live = !d.replay;
+      if (!view.replaying) pace = PACE_REALTIME;
+      storm.horizon = 300;
+      showStormResult(null);
+      break;
+    case "storm_phase":
+      if (d.phase === "fault") { storm.faultAt = d.at; storm.marks.push({ at: d.at, label: "fault" }); }
+      if (d.phase === "detected") storm.marks.push({ at: d.at, label: "detected" });
+      if (d.phase === "warm-up" || d.phase === "fault") lightLoop(["services"], d.phase === "fault" ? "bad" : "active");
+      drawStorm();
+      break;
+    case "customers": {
+      const total = d.ok + d.failed;
+      storm.t.push(d.at); storm.fail.push(total ? d.failed / total : 0);
+      drawStorm();
+      break;
+    }
+    case "incident_sent":
+      break;
+    case "try_started":
+      tryRow(d.try);
+      lightLoop(["budget"], "calling");
+      break;
+    case "decided": {
+      const r = tryRow(d.try);
+      cell(r.proposed, d.error ? `no decision: ${d.error}` : (d.actions.join(" + ") || "nothing"), d.error ? "bad" : "");
+      if (d.reason) addCell(r.proposed, clip(d.reason, 140), "");
+      if (d.spent_usd != null) { storm.spent = d.spent_usd; cell(r.spent, `$${d.spent_usd.toFixed(6)}`); }
+      else cell(r.spent, storm.info && storm.info.decider === "script" ? "$0" : "not reported");
+      lightLoop(["budget"], d.error ? "bad" : "ok");
+      showStormResult(null);
+      break;
+    }
+    case "checked": {
+      const r = tryRow(d.try);
+      cell(r.policy, d.allowed ? "allowed" : `refused: ${d.reasons.join("; ")}`, d.allowed ? "ok" : "bad");
+      lightLoop(["policy"], d.allowed ? "ok" : "bad");
+      break;
+    }
+    case "applied": {
+      const r = tryRow(d.try || 1);
+      addCell(r.applied, `${d.undo_of ? "undo: " : ""}${d.action}${d.ok ? "" : " (not carried out)"}`, d.undo_of ? "warn" : (d.ok ? "" : "bad"));
+      storm.marks.push({ at: d.at, label: d.undo_of ? "undo" : shortAction(d.action), cls: d.undo_of ? "undo" : "act" });
+      lightLoop(["identity", d.undo_of ? "undo" : "act"], d.ok ? "active" : "bad");
+      drawStorm();
+      break;
+    }
+    case "waiting":
+      lightLoop(["verify"], "calling");
+      break;
+    case "verdict": {
+      const r = tryRow(d.try);
+      const good = d.verdict === "resolved";
+      cell(r.verdict, d.verdict, good ? "ok" : "bad");
+      if (good && d.recovered_at != null) storm.marks.push({ at: d.at, label: "resolved", cls: "ok" });
+      lightLoop(["verify"], good ? "ok" : "bad");
+      drawStorm();
+      break;
+    }
+    case "incident_ended":
+      if (d.ended !== "resolved") lightLoop(["safe"], "warn");
+      $("storm-note").textContent = `Incident ${d.ended}: ${d.reason}.${d.kept.length ? " Kept in force: " + d.kept.join(", ") + "." : ""}`;
+      break;
+    case "storm_finished":
+      storm.horizon = Math.max(...storm.t, storm.horizon);
+      drawStorm();
+      showStormResult(d);
+      break;
+    case "storm_failed":
+      $("storm-panel").hidden = false;
+      $("storm-note").textContent = d.reason === "stopped" ? "Replay stopped." : `Storm failed: ${d.error}`;
+      showResult([["Status", d.reason === "stopped" ? "stopped" : "failed", "bad"], ["Reason", d.error, "bad"]]);
+      break;
+  }
+}
+
 const view = { recall: null, node: null, forced: false, tools: false, toolStep: null, served: {}, hasMismatch: false, live: false, replaying: false, stress: "none",
                evalRun: { n: 0, index: 0, id: "", fake: false, latest: {} } };
 
@@ -1057,6 +1376,7 @@ async function animateHarness(ev) {
 
 async function animate(ev) {
   if (sourceOf(ev) === "harness") return animateHarness(ev);
+  if (sourceOf(ev) === "loop") return animateLoop(ev);
   const d = ev.data;
   switch (ev.kind) {
     case "run_started":
@@ -1251,7 +1571,9 @@ function openStream() {
     // An eval run ends on its own harness terminal; the graph inside each case
     // never emits run_finished. A hunt ends on hunt_finished. Its inner runs
     // also end with run_finished or run_failed, which must NOT close the stream.
-    const ends = !app
+    const ends = sourceOf(ev) === "loop"
+      ? ev.kind === "storm_finished" || ev.kind === "storm_failed"
+      : !app
       ? ev.kind === "eval_finished" || ev.kind === "eval_failed"
       : hunting
         ? ev.kind === "hunt_finished"
@@ -1273,9 +1595,19 @@ function openStream() {
 
 async function startRun() {
   const mode = $("mode").value;
-  const evalRun = $("kind").value === "eval";
-  const body = { mode };
-  if (evalRun) {
+  const kind = $("kind").value;
+  const evalRun = kind === "eval";
+  let body = { mode };
+  let route = evalRun ? "/eval" : "/run";
+  if (kind === "storm") {
+    body = { kind: $("stormkind").value, decider: $("decider").value };
+    route = "/storm";
+  } else if (kind === "replay") {
+    const [file, run] = ($("saved").value || "#").split("#");
+    body = { file, run: Number(run), speed: Math.max(1, Math.min(60, Math.round(Number($("speed").value)) || 10)) };
+    $("speed").value = body.speed;
+    route = "/replay";
+  } else if (evalRun) {
     // The server checks the range again (1 to the set's size). This only keeps
     // the request sensible when the box holds something odd.
     const n = Math.round(Number($("cases").value));
@@ -1299,7 +1631,7 @@ async function startRun() {
   $("replay").disabled = true;
   let res;
   try {
-    res = await fetch(evalRun ? "/eval" : "/run", {
+    res = await fetch(route, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -1317,7 +1649,8 @@ async function startRun() {
     return;
   }
   lastRunExists = true;
-  $("stop").hidden = !(body.hunt_max || evalRun);   // the runs that honour /stop
+  $("stop").hidden = !(body.hunt_max || evalRun || kind === "replay");   // the runs that honour /stop
+  if (kind === "storm") say("A storm takes about 4 minutes: fresh services, warm-up, the fault, then the loop. It cannot be stopped from here.");
   openStream();
 }
 
@@ -1357,7 +1690,16 @@ function showPreview() {
 // only how many golden cases to run; live or fake still applies.
 function syncMode() {
   const live = $("mode").value === "live";
-  const evalRun = $("kind").value === "eval";
+  const kind = $("kind").value;
+  const evalRun = kind === "eval";
+  const stormy = kind === "storm" || kind === "replay";
+  $("mode-field").hidden = stormy;
+  for (const id of ["storm-field", "decider-field"]) $(id).hidden = kind !== "storm";
+  for (const id of ["saved-field", "speed-field"]) $(id).hidden = kind !== "replay";
+  if (stormy) {
+    for (const id of ["cases-field", "fake-field", "qset-field", "question-field", "live-extra"]) $(id).hidden = true;
+    return;
+  }
   $("cases-field").hidden = !evalRun;
   const size = evalCfg.sizes[$("mode").value];
   if (size) { $("cases").max = size; $("cases-size").textContent = String(size); }
@@ -1416,6 +1758,14 @@ async function init() {
       say($("stress").value === "none" ? "" : `Stress: ${cfg.stresses[$("stress").value]}`);
     });
     for (const s of cfg.scenarios) $("scenario").append(new Option(s.replaceAll("_", " "), s));
+    for (const r of cfg.saved_runs || []) {
+      $("saved").append(new Option(`${r.storm} ${kindText(r.kind)}, ${r.arm}, ${r.resolved ? "resolved" : "not resolved"} (${r.file})`, `${r.file}#${r.run}`));
+    }
+    if (!(cfg.saved_runs || []).length) {
+      const o = new Option("no saved runs: run make experiment or make oncall", "");
+      o.disabled = true;
+      $("saved").append(o);
+    }
     banks.lesson = cfg.questions.map((q) => ({ label: q, text: q }));
     banks.incidents = cfg.incidents.map((i) => ({ label: i.title, text: i.text }));
     $("qset").addEventListener("change", fillQuestions);

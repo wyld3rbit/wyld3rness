@@ -62,7 +62,14 @@ def test_every_record_maps_to_a_known_phase() -> None:
     if snap.OPEN_PHASE is not None:
         assert snap.OPEN_PHASE == latest, "only the latest phase can be open"
         latest -= 1
-    assert snap.RECORDS[max(snap.RECORDS)] == latest
+    assert snap.newest_phase() == latest
+    assert set(snap.AT_CLOSE) <= set(snap.FROZEN), "a second picture is only for a record frozen as accepted"
+
+
+def test_the_outcome_picture_equals_a_fresh_render() -> None:
+    """Each Outcome picture is the page drawn at its phase, byte for byte."""
+    for record, phase in snap.AT_CLOSE.items():
+        assert snap.close_path(record).read_text() == snap.snapshot(phase, PAGE), "stale: run make adr-snapshot"
 
 
 def test_phase_five_draws_both_lanes_and_the_loop_between_them() -> None:

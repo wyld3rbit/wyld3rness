@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Sequence
+from contextlib import suppress
 from dataclasses import asdict
 from datetime import UTC, datetime
 import json
@@ -88,6 +89,7 @@ def run_one(
     arm: str = ARM,
     script: Sequence[str] = (),
     until_s: float = 0.0,
+    notify: controls.Notify = controls.quiet,
 ) -> JSON:
     """One storm: the host runs it and keeps its own verdict; the loop container handles the incident.
 
@@ -95,11 +97,16 @@ def run_one(
     request was sent puts them on the storm's clock, where the host's verdict is.
     `script` (an order of FindyFixy's script steps) makes the script decide instead
     of the model. The series is measured at least `until_s` after the fault, so
-    an experiment can give every arm the same window.
+    an experiment can give every arm the same window. `notify` hears the storm's
+    phases and seconds (`controls.live_storm`) and `incident_sent` with the
+    incident's id and when it was sent on the storm's clock, so a viewer can put
+    the loop's own events (`GET /incident/events`) on the storm's clock.
     """
     incident = f"{storm.id}-{uuid.uuid4().hex[:12]}"  # unique, so no agent can mistake it for another
-    with controls.live_storm(storm, arm, controls.RATE, config.wait_s, config.hold_s) as live:
+    with controls.live_storm(storm, arm, controls.RATE, config.wait_s, config.hold_s, notify) as live:
         sent_at = live.now()
+        with suppress(Exception):  # a viewer never costs a storm its verdict
+            notify("incident_sent", incident=incident, at=round(sent_at, 2))
         answer = post_incident(incident, config, model, script, arm)
         live.judge_from = on_storm_clock(sent_at, [decode_try(t) for t in answer["loop"]["tries"]])
         agent = answer.get("agent") or {"record_error": "the loop sent no agent record"}

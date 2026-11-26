@@ -48,6 +48,8 @@ The safe state ends every other path: out of tries, a decider that raised, an ac
 
 **The loop, traced.** `code/src/wyld3rness/loop/traced.py` wraps the environment, decider, policy and signer so each call is a span inside the incident's trace, with the model calls a decider reports as generations. `run_incident` itself holds no tracing code, and no span ever holds a credential.
 
+**The loop, watched.** `code/src/wyld3rness/loop/watch.py` wraps the same four ports so each step is an event a viewer can show as it happens (`LoopEventKind`): the decision, the policy's answer, each action and undo, each wait and verdict, and the end. `EventLog` holds one incident's events for a reader on another thread. FindyFixy's console uses it to show a storm try by try.
+
 **The script baseline and the experiment's statistics.** `code/src/wyld3rness/loop/script.py`: `Scripted` proposes an app's fixed sets of actions in a given order, one per try, through the same loop, policy and signer as a model. `code/src/wyld3rness/loop/experiment.py`: the paired bootstrap interval, the exact paired sign test, a step-down correction for multiple comparisons, the upper bound after 0 events, and power by simulation from an app's model of one storm.
 
 **Test doubles.** `code/src/wyld3rness/testing.py` ships a fake judge, embedder and system under test, so an app's own tests can drive the harness without a model, and a fake world and decider for the loop, on a clock that moves only when the loop waits. FindyFixy's adapter and on-call tests use them.

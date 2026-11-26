@@ -4,7 +4,9 @@ wyld3rness is being built as a harness and a set of agentic loops for agents tha
 
 **Today FindyFixy diagnoses, and acts only on a simulated production.** The harness's loop applies its proposed actions to [simprod](code/examples/simprod/README.md), which runs under real load and can be inspected by anyone, then checks what customers saw and undoes what did not work (`make oncall`). A policy, a signed credential for every action and a budget per incident sit in front of that loop (`make injection` tests them against 20 planted attacks). In a pre-registered test over 24 held-out storms, a script with no model in the same harness did better than the model: it resolved more storms and lost fewer customer minutes ([research log](code/docs/research-log.md), entries 019 and 020).
 
-![The visualizer on a live eval run: two golden cases move through what is built, inside the planned loop drawn dashed](code/docs/demo.gif)
+![The console replaying a saved storm: the model loop on a compound storm proposes one action a try, each is applied, not verified and undone, and the incident ends in the safe state after three tries; the chart shows customers' failures each second with every action marked](code/docs/demo.gif)
+
+The console drives a storm on simprod and shows each try as it happens, or replays a saved run (`make console`, then Storm or Replay).
 
 ## Built and planned
 
@@ -12,17 +14,17 @@ wyld3rness is being built as a harness and a set of agentic loops for agents tha
 |---|---|---|
 | May this change ship? | Eval gate run at every commit on exactly what is staged, and a CI gate that refuses an unattested change | **Built** |
 | What happened, and what did it cost? | A trace per run, with a reference cost on each triage and eval model call | **Built** |
-| What may one incident spend? | A budget reserved before each call, through one gateway | Planned |
-| May this action run, and as whom? | Policy by kind of action, and a credential per action | Planned |
+| What may one incident spend? | A budget reserved before each model call; later through one gateway | **Built**, gateway planned |
+| May this action run, and as whom? | Policy by kind of action, and a signed credential per action | **Built** |
 | Did it work? | A recovery check on what customers saw, measured where the agent cannot write | **Built** |
 | What if it was wrong? | Undo and retry where that is possible, otherwise a safe state | **Built** |
 | Can a person stop it all? | A kill switch above every action | Planned |
-| Is it worth it? | Agent against runbook, by cost per resolved incident | Planned |
+| Is it worth it? | The model loop against a script with no model, by customer minutes and cost per resolved incident | **Built** (the script won) |
 | How much may it do alone? | A person approves each kind of action once, and evidence keeps or removes it | Planned |
 
 ## Cost is an invariant
 
-Cost per resolved incident is every attempt's cost, failed ones included, divided by the incidents resolved. Today cost is measured and nothing limits it. The target: an incident cannot spend past its budget, the cheapest option that passes the safety and resolution bars wins, and a runbook with no model is always one of the options.
+Cost per resolved incident is every attempt's cost, failed ones included, divided by the incidents resolved. Today every incident has a budget the loop checks before each model call, and the script with no model is one of the options measured. The target: an incident cannot spend past its budget, the cheapest option that passes the safety and resolution bars wins, and a runbook with no model is always one of the options.
 
 ## Target design
 

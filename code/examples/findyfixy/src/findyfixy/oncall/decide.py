@@ -223,10 +223,14 @@ class ModelDecider:
         return reply
 
     def last_report(self) -> dict[str, object]:
-        """The latest decision's model calls and, when it was valid, its reason: what the loop's trace shows."""
+        """The latest decision's model calls, its reason when it was valid, and the incident's spend so far.
+
+        What the loop's trace and its watchers show: the spend lets a viewer show
+        the cost as the incident runs, priced by the budget that enforces it.
+        """
         calls = self.calls[self._first_call :]
         reason = self.reasons[-1] if calls and calls[-1].valid and self.reasons else None
-        return {"reason": reason, "calls": [asdict(c) for c in calls]}
+        return {"reason": reason, "calls": [asdict(c) for c in calls], "spent_usd": self.budget.spent_usd}
 
     def record(self) -> dict[str, object]:
         """Plain JSON about this decider's work so far: its calls, its reasons and its budget."""

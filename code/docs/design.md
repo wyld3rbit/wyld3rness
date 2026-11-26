@@ -1,6 +1,6 @@
 # Design and strategy
 
-**wyld3rness is being built as a harness and a set of agentic loops for running on-call without a human approving each action, inside a cost budget.** It is tested on FindyFixy, the agent in this repository. Today FindyFixy diagnoses, and acts only on the simulated production, through the harness's loop; the policy, the credential and the budget in front of it are planned. This page is the whole picture. The [decision records](adr/README.md) record what each phase decided and measured.
+**wyld3rness is being built as a harness and a set of agentic loops for running on-call without a human approving each action, inside a cost budget.** It is tested on FindyFixy, the agent in this repository. Today FindyFixy diagnoses, and acts only on the simulated production, through the harness's loop, behind a policy, a signed credential for every action and a budget per incident. On the storms it knows, a script with no model in the same loop beat the model (research log, entry 020). This page is the whole picture. The [decision records](adr/README.md) record what each phase decided and measured.
 
 ![The target design: what a human sets before runtime, the harness, the agent's decision, the act-verify-undo loop, and the simulated production. Solid is built, dashed is planned.](target-design.svg)
 
@@ -84,6 +84,7 @@ The harness never imports the app. Each control is a port the app implements or 
 - `SystemUnderTest` (built): describe, answer, summarise. The eval gate runs the app through it.
 - The event adapter (built): the app reports its steps, and the harness turns them into spans.
 - The environment port (built): the app supplies observe, its typed actions, and for each the undo that puts back the state from before, or the declaration that it has none, plus the user stream measured where the agent cannot write. The harness owns the loop, the recovery check and the stop. The decider port beside it holds the model, and can sit in another process (`RemoteDecider`), so the agent runs where it can only propose.
+- Watching and tracing (built): wrappers around the loop's four ports turn every step into an event a viewer shows as it happens, and into a span of the incident's trace. The loop itself has no hooks.
 - The policy table (built): the app declares each kind of action it allows, whether it must be alone, and the precondition the harness checks before the action runs. Blast radius per kind is planned.
 - The model port (planned): the app asks the gateway for a completion. The gateway routes, meters and refuses, and the app holds no model client.
 
@@ -154,12 +155,13 @@ A kind reaches Level 3 only on evidence from the simulated production that passe
 
 ## What changes next
 
-The order of the four controls is kept, and each will run on a simulated production. The computed escalation signal and the harder static golden set of the earlier plan are replaced by the recovery check and by versioned faults (ADR 0008). Each is recorded in the decision record of the phase that builds it:
+The order of the four controls is kept, and each runs on a simulated production. The computed escalation signal and the harder static golden set of the earlier plan are replaced by the recovery check and by versioned faults (ADR 0008). Each is recorded in the decision record of the phase that builds it:
 
-1. **The trust boundary.** Policy before any action, a credential per action, versioned faults that close the gap left by static cases, an injection suite, and one outage through the whole loop inside a budget.
-2. **Cost and one gateway.** Gateways compared, every call metered and bounded, and the agent against a runbook on cost per resolved incident.
-3. **Operation and approval.** Roll back and roll forward, scheduled evaluation, and approval of each kind of action on the evidence of a game day.
-4. **Autonomy as policy.** An unattended night, its postmortems, and the operating review with its full cost.
+The trust boundary is built: policy before any action, a credential per action, versioned faults, an injection suite, and storms through the whole loop inside a budget, with the model measured against a script with no model. What follows:
+
+1. **Cost and one gateway.** Gateways compared, every call metered and bounded, and the cheapest option that passes the bars chosen per kind of incident, the script among them.
+2. **Operation and approval.** Roll back and roll forward, scheduled evaluation, and approval of each kind of action on the evidence of a game day.
+3. **Autonomy as policy.** An unattended night, its postmortems, and the operating review with its full cost.
 
 Trust in one developer stays open by design while there is one developer. It closes when a second developer or an outsider must trust a merge, and a real run on a GPU runner replaces the attestation (ADR 0006).
 

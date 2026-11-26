@@ -39,8 +39,8 @@ without them.
 from __future__ import annotations
 
 import argparse
-from collections.abc import Iterator, Mapping
-from contextlib import contextmanager
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager, suppress
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 import json
@@ -223,8 +223,17 @@ class Live:
             time.sleep(0.5)
 
 
+Notify = Callable[..., None]  # notify(kind, **data): a viewer's hook, never part of the measurement
+
+
+def quiet(kind: str, **data: Any) -> None:
+    """The default hook: tell nobody."""
+
+
 @contextmanager
-def live_storm(storm: Storm, arm: str, rate: int, wait_s: float, hold_s: float) -> Iterator[Live]:
+def live_storm(
+    storm: Storm, arm: str, rate: int, wait_s: float, hold_s: float, notify: Notify = quiet
+) -> Iterator[Live]:
     """One storm for any arm: fresh services, warm-up, the fault, DETECT_S; then the arm acts; then the verdict.
 
         reset ─► scrape every second ─► warm WARM_S ─► inject ─► DETECT_S ─► yield: the arm acts
@@ -233,18 +242,35 @@ def live_storm(storm: Storm, arm: str, rate: int, wait_s: float, hold_s: float) 
     One sequence for every arm, so arms differ only in what they do between
     `t_act` and the end. The faults are cleared even when the arm raises; the
     measurement is added only when it did not, because a run cut short has no verdict.
+
+    `notify` hears each phase (`storm_phase`: warm-up, fault, detected, cleared)
+    and each new second of what customers saw (`customers`: ok and failed), on
+    the storm's clock, as they happen; a console shows them. It runs on the
+    scraper's thread, so it must return quickly; anything it raises is
+    swallowed, because a viewer must never cost a storm its verdict.
     """
+
+    def tell(kind: str, **data: Any) -> None:
+        """Pass one event to `notify`; a viewer's failure never reaches the storm."""
+        with suppress(Exception):  # see the docstring: the measurement comes first
+            notify(kind, **data)
+
     reset(storm, rate)
     scraper = Scraper(EDGE + "/customers/metrics")
     stop = threading.Event()
 
     def loop() -> None:
         """Scrape once a second until stopped. Nothing ends this loop early: a lost series would lose the verdict."""
+        told = 0
         while not stop.wait(1.0):
             try:
                 scraper.scrape()
             except Exception:  # scrape already counts the failures it expects; this counts the rest
                 scraper.errors += 1
+            seconds = scraper.series()
+            for second in seconds[told:]:
+                tell("customers", at=round(second.t, 2), ok=second.ok, failed=second.failed)
+            told = len(seconds)
 
     threading.Thread(target=loop, daemon=True).start()
     live = Live(
@@ -265,18 +291,22 @@ def live_storm(storm: Storm, arm: str, rate: int, wait_s: float, hold_s: float) 
     record = live.record
     try:
         live.before = read_settings()
+        tell("storm_phase", phase="warm-up", at=round(live.now(), 2), seconds=WARM_S)
         time.sleep(WARM_S)
         warm = judged(scraper.series())
         record["warm_ok"] = bool(warm) and all(s.good for s in warm)
         live.t_fault = live.now()
         record["injected"] = chaos("inject", json.dumps(asdict(storm)))
+        tell("storm_phase", phase="fault", at=round(live.t_fault, 2), seconds=DETECT_S)
         time.sleep(DETECT_S)
         live.t_act = live.now()
+        tell("storm_phase", phase="detected", at=round(live.t_act, 2))
         yield live
     finally:
         stop.set()
         try:
             chaos("clear")
+            tell("storm_phase", phase="cleared", at=round(live.now(), 2))
         except Exception as exc:  # a storm whose faults cannot be cleared must not poison the next: reset does
             record["clear_error"] = f"{type(exc).__name__}: {exc}"
     series = scraper.series()

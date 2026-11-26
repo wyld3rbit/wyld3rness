@@ -142,3 +142,38 @@ Details inside the containers decision above, made while building it. The agent 
 **Tracing the loop, live.** Found while building this step: the on-call path sent no traces, so an incident could not be watched or replayed in Langfuse. Each incident is now one trace from the loop container, with a span for every observation, decision, policy check, signature, action and wait. Harness wrappers around the loop's four ports do this (`wyld3rness.loop.traced`), so `run_incident` stays free of tracing code. The agent stays without keys: it returns each decision's reason and model calls (model, tokens) with its answer, and the loop records them as generations, which Langfuse prices. The loop container gets the local project's keys in a private file, plus a route to the host's Langfuse port. Every arm of the experiment is traced alike, and each run's trace id is saved in its record. Rejected: building traces afterwards from the saved results (no live view, timings reconstructed); giving the agent keys too (it would hold a credential).
 
 **What would change this.** A storm kind whose fix a script cannot reach in three tries, or a fix set too large to try in turn: then the model's choice has room to matter.
+
+
+### Step 7: the console shows a storm (written in the plan, before the code)
+
+![The console starts a storm through the storm driver; the loop container's watch turns each step into an event the console polls; customers' failures come each second; a saved run replays through the same view](img/0008-step7-console-storm.svg)
+
+**Decision.** The console drives a storm and shows each try as it happens: what was proposed, the policy's answer, each action and undo, the verdict, the cost of each decision, and the customers' failures second by second. Harness wrappers around the loop's four ports turn each step into an event (`wyld3rness.loop.watch`), the same way tracing wraps them, so `run_incident` stays unchanged. The loop container keeps the events of the incident in flight and serves them; the console polls them and streams them to the page over its existing event stream, beside the failures the host measures. The same view replays any saved run from its record, so a picture of a run never needs a rerun.
+
+**Blueprint.** Step-by-step streaming of an agent run, one update per step to any viewer, as open-source agent frameworks stream graph updates; and the console's own server-sent events since Day 2. Adopted as a pattern: no package, because the loop already has one wrapper point per port.
+
+**Options.** (1) Live, try by try, and replay (chosen). (2) The result only when the loop answers, about 3 to 4 minutes in: no harness change, but no try is seen as it happens. (3) Replay only: cheapest, but the console would drive nothing. Rejected also: reading the live trace back from Langfuse (spans leave in batches, so a try shows up late, and the console would need the project's keys).
+
+**Trade-off.** One more harness module and one more route on the loop container. Watching changes no answer: a wrapper only passes each call through and records it, and the experiment's numbers were measured without it.
+## Outcome (Day 7 close)
+
+![The architecture at the close of Day 7: the harness's act, verify and undo loop is built, with the policy, a credential per action and the budget in front of it, acting on the simulated production; the gateway, the scorecard, the kill switch, autonomy by evidence, alerts and scheduled faults are planned](img/0008-at-close.svg)
+
+**Built.** The direction held: the loop acts with no person approving each action, on a simulated production only, and everything that decides whether it may act is code. In order of the steps:
+
+| Step | What exists now | Research log |
+|---|---|---|
+| 0 | The eval gate runs at every commit on exactly what is staged; an unchanged case keeps its attested score | 002, 003 |
+| 1 | A run survives a database restart; an invalid answer is a typed error, never a crash | 004, 005 |
+| 2 | simprod: small real services under real load behind one edge, three storm kinds from two faults, and controls that prove the storms real, fixable and fairly judged | 006 to 012 |
+| 3 | The loop as a harness component: observe, decide, check, act, verify, hold, undo, retry, safe state; the verdict comes from what customers saw | 013 |
+| 4 | A policy table and a budget before every model call; a signed, one-time credential for every action and undo; the agent and the loop in their own containers | 014 to 016 |
+| 5 | An injection suite: no attacker-chosen action crossed the policy | 017, 018 |
+| 6 | A pre-registered experiment against a script with no model; every incident traced live | 019, 020 |
+| 7 | The console drives a storm and shows each try as it happens, or replays a saved run | none: a view |
+
+**What was measured.** The controls met their bar 63 of 63 on the second protocol (entry 012). The injection suite let 0 of 20 attacks run, with a fully fooled proposer and with the real model (entry 018). The model did not earn its place: over 24 held-out storms the model loop lost 0.269 more customer minutes an incident than the script (95% interval 0.134 to 0.414) and resolved 17 against 24 (entry 020). The model's one edge, choosing the right first fix, was smaller than its 6 s decision time, and it proposed one action a try, so it could not end a storm that needs two.
+
+**Deviations.** Day 7 was first built and withdrawn, then replanned under this record. The storm controls missed their first bar and were rerun under amended rules written before the rerun (entries 010, 011), after a relapse traced to a file-descriptor limit (entry 009). The step 6 plan grew two things: a script baseline, because comparing the loop only with one model try would credit the model for what retries did; and live tracing of the loop, found missing while building it. The harm margin was changed before the protocol, from a fixed amount to 6% of doing nothing (entry 019).
+
+**What it means now.** For incident kinds whose fix is among a few sets that can be undone, a script inside the same harness is the better operator: faster, complete and free. The harness is what makes either safe to run unattended. A model has to win where no script has a step, and that was not tested. Cost per resolved incident is measured; the gateway that enforces it for every call is Day 8's.

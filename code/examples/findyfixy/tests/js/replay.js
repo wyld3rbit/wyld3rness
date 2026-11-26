@@ -22,7 +22,8 @@ function el(id) {
     const cls = new Set();
     els[id] = {
       id, value: "", hidden: false, textContent: "", children: [], style: {}, scrollTop: 0,
-      scrollHeight: 0, className: "", disabled: false,
+      scrollHeight: 0, className: "", disabled: false, dataset: {},
+      get tBodies() { return [el(id + ":body")]; },
       classList: { add: (...c) => c.forEach((x) => cls.add(x)), remove: (...c) => c.forEach((x) => cls.delete(x)), toggle() {} },
       setAttribute() {}, getTotalLength: () => 100, getPointAtLength: () => ({ x: 0, y: 0 }),
       addEventListener() {}, append(...a) { this.children.push(...a); },
@@ -31,7 +32,10 @@ function el(id) {
   }
   return els[id];
 }
-global.document = { getElementById: el, createElement: () => el("x" + Math.random()), querySelectorAll: () => [], hidden: false };
+global.document = {
+  getElementById: el, createElement: () => el("x" + Math.random()), createElementNS: () => el("x" + Math.random()),
+  querySelectorAll: () => [], hidden: false,
+};
 const reduced = process.argv[6] === "reduced";
 global.window = { matchMedia: () => ({ matches: reduced }) };
 global.performance = { now: () => Date.now() };
