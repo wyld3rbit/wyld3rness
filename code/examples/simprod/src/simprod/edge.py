@@ -2,7 +2,6 @@
 
     host 127.0.0.1:8100 ──► edge ──► GET  /<service>/healthz | /metrics | /openapi.json
                                      GET  /customers/healthz | /metrics | /openapi.json
-                                     POST /gateway/pay
                                      POST /gateway/actions/backoff | /gateway/actions/rate-cap
                                      POST /<service>/actions/restart
                                      anything else: 404, logged
@@ -17,6 +16,11 @@ Why an allow-list: it is how the fault controls stay sealed. They listen on each
 service's admin port (9000), and no entry below names that port or a /fault
 path, so nothing on the host can reach them over HTTP, the agent included. The
 table is the single source for both the routing and this proxy's OpenAPI spec.
+
+No payments through here. Customers and the load generator pay from inside the
+internal network; nothing on the host needs `POST /gateway/pay`, and forwarding
+it would let anything on the host spend with a key read from the metrics
+(ADR 0009, step 0b).
 """
 
 from __future__ import annotations
@@ -67,7 +71,6 @@ ALLOW: tuple[Allowed, ...] = (
         Allowed("GET", CUSTOMERS, p, f"customers: {what}")
         for p, what in (("/healthz", "liveness"), ("/metrics", "what customers saw"), ("/openapi.json", "OpenAPI spec"))
     ),
-    Allowed("POST", "gateway", "/pay", "gateway: take one payment"),
     Allowed("POST", "gateway", "/actions/backoff", "gateway: turn retry backoff on or off"),
     Allowed("POST", "gateway", "/actions/rate-cap", "gateway: cap one key's rate"),
     *(Allowed("POST", s, "/actions/restart", f"{s}: restart (no undo)") for s in SERVICES),

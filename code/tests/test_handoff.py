@@ -68,11 +68,11 @@ def test_a_refused_hand_off_is_recorded_as_not_delivered() -> None:
 @pytest.mark.parametrize(
     ("post", "detail"),
     [
-        (lambda url, body, t: (500, "boom"), "HTTP 500 boom"),
-        (lambda url, body, t: (_ for _ in ()).throw(ConnectionRefusedError("refused")), "ConnectionRefusedError"),
-        (lambda url, body, t: (_ for _ in ()).throw(TimeoutError("timed out")), "TimeoutError"),
+        (lambda url, body, t, h: (500, "boom"), "HTTP 500 boom"),
+        (lambda url, body, t, h: (_ for _ in ()).throw(ConnectionRefusedError("refused")), "ConnectionRefusedError"),
+        (lambda url, body, t, h: (_ for _ in ()).throw(TimeoutError("timed out")), "TimeoutError"),
         (
-            lambda url, body, t: (_ for _ in ()).throw(urllib.error.HTTPError(url, 403, "no", {}, None)),  # type: ignore[arg-type]
+            lambda url, body, t, h: (_ for _ in ()).throw(urllib.error.HTTPError(url, 403, "no", {}, None)),  # type: ignore[arg-type]
             "HTTP 403",
         ),
     ],

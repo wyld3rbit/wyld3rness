@@ -55,6 +55,11 @@ Security model (a local tool is still a web server)
     - POST needs `Content-Type: application/json`. A cross-site form cannot
       send that without a CORS preflight, and we answer no preflight.
     - Origin, when present, must match Host.
+    - The on-call inbox (POST /handoff) also needs the hand-off token, which
+      only the loop container holds: a Host header alone proves nothing.
+    - No token on the browser routes: the console binds to loopback and the
+      agent's container has no route to the host (ADR 0009, step 0b), so only
+      processes on this machine reach it, and those can read any token file.
     - The question is capped at 8000 characters and the body at 32 KB.
     - An eval run's case count must be a JSON integer from 1 to the size of
       the chosen set (the golden set live, the invented set fake). Strict:
@@ -113,7 +118,7 @@ from findyfixy.events import Emit, Event, make_emit, make_stamped_emit
 from findyfixy.llm import answer_options, ollama_ask
 from findyfixy.observability.adapter import EventSpans, traced_sink
 from findyfixy.observability.tracing import open_tracing
-from findyfixy.paths import EVALS, PAGE, ROOT, WORKSPACE
+from findyfixy.paths import EVALS, HANDOFF_TOKEN, PAGE, ROOT, WORKSPACE
 from findyfixy.retrieval.incidents import DEFAULT_PATH, Incident, load_incidents
 from findyfixy.settings import load_env, optional_models
 from findyfixy.tools.deploys import make_deploys_tool
@@ -121,6 +126,7 @@ from findyfixy.tools.investigate import Investigator, build_investigator
 from findyfixy.triage.graph import QUESTIONS, THRESHOLD, Recall, build_graph
 from findyfixy.triage.record import RECALL_K, Ask, TriageError
 from findyfixy.wiring import SharedRetrieval, stage_spans
+from wyld3rness.loop.credential import presents_token
 from wyld3rness.trace.tracing import Tracing
 
 Mode = Literal["live", "fake"]
@@ -761,9 +767,15 @@ UNTRACED_ROUTES = (*QUIET_ROUTES, "/events")
 
 
 def make_handler(
-    hub: RunHub, page: Path, dev_root: Path | None = None, storm_page: Path = STORM_PAGE
+    hub: RunHub,
+    page: Path,
+    dev_root: Path | None = None,
+    storm_page: Path = STORM_PAGE,
+    handoff_token: Path = HANDOFF_TOKEN,
 ) -> type[BaseHTTPRequestHandler]:
     """Build the request handler class bound to `hub` and the two pages: the storm at `/`, `page` at `/architecture`.
+
+    `handoff_token` is the file whose token a hand-off must carry (`POST /handoff`).
 
     `dev_root`, when given, turns on dev mode: `/version` reports a fingerprint
     of the watched files and this process's start time, and `/config` says so.
@@ -904,6 +916,10 @@ def make_handler(
             # this server never answers, so no web page can plant a hand-off.
             if self.headers.get("Host") not in {f"{h}:{port}" for h in _INBOX_HOSTS} or self.headers.get("Origin"):
                 return self._json(HTTPStatus.FORBIDDEN, {"error": "bad host or origin"})
+            # A Host header is the caller's to set, so the loop also proves who it is: the hand-off
+            # token, which only the loop and this console hold (ADR 0009, step 0b). Checked before the body.
+            if not presents_token(self.headers.get("Authorization"), handoff_token):
+                return self._json(HTTPStatus.UNAUTHORIZED, {"error": "the hand-off token is required"})
             if not self.headers.get("Content-Type", "").startswith("application/json"):
                 return self._json(HTTPStatus.UNSUPPORTED_MEDIA_TYPE, {"error": "send JSON"})
             try:
@@ -1005,9 +1021,10 @@ def serve(
     host: str = "127.0.0.1",
     port: int = 8765,
     dev_root: Path | None = None,
+    handoff_token: Path = HANDOFF_TOKEN,
 ) -> ThreadingHTTPServer:
     """Build the server. Port 0 picks a free port (tests use it)."""
-    server = ThreadingHTTPServer((host, port), make_handler(hub, PAGE, dev_root))
+    server = ThreadingHTTPServer((host, port), make_handler(hub, PAGE, dev_root, handoff_token=handoff_token))
     server.daemon_threads = True
     return server
 

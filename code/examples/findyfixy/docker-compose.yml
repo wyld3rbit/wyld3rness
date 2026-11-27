@@ -61,13 +61,18 @@ services:
       db:
         condition: service_healthy
 
-  # On call (ADR 0008, step 4): the agent and the loop, each in its own container,
-  # profile "oncall" so a plain `docker compose up` does not start them;
+  # On call (ADR 0008, step 4; ADR 0009, step 0b): the agent, its edge and the loop, each in
+  # its own container, profile "oncall" so a plain `docker compose up` does not start them;
   # `make oncall-up` does, and `make up` runs it.
-  # The agent reaches only Ollama on the host: no Docker socket, no keys, and no
-  # network shared with simprod. The loop reaches simprod's edge and vault on
-  # simprod's outside network, holds the sign-only pass and the trace keys, and takes
-  # incidents from the host on 127.0.0.1:8300. Both: read-only, no capabilities, not root.
+  #
+  #   host 127.0.0.1:8300 + loop token ──► loop ──► agent ──► agent-edge :11434 ──► Ollama POST /api/chat
+  #   host 127.0.0.1:8301 (injection suite) ──► agent-edge :8001 ──► agent /decide, /record, /healthz
+  #
+  # The agent's network is internal: no route out, so no host, no internet, no simprod. Its
+  # peers are the loop, which answers it 401 without the loop token, and the agent edge,
+  # which forwards only the routes it lists. It holds no Docker socket, no keys, no pass and
+  # no token. The boundary probe checks all of that at every `make oncall-up`.
+  # All three: read-only, no capabilities, no new privileges.
   agent:
     profiles: [oncall]
     build:
@@ -77,13 +82,9 @@ services:
     command: ["python", "-m", "findyfixy.oncall.service", "agent"]
     environment:
       # The model, the budget and the wait come with each incident from the host (make oncall).
-      OLLAMA_HOST: http://host.docker.internal:11434
-    extra_hosts: ["host.docker.internal:host-gateway"]
+      # The model client calls Ollama through the edge's model door.
+      OLLAMA_HOST: http://agent-edge:11434
     networks: [agent]
-    # Published on loopback so `make injection` can ask it directly; this changes
-    # nothing about what the agent itself can reach.
-    ports:
-      - "127.0.0.1:8301:8000"
     init: true
     read_only: true
     cap_drop: [ALL]
@@ -91,6 +92,34 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # The only container on both the agent's network and an ordinary one (wyld3rness.loop.edge).
+  # Docker publishes no port from a container on an internal network alone, so the host's
+  # injection suite reaches the agent through here too.
+  agent-edge:
+    profiles: [oncall]
+    image: findyfixy-oncall:local
+    pull_policy: never  # built by the agent's build above
+    command: ["python", "-m", "findyfixy.oncall.service", "edge"]
+    environment:
+      OLLAMA_UPSTREAM: http://host.docker.internal:11434
+      AGENT_URL: http://agent:8000
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    networks: [agent, edge-out]
+    ports:
+      - "127.0.0.1:8301:8001"
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+    depends_on:
+      agent: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:11434/healthz', timeout=2)"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -108,6 +137,9 @@ services:
       SIMPROD_EDGE: http://edge:8000
       BAO_ADDR: http://openbao:8200
       BAO_SIGN_FILE: /run/bao/sign.token
+      # Only a caller with this token may start an incident or read its events; the
+      # host's runner and console read the same file. Written by `make oncall-up` (0600).
+      LOOP_TOKEN_FILE: /run/loop/token
       # Traces go to the local Langfuse on the host. Its project keys come from
       # .oncall-trace.env (git-ignored, 0600), written by `make oncall-up` from
       # infra/langfuse/.env; without it tracing is off and the loop runs the same.
@@ -117,12 +149,26 @@ services:
       # inbox on the host (`make console`). With nothing listening there, a hand-off is
       # recorded as not delivered. Set HANDOFF_URL to send it elsewhere.
       HANDOFF_URL: ${HANDOFF_URL:-http://host.docker.internal:8765/handoff}
+      # Sent with each hand-off, so the inbox can refuse anyone else. Its own token, not the
+      # loop's: a hand-off sent elsewhere carries nothing that opens the loop.
+      HANDOFF_TOKEN_FILE: /run/handoff/token
     env_file:
       - path: .oncall-trace.env
         required: false
     extra_hosts: ["host.docker.internal:host-gateway"]
     volumes:
       - ../simprod/.bao/sign.token:/run/bao/sign.token:ro
+      # Long form, so a missing token file stops compose instead of becoming a directory.
+      - type: bind
+        source: ./.oncall-loop.token
+        target: /run/loop/token
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ./.oncall-handoff.token
+        target: /run/handoff/token
+        read_only: true
+        bind: {create_host_path: false}
     networks: [agent, simprod]
     ports:
       - "127.0.0.1:8300:8000"
@@ -140,7 +186,11 @@ services:
       retries: 10
 
 networks:
-  agent: {}
+  # Internal: no default route. Its containers reach each other and nothing else.
+  agent:
+    internal: true
+  # Ordinary: the agent edge's way to the host's Ollama.
+  edge-out: {}
   simprod:
     external: true
     name: simprod_outside

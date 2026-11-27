@@ -112,9 +112,9 @@ def loop_config(base: LoopConfig, decider: str) -> LoopConfig:
 
 def fetch_events(incident: str, start: int) -> tuple[list[JSON], bool] | None:
     """The loop container's events for `incident` from `start` on, and whether it is over; None when not kept yet."""
-    url = f"{cli.LOOP_URL}/incident/events?incident={incident}&from={start}"
+    req = cli.loop_request(f"/incident/events?incident={incident}&from={start}")
     try:
-        with urllib.request.urlopen(url, timeout=5) as r:
+        with urllib.request.urlopen(req, timeout=5) as r:
             body = json.load(r)
     except urllib.error.HTTPError as e:
         if e.code == 404:  # the incident is not open yet, or was dropped: the host's answer has the record

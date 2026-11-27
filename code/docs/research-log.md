@@ -631,3 +631,24 @@ Per storm, customer minutes, and in brackets each try's proposal (B backoff on, 
 **Effect.** None on the result: the primary difference (+0.269, interval +0.134 to +0.414), the per-kind means, the resolution counts and the decision are all computed in the window. Entry 020 stays as written, since this log is append-only; read its per-storm values for unresolved runs as whole-run minutes.
 
 **How it was checked.** Recomputed from the saved results file (SHA-256 prefix `d8ed00d1c192491f`, the one entry 020 names) with `window_minutes`, against each run's saved `customer_minutes`.
+
+## 022. What can the agent's container reach? (ADR 0009, step 0b)
+
+**Question.** After the agent's network was made internal and its model calls were put behind the agent edge, does the agent reach anything but its loop and its one model route, and do its model calls still work?
+
+**Before.** Reading the compose file, not a run: the agent kept the host gateway for Ollama, so it could reach every port the host publishes on loopback, and the internet. The console's Host check, Langfuse's open sign-up and simprod's payment route each answered it without a credential.
+
+**Run 1: the boundary probe**, inside the agent's container, against the whole stack started by `make up` (`findyfixy.oncall.probe`, verdicts in `wyld3rness.loop.probe`). 31 routes:
+
+| Verdict | Routes | Which |
+|---|---|---|
+| closed (nothing answered) | 25 | a default route; simprod's edge and the vault by name; all 10 published ports by the host's name and again by the bridge's address; an outside name; the internet |
+| refused | 5 | the loop's two routes (401 without its token); the edge's other model routes, a model pull, and an unlisted route on its host door (403) |
+| needed | 1 | the edge's `POST /api/chat`, answered by Ollama (400 for an empty body) |
+| open | 0 | |
+
+**Run 2: one storm** (seed 3, 200 customers a second, qwen3:4b-instruct deciding), through the loop, the agent and the edge: a retry storm, resolved on the first try with one model call ($0.000094 of a $0.005 budget). The edge refused nothing during it, so the model client called only the route it lists.
+
+**What it means.** The boundary now holds by layout: every host port is unreachable, not merely guarded, and the services that refuse on their own are a second layer. One storm shows the path works, not how fast: the latency the extra hop adds is unmeasured.
+
+**Results file.** `oncall-20261127T073917Z.json` (SHA-256 prefix `2e1415c8dadb79f3`).

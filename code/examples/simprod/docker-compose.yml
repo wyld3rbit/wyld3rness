@@ -25,8 +25,10 @@
 name: simprod
 
 x-service: &service
-  build: .
+  # One image for every service, built once, by the ledger below. Were each service to build it,
+  # compose without the buildx plugin would build them in parallel and fail tagging the same name.
   image: simprod:local
+  pull_policy: never
   init: true
   read_only: true
   cap_drop: [ALL]
@@ -50,6 +52,7 @@ x-service: &service
 services:
   ledger:
     <<: *service
+    build: .  # builds simprod:local for all of them
     command: ["python", "-m", "simprod.ledger"]
     environment:
       # Capacity per shard = LEDGER_WORKERS / LEDGER_SERVICE_MS. The load test sets

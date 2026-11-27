@@ -28,7 +28,9 @@ from __future__ import annotations
 
 import base64
 from collections.abc import Callable
+import hmac
 import json
+from pathlib import Path
 import time
 from typing import Protocol
 import urllib.request
@@ -102,3 +104,29 @@ class TransitSigner:
         if not isinstance(signature, str) or not signature:
             raise RuntimeError("the vault returned no signature")
         return token(signed, signature)
+
+
+def authorized(header: str | None, token: str) -> bool:
+    """Whether an Authorization header carries `Bearer <token>` (ADR 0009, step 0b). Pure.
+
+    For the tokens that say which process is calling (the loop's, the hand-off's),
+    not for actions: those carry a signed one-time token above. Compared in
+    constant time, so the time to answer leaks nothing about how much of a guess
+    was right. An empty token never matches: a server started without one refuses
+    every caller instead of accepting any.
+    """
+    if not token or not header or not header.startswith("Bearer "):
+        return False
+    return hmac.compare_digest(header.removeprefix("Bearer ").encode(), token.encode())
+
+
+def presents_token(header: str | None, token_file: Path) -> bool:
+    """`authorized` against the token in `token_file` now. Read per call, so a rewritten token needs no restart.
+
+    A file that cannot be read refuses every caller.
+    """
+    try:
+        token = token_file.read_text().strip()
+    except OSError:
+        return False
+    return authorized(header, token)

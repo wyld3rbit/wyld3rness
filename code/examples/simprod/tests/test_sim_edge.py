@@ -32,6 +32,7 @@ def edge() -> tuple[Edge, dict[str, FakeUpstream]]:
         ("POST", "/ledger/entries"),
         ("POST", "/notifications/notify"),  # internal calls stay internal
         ("GET", "/gateway/pay"),
+        ("POST", "/gateway/pay"),  # customers pay inside the network; the host never does
         ("DELETE", "/gateway/healthz"),
         ("GET", "/loadgen/metrics"),
         ("GET", "/customers/fault"),

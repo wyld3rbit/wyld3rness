@@ -21,6 +21,9 @@
 #   - A headless first start (LANGFUSE_INIT_*): one org, one project with its
 #     API keys, one local user, so tracing works without clicking through a
 #     sign-up and copying keys by hand.
+#   - Sign-up off (AUTH_DISABLE_SIGNUP): the one user comes from .env, so nobody
+#     else, a process or a container on this machine included, can make an
+#     account (ADR 0009, step 0b).
 #
 # Upstream's header follows.
 #
@@ -161,6 +164,7 @@ services:
       LANGFUSE_MARKDOWN_RENDER_CHARACTER_LIMIT: ${LANGFUSE_MARKDOWN_RENDER_CHARACTER_LIMIT:-}
       LANGFUSE_TRUSTED_PROXY_COUNT: ${LANGFUSE_TRUSTED_PROXY_COUNT:-}
       LANGFUSE_DISABLE_SIGNUP_ONBOARDING: ${LANGFUSE_DISABLE_SIGNUP_ONBOARDING:-}
+      AUTH_DISABLE_SIGNUP: "true"
       # Hostnames allowed to reach the MCP endpoint, beyond NEXTAUTH_URL's own
       # host. Required when the worker uses LANGFUSE_MCP_BASE_URL.
       LANGFUSE_MCP_ALLOWED_HOSTS: ${LANGFUSE_MCP_ALLOWED_HOSTS:-}
