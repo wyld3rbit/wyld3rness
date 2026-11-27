@@ -1,66 +1,42 @@
 # Autonomous on-call, safe and affordable to be wrong
 
-wyld3rness is being built as a harness and a set of agentic loops for agents that run on-call without a human approving each action. People will set the goal, the invariants, the allowed kinds of action and the budget before runtime. Code will decide what may act, check real signals, undo what did not work, and stop when the tries or the money run out. It is tested on FindyFixy, an event detection, determination and mitigation agent.
+wyld3rness is a harness for AI agents that run on-call with no person approving each action. People set the rules and the budget. Code decides what may run, checks whether customers recovered, undoes what did not work, and stops when tries or money run out. It is tested on FindyFixy, an AI agent that diagnoses and fixes incidents, acting only on [simprod](code/examples/simprod/README.md), a simulated payment system under real load.
 
-**Today FindyFixy diagnoses, and acts only on a simulated production.** The harness's loop applies its proposed actions to [simprod](code/examples/simprod/README.md), which runs under real load and can be inspected by anyone, then checks what customers saw and undoes what did not work (`make oncall`). A policy, a signed credential for every action and a budget per incident sit in front of that loop (`make injection` tests them against 20 planted attacks). In a pre-registered test over 24 held-out storms, a script with no model in the same harness did better than the model: it resolved more storms and lost fewer customer minutes ([research log](code/docs/research-log.md), entries 019 and 020).
+![The console replaying a saved storm: customers' failures each second, every action and undo marked, the loop's steps, and the AI's three tries, each undone, ending in the safe state](code/docs/demo.gif)
 
-![The console's storm page replaying a saved storm: customers' failures each second with every action and undo marked, the loop as a strip of steps, the verdict beside it and the model loop's three tries below, each undone, ending in the safe state](code/docs/demo.gif)
+## What is built
 
-The console opens on a storm: it drives one on simprod and shows each try as it happens, or replays a saved run (`make console`). The architecture, triage and eval runs are on its second page.
-
-## Built and planned
-
-| The question | The control | Status |
+| Question | Control | Status |
 |---|---|---|
-| May this change ship? | Eval gate run at every commit on exactly what is staged, and a CI gate that refuses an unattested change | **Built** |
-| What happened, and what did it cost? | A trace per run, with a reference cost on each triage and eval model call | **Built** |
-| What may one incident spend? | A budget reserved before each model call; later through one gateway | **Built**, gateway planned |
-| May this action run, and as whom? | Policy by kind of action, and a signed credential per action | **Built** |
-| Did it work? | A recovery check on what customers saw, measured where the agent cannot write | **Built** |
-| What if it was wrong? | Undo and retry where that is possible, otherwise a safe state | **Built** |
-| Can a person stop it all? | A kill switch above every action | Planned |
-| Is it worth it? | The model loop against a script with no model, by customer minutes and cost per resolved incident | **Built** (the script won) |
-| How much may it do alone? | A person approves each kind of action once, and evidence keeps or removes it | Planned |
+| May this change ship? | Eval gate at every commit, checked again in CI | Built |
+| What happened, at what cost? | A trace per run, with cost | Built |
+| What may an incident spend? | A budget checked before each model call | Built |
+| May this action run? | A policy per kind of action, and a one-time signed pass | Built |
+| Did it work? | A recovery check on what customers saw | Built |
+| What if it was wrong? | Undo and retry, else a safe state | Built |
+| Who is told when it stops? | A hand-off to the on-call person | Planned |
+| Is the AI worth it? | The AI against a script with no model, same boundary | Built: [the script won](code/docs/research-log.md) |
+| How much may it do alone? | Approval once per kind of action, kept by evidence | Planned |
 
-## Cost is an invariant
+## The design
 
-Cost per resolved incident is every attempt's cost, failed ones included, divided by the incidents resolved. Today every incident has a budget the loop checks before each model call, and the script with no model is one of the options measured. The target: an incident cannot spend past its budget, the cheapest option that passes the safety and resolution bars wins, and a runbook with no model is always one of the options.
+![Target design: what people set before runtime, the harness, the triage agent, the two proposers (a model that reads the metrics and a script with no model), the act, verify and undo loop, and the simulated production. Solid is built, dashed is planned.](code/docs/target-design.svg)
 
-## Target design
-
-![Target design: what a human sets before runtime, the harness, the triage agent, the two proposers (a model that reads the metrics and a script with no model), the act-verify-undo loop and a simulated production. Solid is built, dashed is planned.](code/docs/target-design.svg)
-
-Details: [design and strategy](code/docs/design.md), with [the harness](code/src/wyld3rness/README.md) and [how a proposer earns its place](code/docs/design.md#how-a-proposer-earns-its-place) each drawn, and the decision behind it, [ADR 0008](code/docs/adr/0008-autonomous-operation-with-cost-as-an-invariant.md).
-
-## Research log
-
-Every measurement behind a decision, dated, with the protocol written before the run, the command that ran, the result with its spread, and what it cannot show: [research log](code/docs/research-log.md).
+- [The harness](code/src/wyld3rness/README.md): its parts and what an app plugs in.
+- [Design and strategy](code/docs/design.md): the whole picture, and how a proposer earns its place.
+- [Decision records](code/docs/adr/README.md): one per phase, with the options rejected.
+- [Research log](code/docs/research-log.md): every test, its protocol written before the run.
 
 ## Run it
 
-You need [uv](https://docs.astral.sh/uv/), Docker Compose with a runtime (Colima or Docker) and [Ollama](https://ollama.com/). Plan for 16 GB of memory and about 8.5 GB of model downloads.
+You need [uv](https://docs.astral.sh/uv/), Docker Compose with a runtime and [Ollama](https://ollama.com/): 16 GB of memory and about 8.5 GB of models.
 
 ```bash
-cp code/examples/findyfixy/.env.example code/examples/findyfixy/.env    # model names; edit if you use other models
-make setup                        # once per clone: packages, models, database, incidents
-make up                           # start the database
-make console                      # then open http://127.0.0.1:8765
-make down                         # when you are done
-```
-
-`make setup` is safe to run again.
-
-Then, in the page, pick Triage run or Eval run and press Run. Fake mode needs no model.
-
-```bash
-make triage           # triage five fixed questions in the terminal
-make eval             # score FindyFixy on 30 golden cases through the harness (live models, minutes)
-make case ID=g07      # one case end to end: the alert, the answer, every judge decision
-make test             # the harness and FindyFixy tests (make test-harness: the harness alone)
-make obs-secrets      # once: secrets for the local Langfuse stack
-make obs-up           # then open http://127.0.0.1:3000 to see every run as a trace
-make obs-prices       # once per stack: reference prices, so every model call carries a cost
-make help             # everything else
+cp code/examples/findyfixy/.env.example code/examples/findyfixy/.env    # model names
+make setup        # once: packages, models, database, incidents
+make up           # start the database
+make console      # open http://127.0.0.1:8765
+make help         # everything else
 ```
 
 ## Docs
@@ -69,7 +45,7 @@ make help             # everything else
 
 ## Limits
 
-One machine, local models, synthetic data, and a production that is simulated and will be labeled so wherever it is shown. Reference prices are a yardstick, not a bill. Nothing here is evidence of safety on real systems.
+One machine, local models, synthetic data and a simulated production. Nothing here is evidence of safety on real systems.
 
 <details>
 <summary>Disclaimer</summary>

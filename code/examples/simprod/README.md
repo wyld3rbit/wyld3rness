@@ -23,22 +23,15 @@ The services: standard library only, one image ([Dockerfile](Dockerfile)). OpenB
 
 ## Inspect it yourself
 
-Start it with `make sim-up` from `code/` (after `make up`). Then:
+Start it with `make sim-up` from `code/` (after `make up`). Every allowed endpoint is in `http://127.0.0.1:8100/openapi.json` (Postman can import it).
 
-| Check | Command | What you should see |
-|---|---|---|
-| Alive | `curl 127.0.0.1:8100/gateway/healthz` | `{"status": "ok", "service": "gateway"}` |
-| Pay once | `curl -X POST 127.0.0.1:8100/gateway/pay -H 'Content-Type: application/json' -d '{"key":"acct-0001","amount_cents":1999}'` | `{"id": ..., "shard": ..., "attempts": 1}` |
-| Metrics | `curl 127.0.0.1:8100/ledger/metrics` | Prometheus text: `ledger_writes_total`, `ledger_queue_depth` per shard |
-| Postman | Import `http://127.0.0.1:8100/openapi.json` | Every allowed endpoint, grouped by service |
-| Logs | `docker compose -p simprod logs -f gateway` | One JSON line per failure, action and fault |
-| Actions taken | `docker compose -p simprod logs gateway \| grep '"event": "action"'` | Each action with its actor and its credential's one-time id, written by the service that executed it |
-| Actions refused | `curl -i -X POST 127.0.0.1:8100/gateway/actions/backoff -H 'Content-Type: application/json' -d '{"enabled":true}'` | `403` with `"reason": "no credential"`, and an `action_refused` line in the gateway's log |
-| Sealed faults | `curl -i 127.0.0.1:8100/ledger/fault` | `404`: the edge never forwards a fault control |
-| What customers see | `curl 127.0.0.1:8100/customers/metrics` (during a storm) | `customers_requests_total` by outcome, customers only: the runaway client is counted on the sealed admin port, so these metrics do not name the fault |
-| Busiest keys | `curl 127.0.0.1:8100/gateway/metrics \| grep top_keys` | The 5 keys sending most over the last 10 s |
-| No route out | `docker compose -p simprod exec ledger python -c "import socket; socket.create_connection(('1.1.1.1', 443), 3)"` | `OSError: [Errno 101] Network is unreachable` |
-| Fault in force | `docker compose -p simprod exec gateway python -c "import urllib.request; print(urllib.request.urlopen('http://ledger:9000/fault').read())"` | The injected fault, visible to you from inside the network, never through the edge |
+| Check | Command |
+|---|---|
+| Alive | `curl 127.0.0.1:8100/gateway/healthz` |
+| Metrics | `curl 127.0.0.1:8100/ledger/metrics` |
+| What customers see | `curl 127.0.0.1:8100/customers/metrics` |
+| Actions taken, with actor | `docker compose -p simprod logs gateway \| grep '"event": "action"'` |
+| No route out | `docker compose -p simprod exec ledger python -c "import socket; socket.create_connection(('1.1.1.1', 443), 3)"` |
 
 ## Actions
 
@@ -48,7 +41,7 @@ Start it with `make sim-up` from `code/` (after `make up`). Then:
 | Cap a key's rate | `POST /gateway/actions/rate-cap {"key": "acct-0042", "rps": 5}` | `{"key": "acct-0042", "rps": null}` |
 | Restart a service | `POST /<service>/actions/restart {}` | none |
 
-Every action needs `X-Action-Token`: a credential for exactly that action and its arguments, valid 60 s, usable once, signed by OpenBao ([credentials.py](src/simprod/credentials.py)). The service asks OpenBao whether it is genuine before acting and refuses anything missing, forged, expired, reused or meant for another action, with the reason. `make sim-up` creates the key and two passes in the git-ignored .bao folder: one that may only sign (the host's), one that may only verify (mounted read-only into the services). Send `X-Actor: <who>` too, and the service logs it.
+Every action needs `X-Action-Token`, a pass for exactly that action, valid 60 s, usable once, signed by OpenBao ([credentials.py](src/simprod/credentials.py)). The service refuses anything missing, forged, expired, reused or meant for another action, and logs the reason.
 
 ## Faults
 
@@ -60,12 +53,10 @@ A storm is a fault plus the gateway it meets: as shipped (retries at once) or we
 | Hot shard | Backs off | One key hammered by a runaway client | It never stops by itself | Cap that key |
 | Compound | As shipped | The same runaway | The runaway, and that shard's own customers retrying at once | Cap that key and backoff on |
 
-Each storm is drawn from a seed, so a storm set is reproducible ([faults.py](src/simprod/faults.py)). The [checker](src/simprod/checker.py) reads what customers saw, and the harness's [verdict](../../src/wyld3rness/loop/verdict.py) judges recovery from it, nothing else. FindyFixy's `make oncall` runs the same storms through the harness's loop, with the controls' storm driver.
+Each storm is drawn from a seed, so a storm set is reproducible ([faults.py](src/simprod/faults.py)). Recovery is judged only from what customers saw ([checker](src/simprod/checker.py), the harness's [verdict](../../src/wyld3rness/loop/verdict.py)).
 
-## Load test
+To add a fault, add it to [faults.py](src/simprod/faults.py) with its fix; to add an action, add the endpoint and its undo to the service, then to FindyFixy's environment and policy.
 
-`make load-test` runs the protocol in research log entry 006: a ramp to find what the VM can serve, then three soaks at the operating rate. Results land in `results/` (git-ignored) and the verdict is printed.
+## Tests of simprod itself
 
-## Controls
-
-`make controls-pilot`, then `make controls` (research log entries 008 and 011): before any agent acts, 21 storms (7 of each kind) under three arms show that doing nothing fails, the scripted fix recovers and holds, and a wrong fix is caught and undone. Results in entry 012.
+`make load-test` finds what the VM can serve (research log entry 006). `make controls-pilot`, then `make controls`, show that doing nothing fails, the scripted fix recovers, and a wrong fix is caught and undone (entries 008, 011 and 012).
