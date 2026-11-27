@@ -35,7 +35,7 @@ from findyfixy.triage.record import Ask, Triage, ask_validated
 pytestmark = pytest.mark.integration
 
 # Generous on purpose. The first call to a model includes loading its weights
-# into memory (seconds for 1.5B, longer for 7B on a 16 GB machine under load).
+# into memory (seconds for 1.5B, longer for 7B within 16 GB under load).
 CALL_DEADLINE_S = 120
 FULL_RUN_DEADLINE_S = 600
 
@@ -91,8 +91,8 @@ def test_forced_escalation_reaches_the_large_model(ollama, deadline):
     assert_valid_triage(state["triage"])
 
 
-def test_full_run_completes_on_the_fixed_questions(ollama, deadline):
-    """All five fixed questions finish, each answered by one of the two models.
+def test_full_run_completes_on_the_lesson_questions(ollama, deadline):
+    """All five lesson questions finish, each answered by one of the two models.
 
     We do not assert how many escalate. That depends on model self-grading,
     which is the weakest part of the design (see findyfixy/triage/graph.py). The test guards

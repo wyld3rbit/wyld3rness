@@ -29,7 +29,7 @@ def rows() -> list[dict]:
 
 
 def test_forty_queries_ten_of_them_exact_token(rows) -> None:
-    """40 labelled queries, 10 of which hinge on an exact token."""
+    """The lesson asks for 40, with 10 that hinge on an exact token."""
     queries = build_queries(rows)
     assert len(queries) == 40
     assert sum(q.kind == "token" for q in queries) == 10

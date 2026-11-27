@@ -105,15 +105,12 @@ def test_no_relative_imports() -> None:
 # Entry points build the real thing. Domain code takes its dependencies as
 # arguments and must not reach for the composition root or for configuration.
 # Every module with a command `main`. ingest, search and the MCP server joined
-# on Day 6: each traces its command, so each reads tracing settings. The hard-set
-# eval command (answers_hard) joined on Day 7.
+# on Day 6: each traces its command, so each reads tracing settings.
 ENTRY_POINTS = {
     f"findyfixy.{m}"
     for m in (
         "console.server",
         "evals.answers",
-        "evals.answers_hard",
-        "evals.attacks_live",
         "evals.retrieval",
         "triage.graph",
         "tools.direct_run",
@@ -122,6 +119,10 @@ ENTRY_POINTS = {
         "retrieval.search",
         "mcp.server",
         "observability.prices",
+        "oncall.cli",
+        "oncall.attacks",
+        "oncall.service",
+        "oncall.experiment",
     )
 }
 # The composition root and the configuration it reads.

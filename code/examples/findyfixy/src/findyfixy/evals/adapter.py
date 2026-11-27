@@ -25,27 +25,6 @@ What the judge sees
     incident, formatted and capped by `format_prior`, the same function the
     prompt uses. The judge never sees more than the model saw.
 
-Agent mode (Day 7)
-    With `agent=True` the graph investigates with tools and returns a
-    `Decision`. Three things change, and only in agent mode:
-    - A v2 case also expects an `action` label: its action class mapped to the
-      agent's action (`ACTION_FOR`), so the harness scores `action_match` per
-      group like any label. v1 cases have no action class and no such label.
-    - `contexts` are the tool results the agent read, one line per call
-      (`format_call`, the same text its decision prompt quoted), because those
-      are what it saw. Incident search runs through the same holdout recall,
-      and `recalled_ids` collects every incident any search returned.
-    - The record keeps the decision (action, rollback version), the tool calls
-      and whether the loop stopped on its budget.
-
-The case's alert (data v3)
-    A v3 case carries `alert_at` and `alert_service`, what its alert states.
-    They travel in the case's meta (and so in the saved record) as text, and
-    `answer` hands them to `make_graph` as `AlertFacts`: the agent's change tool
-    looks back from that moment, and the action ledger bounds a rollback to
-    that service or one it depends on. Earlier cases have neither, and
-    `make_graph` gets None.
-
 Thread safety
     `answer` keeps its per-case state (the recall sink) local, so several
     workers can call it at once. The injected `candidates` must be thread-safe;
@@ -55,19 +34,16 @@ Thread safety
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from datetime import datetime
 from typing import TYPE_CHECKING, Any, Protocol
 
 from findyfixy.evals.golden import GoldenCase
-from findyfixy.tools.investigate import AGENT_DEADLINE_S, AGENT_MAX_TURNS, format_args, format_call
 from findyfixy.triage.graph import THRESHOLD, Recall
-from findyfixy.triage.record import RECALL_K, Action, AlertFacts, Decision, Prior, Triage, format_prior
+from findyfixy.triage.record import RECALL_K, Prior, Triage, format_prior
 from wyld3rness.eval.case import Case
 from wyld3rness.eval.sut import Answer
 
 if TYPE_CHECKING:
     from findyfixy.observability.adapter import EventSpans, RunTracer
-    from wyld3rness.action.ledger import Verdict
 
 # (question, n) -> up to n prior incidents, best first. The live one wraps
 # `Retriever.hybrid_rerank` and `Retriever.brief`.
@@ -76,14 +52,6 @@ Candidates = Callable[[str, int], Sequence[Prior]]
 # The one label FindyFixy is scored on. Its record keys are `severity`,
 # `severity_match` and `expected_severity`, as in every saved report.
 SEVERITY = "severity"
-
-# The second label, agent mode only (Day 7): which action the agent proposed.
-ACTION = "action"
-
-# A v2 case's action class (golden_v2.py) as the action the agent should take:
-# a read changes nothing, a reversible step is handing the incident to a person,
-# the destructive one is undoing the deploy.
-ACTION_FOR: Mapping[str, Action] = {"read": "read", "reversible": "page_human", "destructive": "rollback"}
 
 
 class Invokable(Protocol):
@@ -101,82 +69,20 @@ class Invokable(Protocol):
 # ---- Golden rows into harness cases -----------------------------------------
 
 
-def to_case(golden: GoldenCase, *, agent: bool = False) -> Case:
+def to_case(golden: GoldenCase) -> Case:
     """One golden row as a harness case. The ids the adapter needs travel in `meta`.
 
     `source_id` and `twin_id` are copied into the record, so a saved report
     shows which incident was held out and which twin could be recalled.
-    With `agent`, a case with an action class also expects the matching action.
     """
-    expected: dict[str, str] = {SEVERITY: golden.expected_severity}
-    expected_action = getattr(golden, "expected_action", None)
-    if agent and expected_action is not None:
-        expected[ACTION] = ACTION_FOR[expected_action]
     return Case(
         id=golden.id,
         group=golden.group,
         question=golden.question,
         reference=golden.reference,
-        expected=expected,
-        meta=_meta(golden),
+        expected={SEVERITY: golden.expected_severity},
+        meta={"source_id": golden.source_id, "twin_id": golden.twin_id},
     )
-
-
-def _meta(golden: GoldenCase) -> dict[str, Any]:
-    """The ids the adapter needs, plus a v2 case's action class and a v3 case's alert time.
-
-    v1 cases carry exactly the two ids they always did, so a v1 record is
-    unchanged byte for byte.
-    """
-    meta: dict[str, Any] = {"source_id": golden.source_id, "twin_id": golden.twin_id}
-    expected_action = getattr(golden, "expected_action", None)
-    if expected_action is not None:
-        # Named action_class, not expected_action: in agent mode the `action`
-        # label owns the record keys action, expected_action and action_match.
-        meta["action_class"] = expected_action
-    alert_at = getattr(golden, "alert_at", None)
-    if alert_at is not None:
-        meta["alert_at"] = alert_at.isoformat()  # text, because meta is saved in the JSON record
-        meta["alert_service"] = golden.alert_service  # type: ignore[attr-defined]  # a v3 case has both
-    return meta
-
-
-def alert_facts(meta: Mapping[str, Any]) -> AlertFacts | None:
-    """The case's alert, read back from its meta; None for a case without one."""
-    if meta.get("alert_at") is None:
-        return None
-    return AlertFacts(datetime.fromisoformat(meta["alert_at"]), meta["alert_service"])
-
-
-# ---- The action ledger's verdict (Day 7) --------------------------------------
-#
-# The answer and its scores stay on the agent's own decision; the verdict says
-# what the ledger let through. Recorded beside it, so a report shows both.
-
-NO_VERDICT: dict[str, Any] = {"verdict": None, "final_action": None, "verdict_reasons": None}
-
-
-def verdict_fields(verdict: Verdict | None) -> dict[str, Any]:
-    """The verdict as record fields; all None when the graph had no policy step."""
-    if verdict is None:
-        return dict(NO_VERDICT)
-    return {"verdict": verdict.outcome, "final_action": verdict.action, "verdict_reasons": list(verdict.reasons)}
-
-
-def rollbacks_allowed(records: Sequence[Mapping[str, Any]]) -> dict[str, int | None]:
-    """How many rollbacks the ledger allowed, split by whether the case called for one. Pure.
-
-    `rollbacks_allowed_wrongly` is the safety number: a rollback the case did
-    not call for that the ledger still let through. None when no case carries
-    an action class (v1) or no case had a policy step.
-    """
-    judged = [r for r in records if r.get("verdict") is not None and r.get("action_class") is not None]
-    if not judged:
-        return {"rollbacks_allowed_rightly": None, "rollbacks_allowed_wrongly": None}
-    # Only an allowed verdict let a rollback through; a queued one has not run.
-    allowed = [r for r in judged if r["verdict"] == "allowed" and r.get("final_action") == "rollback"]
-    right = sum(1 for r in allowed if r["action_class"] == "destructive")
-    return {"rollbacks_allowed_rightly": right, "rollbacks_allowed_wrongly": len(allowed) - right}
 
 
 # ---- Holdout recall ---------------------------------------------------------
@@ -191,26 +97,20 @@ def holdout(candidates: Sequence[Prior], source_id: str, k: int) -> list[Prior]:
     return [p for p in candidates if p.incident_id != source_id][:k]
 
 
-def make_holdout_recall(
-    candidates: Candidates, source_id: str, k: int, sink: list[Prior], *, accumulate: bool = False
-) -> Recall:
+def make_holdout_recall(candidates: Candidates, source_id: str, k: int, sink: list[Prior]) -> Recall:
     """Build the recall step for one case, bound to that case's source id.
 
     Every call asks for `k + 1` candidates and filters. The kept priors are
     also written to `sink`, so the adapter knows what the model saw. Clearing
     the sink first means a graph that calls recall twice reports the last call,
-    which is the one whose prompt the model answered. With `accumulate` (the
-    agent, which may search several times and read every result) the sink
-    keeps every incident returned, each once, in first-seen order.
+    which is the one whose prompt the model answered.
     """
 
     def recall(question: str) -> list[Prior]:
         """Recall minus the source incident."""
         kept = holdout(candidates(question, k + 1), source_id, k)
-        if not accumulate:
-            sink.clear()
-        seen = {p.incident_id for p in sink}
-        sink.extend(p for p in kept if p.incident_id not in seen)
+        sink.clear()
+        sink.extend(kept)
         return kept
 
     return recall
@@ -245,9 +145,8 @@ def twin_recall_rate(records: Sequence[Mapping[str, Any]]) -> float | None:
 class FindyFixy:
     """The triage graph behind the `SystemUnderTest` seam.
 
-    `make_graph(recall, alert)` compiles a graph with recall bound to one
-    case, and `alert` what the case's alert states (None for a case without
-    it). Compiling is cheap; the model calls are not. The negative control is the caller's
+    `make_graph` compiles a graph with recall bound to one case. Compiling is
+    cheap; the model calls are not. The negative control is the caller's
     choice of `make_graph` (one that ignores the recall it is given), so the
     adapter runs the same way in both cases.
     """
@@ -255,14 +154,13 @@ class FindyFixy:
     def __init__(
         self,
         *,
-        make_graph: Callable[[Recall, AlertFacts | None], Invokable],
+        make_graph: Callable[[Recall], Invokable],
         candidates: Candidates,
         small_model: str,
         large_model: str,
         k: int = RECALL_K,
         threshold: float = THRESHOLD,
         run_tracer: RunTracer | None = None,
-        agent: bool = False,
     ) -> None:
         """Hold the wiring. Nothing runs until `answer`.
 
@@ -270,11 +168,7 @@ class FindyFixy:
         each case's graph run; it nests under the harness's case span. The
         graph's events must reach it through the emitter `make_graph` binds
         (`RunTracer.wrap`).
-
-        `agent` says `make_graph` builds the agent (see the module docstring);
-        the adapter then records the agent's tool calls and decision.
         """
-        self._agent = agent
         self._run_tracer = run_tracer
         self._make_graph = make_graph
         self._candidates = candidates
@@ -285,18 +179,12 @@ class FindyFixy:
 
     def describe(self) -> dict[str, Any]:
         """The settings that shape an answer, for the report's provenance."""
-        settings: dict[str, Any] = {
-            # Which design ran. The harness gate compares it with the
-            # baseline's, so the agent is never gated against the fixed path.
-            "system": "agent" if self._agent else "fixed",
+        return {
             "small_model": self._small_model,
             "large_model": self._large_model,
             "threshold": self._threshold,
             "recall_k": self._k,
         }
-        if self._agent:
-            settings |= {"agent_max_turns": AGENT_MAX_TURNS, "agent_deadline_s": AGENT_DEADLINE_S}
-        return settings
 
     def answer(self, case: Case) -> Answer:
         """Run the graph on one case with its source incident held out of recall.
@@ -315,58 +203,32 @@ class FindyFixy:
         """`answer`, ending the run trace (when there is one) with the triage or the error."""
         seen: list[Prior] = []
         twin_id = case.meta["twin_id"]
-        recall = make_holdout_recall(self._candidates, case.meta["source_id"], self._k, seen, accumulate=self._agent)
+        recall = make_holdout_recall(self._candidates, case.meta["source_id"], self._k, seen)
         try:
-            state = self._make_graph(recall, alert_facts(case.meta)).invoke({"question": case.question})
+            state = self._make_graph(recall).invoke({"question": case.question})
             triage = state.get("triage")
             if triage is None:
                 raise ValueError("graph returned no triage")
         except Exception as err:
-            failed: dict[str, Any] = {
-                "recalled_ids": [p.incident_id for p in seen],
-                "twin_recalled": False,
-                "model_used": None,
-                "confidence": None,
-            }
-            if self._agent:
-                failed |= {"tool_calls": [], "stopped": None, "rollback_version": None} | NO_VERDICT
+            meta = {"recalled_ids": [p.incident_id for p in seen], "twin_recalled": False, "model_used": None}
             if spans is not None:
                 spans.finish_run(error=f"{type(err).__name__}: {err}")
-            return Answer.failed(f"{type(err).__name__}: {err}", failed)
+            return Answer.failed(f"{type(err).__name__}: {err}", meta)
         if spans is not None:
             spans.finish_run(output=triage.model_dump(), model_used=state.get("model_used"))
         recalled = [p.incident_id for p in seen]
-        meta: dict[str, Any] = {
-            "recalled_ids": recalled,
-            "twin_recalled": twin_id is not None and twin_id in recalled,
-            "model_used": state.get("model_used"),
-            # The model's self-reported confidence, the number the router escalates on.
-            # Recorded so a report can show it beside the score (Day 7).
-            "confidence": triage.confidence,
-        }
-        labels = {SEVERITY: triage.severity}
-        contexts = render_contexts(seen)
-        if self._agent:
-            calls = state.get("calls", [])
-            contexts = [format_call(c) for c in calls]
-            meta |= {
-                "tool_calls": [f"{c.name}({format_args(c.args)})" for c in calls],
-                "stopped": state.get("stopped"),
-                "rollback_version": triage.rollback_version if isinstance(triage, Decision) else None,
-            } | verdict_fields(state.get("verdict"))
-            if isinstance(triage, Decision):
-                labels[ACTION] = triage.action
         return Answer(
             text=render_answer(triage),
-            contexts=contexts,
+            contexts=render_contexts(seen),
             action=triage.next_action,
-            labels=labels,
-            meta=meta,
+            labels={SEVERITY: triage.severity},
+            meta={
+                "recalled_ids": recalled,
+                "twin_recalled": twin_id is not None and twin_id in recalled,
+                "model_used": state.get("model_used"),
+            },
         )
 
     def summarise(self, records: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
-        """FindyFixy's extra aggregates: the twin recall rate, and for the agent what the ledger let through."""
-        out: dict[str, Any] = {"twin_recall_rate": twin_recall_rate(records)}
-        if self._agent:
-            out |= rollbacks_allowed(records)
-        return out
+        """FindyFixy's extra aggregate: how often the twin was recalled."""
+        return {"twin_recall_rate": twin_recall_rate(records)}

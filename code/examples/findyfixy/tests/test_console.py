@@ -197,12 +197,15 @@ def test_page_is_served_and_never_uses_innerhtml(server):
     # Event data includes model output, which is untrusted. The page must set
     # it with textContent. This guards against someone "simplifying" it later.
     _, port = server
-    status, data = call(port, "GET", "/")
-    html = data.decode()
-    assert status == 200
-    assert "FindyFixy" in html
-    assert "innerHTML" not in html
-    assert "eval(" not in html
+    for route in ("/", "/architecture"):  # the storm page and the architecture page
+        status, data = call(port, "GET", route)
+        html = data.decode()
+        assert status == 200
+        assert "FindyFixy" in html
+        assert "innerHTML" not in html
+        assert "eval(" not in html
+    assert "Live storm" in call(port, "GET", "/")[1].decode()
+    assert "Eval run" in call(port, "GET", "/architecture")[1].decode()
 
 
 def test_force_escalation_sends_a_confident_answer_to_large(monkeypatch):
@@ -412,8 +415,9 @@ def test_page_keeps_the_hidden_attribute_working(server):
     # `.field { display: grid }` beats the browser's own `[hidden]` rule, so
     # Live and Fake controls both showed at once. This guards the override.
     _, port = server
-    html = call(port, "GET", "/")[1].decode()
-    assert "[hidden] { display: none !important; }" in html
+    for route in ("/", "/architecture"):  # both pages style `.field` as a grid
+        html = call(port, "GET", route)[1].decode()
+        assert "[hidden] { display: none !important; }" in html
 
 
 # ---- force retry: the first small reply is illegal, the retry is real -------
@@ -594,108 +598,6 @@ def test_live_use_tools_without_a_configured_tool_step_is_503(monkeypatch):
         srv.server_close()
 
 
-def live_agent_hub(
-    monkeypatch,
-    decision='{"severity": "sev1", "component": "auth", "next_action": "undo 2.15.0", '
-    '"confidence": 0.9, "action": "rollback", "rollback_version": "2.15.0"}',
-):
-    """A live hub whose agent is the real loop and tools over a scripted model, and whose decision `ask` is scripted."""
-    from langchain_core.messages import AIMessage
-
-    from findyfixy.console.fakes import as_chunk
-    import findyfixy.console.server as console
-    from findyfixy.tools.deploys import make_deploys_tool
-    from findyfixy.tools.investigate import agent_prompt, build_investigator
-    from findyfixy.tools.memory import make_search_tool
-    from findyfixy.tools.services import make_services_tool
-    from findyfixy.wiring import Agent, build_judge
-
-    monkeypatch.setattr(console, "ollama_decision_ask", lambda m, p: decision)
-    searched: list[str] = []
-
-    def recall(question):
-        searched.append(question)
-        return []
-
-    def make_agent(model, recall):
-        replies = iter(
-            [
-                AIMessage(
-                    content="", tool_calls=[{"name": "search_incidents", "args": {"query": "auth logins"}, "id": "c1"}]
-                ),
-                AIMessage(content="nothing similar; auth 2.15.0 is recent"),
-            ]
-        )
-
-        class Model:
-            def invoke(self, messages):
-                return next(replies)
-
-            def stream(self, messages):
-                yield as_chunk(next(replies))
-
-        tools = [make_search_tool(recall), make_deploys_tool(), make_services_tool()]
-        return Agent(
-            build_investigator(Model(), tools, max_turns=6, deadline_s=30.0), agent_prompt, lambda: build_judge("v1")
-        )
-
-    hub = RunHub(live_models=("s", "l"), recall=recall, make_agent=make_agent, sleep=lambda s: None, fake_delay=0)
-    srv = serve(hub, port=0)
-    threading.Thread(target=srv.serve_forever, daemon=True).start()
-    return srv, searched
-
-
-def test_a_live_agent_run_investigates_through_its_own_search_then_decides(monkeypatch):
-    """No fixed recall step: the agent searched with its own words, and the run ends with its decision."""
-    srv, searched = live_agent_hub(monkeypatch)
-    port = srv.server_address[1]
-    try:
-        assert post_run(port, {"mode": "live", "question": "auth logins failing", "agent": True})[0] == 202
-        events = stream(port)
-        assert [e["data"]["node"] for e in events if e["kind"] == "node_entered"] == ["investigate", "small"]
-        assert searched == ["auth logins"]
-        started = next(e for e in events if e["kind"] == "run_started")["data"]
-        assert started["agent"] is True and started["recall"] is False
-        triage = next(e for e in events if e["kind"] == "run_finished")["data"]["triage"]
-        assert (triage["action"], triage["rollback_version"]) == ("rollback", "2.15.0")
-        # The console's free-text runs have no change log, so the ledger fails closed on the rollback.
-        verdict = next(e for e in events if e["kind"] == "policy")["data"]
-        assert (verdict["outcome"], verdict["action"], verdict["proposed"]) == ("downgraded", "page_human", "rollback")
-    finally:
-        srv.shutdown()
-        srv.server_close()
-
-
-def test_the_agent_refuses_fake_mode_the_tool_step_stress_and_the_injected_retry(monkeypatch):
-    """Each combination is a clean 422 before anything runs."""
-    srv, _ = live_agent_hub(monkeypatch)
-    port = srv.server_address[1]
-    try:
-        assert post_run(port, {"mode": "fake", "scenario": "stay_small", "agent": True})[0] == 422
-        for extra in ({"use_tools": True}, {"stress": "vague_prompt"}, {"force_retry": True}):
-            body = {"mode": "live", "question": "q", "agent": True, **extra}
-            assert post_run(port, body)[0] == 422, extra
-    finally:
-        srv.shutdown()
-        srv.server_close()
-
-
-def test_an_agent_run_without_an_agent_builder_is_503(server):
-    """A hub with no models or database cannot build the agent."""
-    _, port = server
-    assert post_run(port, {"mode": "live", "question": "q", "agent": True})[0] == 503
-
-
-def test_config_says_whether_the_agent_is_available(monkeypatch):
-    """/config carries agent_available, which the page uses to show the Agent switch."""
-    srv, _ = live_agent_hub(monkeypatch)
-    try:
-        assert json.loads(call(srv.server_address[1], "GET", "/config")[1])["agent_available"] is True
-    finally:
-        srv.shutdown()
-        srv.server_close()
-
-
 def test_config_says_whether_the_tool_step_is_available(server, monkeypatch):
     _, port = server
     cfg = json.loads(call(port, "GET", "/config")[1])
@@ -705,7 +607,7 @@ def test_config_says_whether_the_tool_step_is_available(server, monkeypatch):
 
 def test_page_has_the_tool_step_nodes_and_marks_empty_results_as_a_warning(server):
     _, port = server
-    html = call(port, "GET", "/")[1].decode()
+    html = call(port, "GET", "/architecture")[1].decode()
     for needle in ('id="n_inv"', 'id="n_tool"', 'id="e_inv_tool"', 'id="usetools"'):
         assert needle in html
     # An empty lookup is legal but suspicious (wrong window), so not green.
@@ -738,14 +640,14 @@ def test_fake_mode_says_the_served_model_is_not_reported(server):
 
 def test_page_shows_and_flags_the_served_model(server):
     _, port = server
-    html = call(port, "GET", "/")[1].decode()
+    html = call(port, "GET", "/architecture")[1].decode()
     for needle in ("served by", "MISMATCH", "Served by", "not reported"):
         assert needle in html
 
 
 def test_the_page_declares_an_inline_icon_so_browsers_do_not_ask_for_one(server):
     _, port = server
-    html = call(port, "GET", "/")[1].decode()
+    html = call(port, "GET", "/architecture")[1].decode()
     assert 'rel="icon"' in html and "data:image/svg+xml" in html
 
 
@@ -840,7 +742,7 @@ def test_config_lists_the_stresses_with_descriptions(server):
 
 def test_page_defaults_to_live_mode_and_has_the_stress_control(server):
     _, port = server
-    html = call(port, "GET", "/")[1].decode()
+    html = call(port, "GET", "/architecture")[1].decode()
     assert '<option value="live" selected>' in html
     assert html.index('<option value="live"') < html.index('<option value="fake"')
     assert 'id="stress"' in html
@@ -990,8 +892,6 @@ def test_a_full_eval_without_a_baseline_ends_in_eval_failed(tmp_path):
         {"mode": "fake"},
         {"mode": "weird", "cases": 2},
         {"mode": "fake", "cases": 2, "scenario": "stay_small"},
-        {"mode": "fake", "cases": 2, "data": "v2"},
-        {"mode": "live", "cases": 2, "data": "v4"},
     ],
 )
 def test_bad_eval_requests_are_422(server, payload):
@@ -1013,83 +913,6 @@ def test_the_live_limit_is_the_live_sets_own_size():
     finally:
         srv.shutdown()
         srv.server_close()
-
-
-def test_a_full_v2_run_uses_the_hard_set_and_never_applies_the_gate(tmp_path):
-    """data v2 runs the v2 suite; a full v2 run ends with gate None, and no baseline is read."""
-    from findyfixy.console.eval_run import EvalResult, EvalSuite
-
-    used = []
-
-    def suite(name):
-        def run(n, *, emit, on_event, should_stop, agent=False):
-            used.append(name)
-            return EvalResult(
-                report={"aggregates": {"overall": {"n": n, "n_run_errors": 0, "scores": {}}}}, subset=False
-            )
-
-        return EvalSuite(run=run, size=30)
-
-    hub = RunHub(
-        live_models=("s", "l"),
-        live_eval=suite("v1"),
-        live_eval_hard={"v2": suite("v2"), "v3": suite("v3")},
-        baseline_path=tmp_path / "missing.json",  # a gated run would fail on this
-        sleep=no_wait,
-        fake_delay=0,
-    )
-    srv, port = _serve(hub)
-    try:
-        finished = []
-        for data in ("v2", "v3"):
-            for _ in range(50):
-                if post_eval(port, {"mode": "live", "cases": 30, "data": data})[0] == 202:
-                    break
-                time.sleep(0.02)
-            finished.append(stream(port)[-1])
-    finally:
-        srv.shutdown()
-        srv.server_close()
-    assert used == ["v2", "v3"]
-    for event in finished:
-        assert event["kind"] == "eval_finished"
-        assert event["data"]["gate"] is None and event["data"]["subset"] is False
-
-
-def test_the_agent_eval_is_gated_and_a_fixed_path_eval_is_not(tmp_path):
-    """A live eval left unset runs the agent, gated; only an explicit agent false runs the fixed path, scores only."""
-    from findyfixy.console.eval_run import EvalResult, EvalSuite
-
-    asked = []
-
-    def run(n, *, emit, on_event, should_stop, agent=False):
-        asked.append(agent)
-        return EvalResult(report={"aggregates": {"overall": {"n": n, "n_run_errors": 0, "scores": {}}}}, subset=False)
-
-    hub = RunHub(
-        live_models=("s", "l"),
-        live_eval=EvalSuite(run=run, size=30),
-        baseline_path=tmp_path / "missing.json",  # a gated run would fail on this
-        sleep=no_wait,
-        fake_delay=0,
-    )
-    srv, port = _serve(hub)
-    try:
-        assert post_eval(port, {"mode": "fake", "cases": 2, "agent": True})[0] == 422
-        assert post_eval(port, {"mode": "live", "cases": 30})[0] == 202  # unset: the agent, like the CLI
-        gated = stream(port)
-        for _ in range(50):
-            if post_eval(port, {"mode": "live", "cases": 30, "agent": False})[0] == 202:
-                break
-            time.sleep(0.02)
-        fixed = stream(port)
-    finally:
-        srv.shutdown()
-        srv.server_close()
-    assert asked == [True, False]
-    # The agent's full v1 run is gated: here the baseline is missing, so the run fails on it.
-    assert gated[-1]["kind"] == "eval_failed" and gated[-1]["data"]["error_type"] == "BaselineMissing"
-    assert fixed[-1]["kind"] == "eval_finished" and fixed[-1]["data"]["gate"] is None
 
 
 def test_a_live_eval_without_models_is_503(server):
@@ -1132,7 +955,7 @@ def test_config_reports_each_eval_sets_size(server):
     """The page reads the sizes from /config; live is None when not configured."""
     _, port = server
     cfg = json.loads(call(port, "GET", "/config")[1])
-    assert cfg["eval_sizes"] == {"live": None, "live_v2": None, "live_v3": None, "fake": FAKE_SIZE}
+    assert cfg["eval_sizes"] == {"live": None, "fake": FAKE_SIZE}
     assert cfg["eval_default"] == 2
 
 
@@ -1200,7 +1023,7 @@ def test_a_live_eval_hub_runs_the_injected_eval_and_streams_its_events():
 
     seen = []
 
-    def live(n, *, emit, on_event, should_stop, agent=False):
+    def live(n, *, emit, on_event, should_stop):
         """A live run that reports one harness and one app event."""
         seen.append((n, should_stop()))
         on_event("eval_started", n=n, cases=["g01"], system={})
@@ -1249,11 +1072,11 @@ def test_live_eval_cuts_the_session_to_n_cases_and_hands_the_graph_its_emitter(m
     controls = []
 
     @contextmanager
-    def open_session(negative_control, *, emit, agent=False):
+    def open_session(negative_control, *, emit):
         """A session of three cases whose graph reports to the run's `emit`."""
         controls.append(negative_control)
 
-        def make_graph(recall, at):
+        def make_graph(recall):
             """A graph with a confident scripted model and this case's recall."""
             return build_graph(
                 lambda m, p: scripted_reply(0.9), small_model="s", large_model="l", emit=emit, recall=recall
@@ -1282,7 +1105,7 @@ def test_live_eval_cuts_the_session_to_n_cases_and_hands_the_graph_its_emitter(m
         {
             "n": 2,
             "cases": ["g0", "g1"],
-            "system": {"system": "fixed", "small_model": "s", "large_model": "l", "threshold": 0.7, "recall_k": 3},
+            "system": {"small_model": "s", "large_model": "l", "threshold": 0.7, "recall_k": 3},
         },
     )
     assert result.report["provenance"]["judge_digest"] == "dig"
@@ -1299,3 +1122,30 @@ def test_a_subset_result_is_never_gated(tmp_path):
     from findyfixy.console.eval_run import EvalResult, verdict
 
     assert verdict(EvalResult(report={}, subset=True), tmp_path / "missing.json") is None
+
+
+def test_the_on_call_inbox_keeps_a_hand_off_from_the_loop_container(server):
+    _, port = server
+    alert = {"version": "4", "alerts": [{"labels": {"incident": "i7"}}]}
+    headers = {"Content-Type": "application/json", "Host": f"host.docker.internal:{port}"}
+    status, data = call(port, "POST", "/handoff", json.dumps(alert), headers)
+    assert (status, json.loads(data)) == (200, {"received": True})
+    status, data = call(port, "GET", "/handoffs")
+    assert status == 200 and [h["alert"] for h in json.loads(data)["handoffs"]] == [alert]
+
+
+@pytest.mark.parametrize(
+    ("body", "headers", "want"),
+    [
+        ('{"alerts": []}', {"Content-Type": "application/json", "Origin": "http://evil.example"}, 403),
+        ('{"alerts": []}', {"Content-Type": "application/json", "Host": "evil.example:80"}, 403),
+        ('{"alerts": []}', {"Content-Type": "text/plain"}, 415),
+        ("not json", {"Content-Type": "application/json"}, 400),
+        ('{"no": "alerts"}', {"Content-Type": "application/json"}, 422),
+    ],
+)
+def test_the_inbox_refuses_browsers_other_hosts_and_anything_but_an_alert(server, body, headers, want):
+    _, port = server
+    status, _ = call(port, "POST", "/handoff", body, headers)
+    assert status == want
+    assert json.loads(call(port, "GET", "/handoffs")[1])["handoffs"] == []

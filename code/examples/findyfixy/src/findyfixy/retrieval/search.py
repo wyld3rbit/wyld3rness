@@ -1,4 +1,4 @@
-"""Nearest-chunk search over the ingested incidents (Day 3).
+"""Nearest-chunk search over the ingested incidents (Day 3, step 4).
 
 What: embeds a question and returns the closest chunks by cosine distance.
 
@@ -39,7 +39,7 @@ from pgvector import Vector
 from pgvector.psycopg import register_vector
 import psycopg
 
-from findyfixy.paths import data_dir
+from findyfixy.paths import DATA
 from findyfixy.retrieval.ingest import Embedder, database_url, make_embedder
 
 if TYPE_CHECKING:
@@ -137,7 +137,7 @@ def main(argv: list[str] | None = None) -> None:
     """Search the local database and print the top 5 for the query in `argv`."""
     words = sys.argv[1:] if argv is None else argv
     query = " ".join(words) or DEFAULT_QUERY
-    pairs = load_twin_pairs(data_dir("v1") / "incidents.jsonl")
+    pairs = load_twin_pairs(DATA / "incidents.jsonl")
     from findyfixy.observability.tracing import command_trace
 
     print(f"query: {query}\n")

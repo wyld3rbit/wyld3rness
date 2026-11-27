@@ -2,6 +2,7 @@
 
 import threading
 import time
+from typing import ClassVar
 
 import pytest
 
@@ -31,25 +32,33 @@ class FakeRetriever:
 
 
 class FakeConnection:
-    """Counts closes, so a failed build can be shown to clean up."""
+    """Counts closes, so a failed build can be shown to clean up. `broken` is set by a dying query."""
 
-    closed = 0
+    closes = 0
+    made: ClassVar[list["FakeConnection"]] = []
+
+    def __init__(self) -> None:
+        self.closed = False
+        self.broken = False
+        FakeConnection.made.append(self)
 
     def close(self) -> None:
         """Record the close."""
-        FakeConnection.closed += 1
+        self.closed = True
+        FakeConnection.closes += 1
 
 
-def install(monkeypatch, builds: list[str], fail_first: bool = False, delay: float = 0.0) -> FakeRetriever:
+def install(monkeypatch, builds: list[int], fail_first: bool = False, delay: float = 0.0) -> FakeRetriever:
     """Replace the database and the retriever build with fakes. Returns the fake retriever."""
     retriever = FakeRetriever()
-    FakeConnection.closed = 0
+    FakeConnection.closes = 0
+    FakeConnection.made = []
 
     def fake_connect():
         return FakeConnection()
 
-    def fake_build(conn, embedder=None, stage=None, version="v1", reranker=None):
-        builds.append(version)
+    def fake_build(conn, embedder=None, stage=None):
+        builds.append(1)
         time.sleep(delay)
         if fail_first and len(builds) == 1:
             raise OSError("database is down")
@@ -60,70 +69,18 @@ def install(monkeypatch, builds: list[str], fail_first: bool = False, delay: flo
     return retriever
 
 
-def fake_reranker():
-    """A stand-in cross-encoder: never loaded."""
-    return lambda query, texts: [0.0] * len(texts)
-
-
 def shared() -> wiring.SharedRetrieval:
     """A shared retrieval whose embedder is a fake: no model is loaded."""
-    return wiring.SharedRetrieval(
-        make_embedder=lambda: lambda texts: [[float(len(t))] for t in texts], make_reranker=fake_reranker
-    )
+    return wiring.SharedRetrieval(make_embedder=lambda: lambda texts: [[float(len(t))] for t in texts])
 
 
 def test_recall_builds_nothing_until_it_is_first_used(monkeypatch) -> None:
-    builds: list[str] = []
+    builds: list[int] = []
     install(monkeypatch, builds)
     recall = shared().recall(3)
     assert builds == []
     recall("q")
-    assert builds == ["v1"]
-
-
-def test_recall_reads_the_data_version_it_was_built_for(monkeypatch) -> None:
-    """The version reaches the retriever build, so a v2 run reads v2's table and a v1 run v1's."""
-    builds: list[str] = []
-    install(monkeypatch, builds)
-    embed = lambda texts: [[float(len(t))] for t in texts]  # noqa: E731
-    wiring.SharedRetrieval(make_embedder=lambda: embed, make_reranker=fake_reranker, version="v2").recall(3)("q")
-    assert builds == ["v2"]
-
-
-def test_versions_share_one_connection_embedder_and_reranker(monkeypatch) -> None:
-    """A v2 sibling builds its own retriever, over the v1 instance's connection, embedder and reranker."""
-    calls: list[tuple[object, str, object]] = []
-    install(monkeypatch, [])
-    original = wiring.build_retriever
-
-    def recording(conn, embedder=None, stage=None, version="v1", reranker=None):
-        calls.append((conn, version, reranker))
-        return original(conn, embedder, stage, version, reranker)
-
-    monkeypatch.setattr(wiring, "build_retriever", recording)
-    loads: list[int] = []
-
-    def make_embedder():
-        loads.append(1)
-        return lambda texts: [[float(len(t))] for t in texts]
-
-    rerankers: list[int] = []
-
-    def make_reranker():
-        rerankers.append(1)
-        return "the loaded cross-encoder"
-
-    v1 = wiring.SharedRetrieval(make_embedder=make_embedder, make_reranker=make_reranker)
-    v2 = v1.with_version("v2")
-    v1.recall(3)("q")
-    v2.recall(3)("q")
-    v2.recall(3)("q")  # built once per version
-    (c1, ver1, r1), (c2, ver2, r2) = calls
-    assert (ver1, ver2) == ("v1", "v2") and c1 is c2
-    assert r1 == r2 == "the loaded cross-encoder"
-    assert loads == [1] and rerankers == [1] and v2.version == "v2"
-    v2.close()
-    assert FakeConnection.closed == 1  # one shared connection, closed once for both
+    assert builds == [1]
 
 
 def test_recall_asks_for_k_and_returns_briefs(monkeypatch) -> None:
@@ -134,7 +91,7 @@ def test_recall_asks_for_k_and_returns_briefs(monkeypatch) -> None:
 
 
 def test_the_retriever_is_built_once_even_when_runs_overlap(monkeypatch) -> None:
-    builds: list[str] = []
+    builds: list[int] = []
     install(monkeypatch, builds, delay=0.05)
     recall = shared().recall(3)
     threads = [threading.Thread(target=recall, args=("q",)) for _ in range(8)]
@@ -142,18 +99,18 @@ def test_the_retriever_is_built_once_even_when_runs_overlap(monkeypatch) -> None
         t.start()
     for t in threads:
         t.join()
-    assert builds == ["v1"]  # eight runs, one build
+    assert builds == [1]  # eight runs, one build
 
 
 def test_a_failed_first_build_is_retried_on_the_next_call(monkeypatch) -> None:
-    builds: list[str] = []
+    builds: list[int] = []
     install(monkeypatch, builds, fail_first=True)
     recall = shared().recall(3)
     with pytest.raises(OSError):
         recall("q")
-    assert FakeConnection.closed == 1  # the failed build closed its connection
+    assert FakeConnection.closes == 1  # the failed build closed its connection
     assert len(recall("q")) == 2  # the database came back
-    assert builds == ["v1", "v1"]
+    assert builds == [1, 1]
 
 
 def test_the_default_k_is_the_shared_recall_k() -> None:
@@ -164,7 +121,7 @@ def test_the_default_k_is_the_shared_recall_k() -> None:
 
 def test_recall_and_the_judge_share_one_embedder_and_one_retriever(monkeypatch) -> None:
     """The point of sharing: triage recall and eval candidates reuse one build."""
-    builds: list[str] = []
+    builds: list[int] = []
     install(monkeypatch, builds)
     made: list[int] = []
 
@@ -172,21 +129,158 @@ def test_recall_and_the_judge_share_one_embedder_and_one_retriever(monkeypatch) 
         made.append(1)
         return lambda texts: [[1.0] for _ in texts]
 
-    retrieval = wiring.SharedRetrieval(make_embedder=make_embedder, make_reranker=fake_reranker)
+    retrieval = wiring.SharedRetrieval(make_embedder=make_embedder)
     retrieval.recall(3)("q")
     retrieval.candidates("q", 4)
     assert retrieval.embed(["a", "b"]) == [[1.0], [1.0]]
-    assert builds == ["v1"] and made == [1]
+    assert builds == [1] and made == [1]
 
 
 def test_close_closes_the_connection_and_a_later_use_rebuilds(monkeypatch) -> None:
     """Closing releases the database; the next call builds again."""
-    builds: list[str] = []
+    builds: list[int] = []
     install(monkeypatch, builds)
     retrieval = shared()
     retrieval.candidates("q", 1)
     retrieval.close()
     retrieval.close()  # harmless twice
-    assert FakeConnection.closed == 1
+    assert FakeConnection.closes == 1
     retrieval.candidates("q", 1)
-    assert builds == ["v1", "v1"]
+    assert builds == [1, 1]
+
+
+# ---- A lost database -------------------------------------------------------------
+
+
+class Dying(FakeRetriever):
+    """Raises a connection-level error for the first `fails` queries, then answers."""
+
+    def __init__(self, fails: int) -> None:
+        super().__init__()
+        self.fails = fails
+
+    def hybrid_rerank(self, question: str, k: int):
+        if self.fails:
+            self.fails -= 1
+            import psycopg
+
+            FakeConnection.made[-1].broken = True  # what psycopg marks when the server goes away
+            raise psycopg.OperationalError("server closed the connection unexpectedly")
+        return super().hybrid_rerank(question, k)
+
+
+class Clock:
+    """A fake clock that only moves when the code sleeps."""
+
+    def __init__(self) -> None:
+        self.now = 0.0
+        self.slept: list[float] = []
+
+    def sleep(self, seconds: float) -> None:
+        self.slept.append(seconds)
+        self.now += seconds
+
+
+def install_dying(monkeypatch, fails: int) -> tuple[list[int], Dying]:
+    """A database whose connection dies `fails` times; returns the build counter and the retriever."""
+    builds: list[int] = []
+    retriever = Dying(fails)
+    FakeConnection.closes = 0
+    FakeConnection.made = []
+    monkeypatch.setattr(wiring, "connect", FakeConnection)
+
+    def fake_build(conn, embedder=None, stage=None):
+        builds.append(1)
+        return retriever
+
+    monkeypatch.setattr(wiring, "build_retriever", fake_build)
+    return builds, retriever
+
+
+def shared_with(clock: Clock) -> wiring.SharedRetrieval:
+    """A shared retrieval with a fake embedder and the fake clock."""
+    return wiring.SharedRetrieval(
+        make_embedder=lambda: lambda texts: [[1.0] for _ in texts], sleep=clock.sleep, clock=lambda: clock.now
+    )
+
+
+def test_a_connection_lost_once_is_replaced_and_the_query_retried(monkeypatch, caplog) -> None:
+    """A Postgres restart costs one wait and one rebuild, not the rest of the run."""
+    builds, _ = install_dying(monkeypatch, fails=1)
+    clock = Clock()
+    with caplog.at_level("WARNING"):
+        found = shared_with(clock).candidates("q", 2)
+    assert [p.incident_id for p in found] == ["INC-1", "INC-2"]
+    assert len(builds) == 2 and FakeConnection.closes == 1 and clock.slept == [1.0]
+    assert "connection lost" in caplog.text and "reconnected after 1.0 s" in caplog.text
+
+
+def test_a_database_down_past_the_deadline_fails_the_call(monkeypatch) -> None:
+    """Waits back off to 8 s and stop at the deadline; then the error reaches the caller."""
+    import psycopg
+
+    install_dying(monkeypatch, fails=10_000)
+    clock = Clock()
+    with pytest.raises(psycopg.OperationalError):
+        shared_with(clock).candidates("q", 2)
+    assert clock.slept[:5] == [1.0, 2.0, 4.0, 8.0, 8.0]
+    assert sum(clock.slept) <= wiring.RECONNECT_DEADLINE_S
+
+
+def test_an_error_on_a_live_connection_is_not_retried(monkeypatch) -> None:
+    """A timeout or out-of-memory error leaves the connection up: it is the query's failure, raised at once."""
+    import psycopg
+
+    builds, retriever = install_dying(monkeypatch, fails=0)
+
+    def timed_out(question, k):
+        raise psycopg.OperationalError("canceling statement due to statement timeout")
+
+    retriever.hybrid_rerank = timed_out  # type: ignore[method-assign]
+    clock = Clock()
+    with pytest.raises(psycopg.OperationalError, match="timeout"):
+        shared_with(clock).candidates("q", 2)
+    assert clock.slept == [] and len(builds) == 1
+
+
+def test_a_database_never_reached_fails_at_once(monkeypatch) -> None:
+    """A missing `make up` is reported in seconds, not after the reconnect deadline."""
+    import psycopg
+
+    def refused():
+        raise psycopg.OperationalError("connection refused")
+
+    monkeypatch.setattr(wiring, "connect", refused)
+    clock = Clock()
+    with pytest.raises(psycopg.OperationalError, match="refused"):
+        shared_with(clock).candidates("q", 2)
+    assert clock.slept == []
+
+
+def test_the_lock_is_released_while_waiting(monkeypatch) -> None:
+    """The judge's embedder must not wait on a reconnect it does not need."""
+    install_dying(monkeypatch, fails=1)
+    clock = Clock()
+    retrieval = shared_with(clock)
+    free: list[bool] = []
+
+    def sleep(seconds: float) -> None:
+        got = retrieval._lock.acquire(blocking=False)
+        free.append(got)
+        if got:
+            retrieval._lock.release()
+        clock.sleep(seconds)
+
+    retrieval._sleep = sleep
+    retrieval.candidates("q", 2)
+    assert free == [True]
+
+
+def test_a_failure_that_is_not_the_connection_is_not_retried(monkeypatch) -> None:
+    """A bug or a bad build propagates at once: retrying it would only hide it."""
+    builds: list[int] = []
+    install(monkeypatch, builds, fail_first=True)
+    clock = Clock()
+    with pytest.raises(OSError):
+        shared_with(clock).candidates("q", 2)
+    assert clock.slept == [] and len(builds) == 1

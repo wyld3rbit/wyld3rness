@@ -1,0 +1,71 @@
+<svg class="dg" xmlns="http://www.w3.org/2000/svg" viewBox="0 -36 1260 676" width="1260" height="676" role="img" aria-label="The harness: what people set, what it checks at every commit, and the boundary around every incident. Solid is built, dashed is planned.">
+<style>
+.dg-zone { fill: #0d1729; stroke: #2a3a5c; stroke-width: 1; }
+.dg-zone.harness { stroke: #c084fc; stroke-opacity: .45; }
+.dg-zone.human { stroke: #e07a5f; stroke-opacity: .6; }
+.dg-zone-label { fill: #8da2c8; font-size: 12px; font-weight: 600; letter-spacing: .04em; }
+.dg-zone-label.harness { fill: #c084fc; }
+.dg-zone-label.human { fill: #e07a5f; }
+.dg-box rect { fill: #0b1220; stroke: #5cc8ff; stroke-width: 1.5; }
+.dg-box .dg-t { fill: #dbe6ff; font-size: 14px; font-weight: 600; text-anchor: middle; }
+.dg-box .dg-s { fill: #8da2c8; font-size: 11px; text-anchor: middle; }
+.dg-box.planned rect { stroke: #7f8fb0; stroke-dasharray: 5 4; }
+.dg-box.planned .dg-t, .dg-box.planned .dg-s { fill: #7f8fb0; }
+.dg-box .i { fill: none; stroke: #e07a5f; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.dg-box.planned .i { stroke: #7f8fb0; }
+.dg-edge { fill: none; stroke: #5b6f99; stroke-width: 2; marker-end: url(#dg-arrow); }
+.dg-edge.planned { stroke: #7f8fb0; stroke-width: 1.5; stroke-dasharray: 5 5; marker-end: url(#dg-arrow-planned); }
+.dg-edge-label { fill: #8da2c8; font-size: 11px; }  /* each label sets its own text-anchor */
+.dg-caption { fill: #dbe6ff; font-size: 14px; font-weight: 600; }
+.dg text { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+</style>
+<defs><marker id="dg-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,1 L10,5 L0,9 z" fill="#5b6f99"/></marker><marker id="dg-arrow-planned" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,1 L10,5 L0,9 z" fill="#7f8fb0"/></marker></defs>
+<rect x="0" y="-36" width="1260" height="676" fill="#0b1220"/>
+<text class="dg-caption" x="14" y="-12">The harness: what people set, what it checks at every commit, and the boundary around every incident. Solid is built, dashed is planned.</text>
+<rect class="dg-zone human" x="10" y="0" width="1240" height="104" rx="10"/>
+<text class="dg-zone-label human" x="22" y="18">Set by people, before runtime</text>
+<rect class="dg-zone harness" x="10" y="124" width="1240" height="104" rx="10"/>
+<text class="dg-zone-label harness" x="22" y="142">Harness, at every commit and every model call</text>
+<rect class="dg-zone harness" x="10" y="248" width="1240" height="232" rx="10"/>
+<text class="dg-zone-label harness" x="22" y="266">Harness, every incident. No person approves each action</text>
+<rect class="dg-zone" x="10" y="500" width="540" height="120" rx="10"/>
+<text class="dg-zone-label" x="22" y="518">Proposers</text>
+<rect class="dg-zone" x="720" y="500" width="530" height="120" rx="10"/>
+<text class="dg-zone-label" x="732" y="518">The app&#x27;s environment port</text>
+<path class="dg-edge" d="M1080,182 L1055,182"/>
+<path class="dg-edge" d="M180,422 L205,422"/>
+<path class="dg-edge" d="M355,422 L380,422"/>
+<path class="dg-edge" d="M530,422 L555,422"/>
+<path class="dg-edge" d="M630,390 L630,339"/>
+<text class="dg-edge-label" x="638" y="368.5" text-anchor="start">recovered</text>
+<path class="dg-edge" d="M705,422 L730,422"/>
+<text class="dg-edge-label" x="717.5" y="416" text-anchor="middle">no</text>
+<path class="dg-edge" d="M880,422 L905,422"/>
+<path class="dg-edge" d="M1055,422 L1080,422"/>
+<path class="dg-edge" d="M105,528 L105,454"/>
+<text class="dg-edge-label" x="113" y="495" text-anchor="start">proposes</text>
+<path class="dg-edge" d="M280,528 L280,480 L150,480 L150,454"/>
+<path class="dg-edge" d="M380,560 L355,560"/>
+<path class="dg-edge" d="M455,454 L455,490 L980,490 L980,528"/>
+<text class="dg-edge-label" x="717.5" y="484" text-anchor="middle">apply</text>
+<path class="dg-edge" d="M905,560 L690,560 L690,454"/>
+<text class="dg-edge-label" x="797.5" y="554" text-anchor="middle">what customers saw</text>
+<g class="dg-box"><rect x="30" y="28" width="150" height="64" rx="8"/><g transform="translate(35 32) scale(.56)"><path class="i" d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path class="i" d="M9 18h6"/><path class="i" d="M10 22h4"/></g><text class="dg-t" x="115" y="54">Allowed kinds</text><text class="dg-s" x="115" y="72">read by the policy</text></g>
+<g class="dg-box"><rect x="380" y="28" width="150" height="64" rx="8"/><g transform="translate(385 32) scale(.56)"><circle class="i" cx="8" cy="8" r="6"/><path class="i" d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path class="i" d="M7 6h1v4"/><path class="i" d="m16.71 13.88.7.71-2.82 2.82"/></g><text class="dg-t" x="465" y="54">Budget limit</text><text class="dg-s" x="465" y="72">per incident</text></g>
+<g class="dg-box"><rect x="1080" y="28" width="150" height="64" rx="8"/><g transform="translate(1085 32) scale(.56)"><path class="i" d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path class="i" d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></g><text class="dg-t" x="1165" y="54">Golden cases</text><text class="dg-s" x="1165" y="72">and the bar to pass</text></g>
+<g class="dg-box"><rect x="30" y="150" width="150" height="64" rx="8"/><g transform="translate(35 154) scale(.56)"><path class="i" d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></g><text class="dg-t" x="115" y="176">Tracing</text><text class="dg-s" x="115" y="194">every step and cost</text></g>
+<g class="dg-box"><rect x="905" y="150" width="150" height="64" rx="8"/><g transform="translate(910 154) scale(.56)"><circle class="i" cx="12" cy="12" r="10"/><path class="i" d="m9 12 2 2 4-4"/></g><text class="dg-t" x="990" y="176">CI check</text><text class="dg-s" x="990" y="194">run attested at commit</text></g>
+<g class="dg-box"><rect x="1080" y="150" width="150" height="64" rx="8"/><g transform="translate(1085 154) scale(.56)"><circle class="i" cx="12" cy="12" r="10"/><circle class="i" cx="12" cy="12" r="6"/><circle class="i" cx="12" cy="12" r="2"/></g><text class="dg-t" x="1165" y="176">Eval gate</text><text class="dg-s" x="1165" y="194">scores answer changes</text></g>
+<g class="dg-box"><rect x="555" y="275" width="150" height="64" rx="8"/><g transform="translate(560 279) scale(.56)"><path class="i" d="m12 14 4-4"/><path class="i" d="M3.34 19a10 10 0 1 1 17.32 0"/></g><text class="dg-t" x="640" y="301">Keep</text><text class="dg-s" x="640" y="319">customers recovered</text></g>
+<g class="dg-box"><rect x="30" y="390" width="150" height="64" rx="8"/><g transform="translate(35 394) scale(.56)"><path class="i" d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path class="i" d="m9 12 2 2 4-4"/></g><text class="dg-t" x="115" y="416">Policy</text><text class="dg-s" x="115" y="434">allowed, now?</text></g>
+<g class="dg-box"><rect x="205" y="390" width="150" height="64" rx="8"/><g transform="translate(210 394) scale(.56)"><path class="i" d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle class="i" cx="16.5" cy="7.5" r=".5"/></g><text class="dg-t" x="290" y="416">One-time pass</text><text class="dg-s" x="290" y="434">this action, 60 s, once</text></g>
+<g class="dg-box"><rect x="380" y="390" width="150" height="64" rx="8"/><g transform="translate(385 394) scale(.56)"><polygon class="i" points="6 3 20 12 6 21 6 3"/></g><text class="dg-t" x="465" y="416">Act</text><text class="dg-s" x="465" y="434">through the app&#x27;s port</text></g>
+<g class="dg-box"><rect x="555" y="390" width="150" height="64" rx="8"/><g transform="translate(560 394) scale(.56)"><path class="i" d="m12 14 4-4"/><path class="i" d="M3.34 19a10 10 0 1 1 17.32 0"/></g><text class="dg-t" x="640" y="416">Verify</text><text class="dg-s" x="640" y="434">customers recovered?</text></g>
+<g class="dg-box"><rect x="730" y="390" width="150" height="64" rx="8"/><g transform="translate(735 394) scale(.56)"><circle class="i" cx="18" cy="18" r="3"/><circle class="i" cx="6" cy="6" r="3"/><path class="i" d="M6 21V9a9 9 0 0 0 9 9"/></g><text class="dg-t" x="815" y="416">Undo</text><text class="dg-s" x="815" y="434">then try again</text></g>
+<g class="dg-box"><rect x="905" y="390" width="150" height="64" rx="8"/><g transform="translate(910 394) scale(.56)"><path class="i" d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path class="i" d="m9 12 2 2 4-4"/></g><text class="dg-t" x="990" y="416">Safe state</text><text class="dg-s" x="990" y="434">out of tries: stop</text></g>
+<g class="dg-box"><rect x="1080" y="390" width="150" height="64" rx="8"/><g transform="translate(1085 394) scale(.56)"><path class="i" d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path class="i" d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></g><text class="dg-t" x="1165" y="416">Hand-off</text><text class="dg-s" x="1165" y="434">to the on-call person</text></g>
+<g class="dg-box"><rect x="30" y="528" width="150" height="64" rx="8"/><g transform="translate(35 532) scale(.56)"><path class="i" d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></g><text class="dg-t" x="115" y="554">Script</text><text class="dg-s" x="115" y="572">fixed fixes, no model</text></g>
+<g class="dg-box"><rect x="205" y="528" width="150" height="64" rx="8"/><g transform="translate(210 532) scale(.56)"><rect class="i" width="16" height="16" x="4" y="4" rx="2"/><rect class="i" width="6" height="6" x="9" y="9" rx="1"/><path class="i" d="M15 2v2"/><path class="i" d="M15 20v2"/><path class="i" d="M2 15h2"/><path class="i" d="M2 9h2"/><path class="i" d="M20 15h2"/><path class="i" d="M20 9h2"/><path class="i" d="M9 2v2"/><path class="i" d="M9 20v2"/></g><text class="dg-t" x="290" y="554">Decider port</text><text class="dg-s" x="290" y="572">the app&#x27;s model</text></g>
+<g class="dg-box"><rect x="380" y="528" width="150" height="64" rx="8"/><g transform="translate(385 532) scale(.56)"><circle class="i" cx="8" cy="8" r="6"/><path class="i" d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path class="i" d="M7 6h1v4"/><path class="i" d="m16.71 13.88.7.71-2.82 2.82"/></g><text class="dg-t" x="465" y="554">Budget</text><text class="dg-s" x="465" y="572">worst case first</text></g>
+<g class="dg-box"><rect x="905" y="528" width="150" height="64" rx="8"/><g transform="translate(910 532) scale(.56)"><ellipse class="i" cx="12" cy="5" rx="9" ry="3"/><path class="i" d="M3 5V19A9 3 0 0 0 21 19V5"/><path class="i" d="M3 12A9 3 0 0 0 21 12"/></g><text class="dg-t" x="990" y="554">Environment</text><text class="dg-s" x="990" y="572">observe, apply, undo</text></g>
+</svg>

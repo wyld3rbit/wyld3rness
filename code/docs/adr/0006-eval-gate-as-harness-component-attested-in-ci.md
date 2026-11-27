@@ -1,7 +1,7 @@
 # ADR 0006: The eval gate is a harness component, attested in CI
 
 Status: accepted. Written 2026-11-09, in the commit that closes the rebuilt phase.
-Phase: Day 5, rebuilt. It supersedes the layout in [ADR 0005](0005-gate-releases-on-measured-answer-quality.md), whose policies on the judge, holdout, failures and baseline still hold. Code at close: commit `6f9e3ee`. Run data: the Evidence section below.
+Phase: Day 5, rebuilt. It supersedes the layout in [ADR 0005](0005-gate-releases-on-measured-answer-quality.md), whose policies on the judge, holdout, failures and baseline still hold. Code at close: the commit that adds this record. Run data: the Results section of [lessons/d05.md](../../../lessons/d05.md).
 
 ## Decision
 
@@ -40,7 +40,7 @@ Self-hosted runner on the developer machine: rejected. Code from any pull reques
 
 ## Staffing
 
-No hire. One engineer and one AI coding agent. The agent's work was bounded by the build harness: plan before code, sub-agents for scoped packages, the lead's own verification, and a fresh-agent code review before every commit. Three reviews raised 30 findings across the harness move, the visualizer and the CI gate, and all were fixed before commit.
+One engineer and one AI coding agent. The agent's work was bounded by the build harness: plan before code, sub-agents for scoped packages, the lead's own verification, and a fresh-agent code review before every commit. Three reviews raised 30 findings across the harness move, the visualizer and the CI gate, and all were fixed before commit.
 Add people when more than one developer produces attestations, because the attestation trusts the person who ran it.
 
 ## What would change this

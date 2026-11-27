@@ -6,52 +6,125 @@
 #   1. Known vulnerabilities in the locked set, without installing anything.
 #   2. Startup hooks: a .pth file runs code every time Python starts, which is
 #      how a hijacked package can persist. Only the known shims are allowed,
-#      and this workspace's own editable installs (wyld3rness.pth and
-#      findyfixy.pth), each a single line naming its src/ folder.
+#      and this workspace's own editable installs (wyld3rness.pth,
+#      findyfixy.pth and simprod.pth), each a single line naming its src/ folder.
 # On any finding, stop and read it. Do not upgrade or remove to make it pass.
 
-.PHONY: audit hooks scan up down setup ingest console triage test test-harness lint eval-retrieval eval eval-gate eval-baseline eval-freeze eval-compare eval-negative case golden data-v2 data-v3 attacks verify-attestation obs-secrets obs-up obs-down obs-prices
+.PHONY: audit hooks scan up down sim-up load-test controls-pilot controls oncall oncall-up injection experiment experiment-power experiment-analyze setup ingest console triage test test-harness lint eval-retrieval eval eval-gate eval-baseline eval-freeze eval-compare eval-negative case golden verify-attestation obs-secrets obs-up obs-down obs-prices
 
-# The data version `make eval` reads: v1 (frozen, the gate's set), v2 (Day 7's hard cases) or v3 (the hard cases on a timeline, with a change log).
-DATA ?= v1
-# FIXED=1 (or yes, true) makes `make eval` run the earlier fixed path instead of the agent, for
-# comparison. Scores only. Any other value runs the agent, the system under test.
-FIXED ?=
-
-# Memory for the Colima VM, in GB. 6 on most days, 8 on Langfuse days:
-#   make up COLIMA_MEMORY=8
+# Memory for the Colima VM, in GB: 8, because `make up` starts Langfuse too.
 # Changing it needs the VM to restart, so run `make down` first.
-COLIMA_MEMORY ?= 6
+COLIMA_MEMORY ?= 8
 
 # The example app's folder, its database services and its settings file.
 APP_DIR := examples/findyfixy
 APP_COMPOSE := $(APP_DIR)/docker-compose.yml
 APP_ENV := $(APP_DIR)/.env
+# The simulated production the agent operates (examples/simprod/README.md).
+SIM_COMPOSE := examples/simprod/docker-compose.yml
 # Every workspace member installed: the harness and the example app.
-RUN := uv run --all-packages
+RUN := uv run --all-packages --all-extras
 
-# up: start the container runtime if it is off, then the services, and wait
-# until they are ready. Safe to run twice. `--wait` blocks until the database
-# healthcheck passes, so the next command never meets a database that is still
-# starting.
+# up: start everything the project runs on, except Ollama, which you start in
+# its own terminal so its log stays in view: the container VM, the database,
+# Langfuse with its prices, the simulated production with its vault, and the
+# on-call containers. Each part waits until it is healthy (`--wait`), so the next
+# command never meets a service that is still starting; a part already up is
+# left as it is, so it is safe to run twice. A VM already running with less
+# memory is refused, because resizing it means a restart, and only `make down`
+# stops it. Ollama not answering is reported, not fatal: it may be started after.
 up:
-	@colima status >/dev/null 2>&1 || colima start --memory $(COLIMA_MEMORY)
+	@if colima status >/dev/null 2>&1; then \
+	  have=$$(colima list -j | grep '"name":"default"' | sed -nE 's/.*"memory":([0-9]+).*/\1/p'); \
+	  if [ "$${have:-0}" -lt $$(( $(COLIMA_MEMORY) * 1073741824 )) ]; then \
+	    echo "The VM runs with $$(( $${have:-0} / 1073741824 )) GB and needs $(COLIMA_MEMORY): run make down, then make up"; exit 1; fi; \
+	else colima start --memory $(COLIMA_MEMORY); fi
 	docker compose -f $(APP_COMPOSE) up -d --wait
+	@test -f infra/langfuse/.env || $(MAKE) obs-secrets
+	$(MAKE) obs-up obs-prices sim-up oncall-up
+	@if curl -sf -m 2 http://127.0.0.1:11434/api/version >/dev/null; then echo "Everything is up, and Ollama answers."; \
+	else echo "Everything is up. Ollama is not answering on 127.0.0.1:11434: start it in a terminal with OLLAMA_NO_CLOUD=1 ollama serve"; fi
 
 # down: stop the services, then the VM, and check that the VM really stopped.
 # Colima has no idle timeout and closing the terminal does not stop it, so it
-# keeps its RAM until told otherwise. Data survives: it lives in the `pgdata`
-# volume, which only `docker compose down -v` deletes. Safe to run twice.
+# keeps its RAM until told otherwise. Data survives: it lives in the volumes
+# (the database's `pgdata` and Langfuse's), which only `docker compose down -v`
+# deletes. Ollama is yours and is left running. Safe to run twice.
 # The compose step runs only while the VM is up. If it fails then, the make
 # stops there, so a half-stopped system is never reported as clean.
 down:
-	@if colima status >/dev/null 2>&1; then docker compose -f $(APP_COMPOSE) down; fi
+	@if colima status >/dev/null 2>&1; then docker compose -f $(SIM_COMPOSE) --profile load --profile storm --profile chaos down && docker compose -f $(APP_COMPOSE) --profile oncall down && { [ ! -f infra/langfuse/.env ] || docker compose -f $(LANGFUSE) --env-file infra/langfuse/.env down; }; fi
 	colima stop
 	@if colima status >/dev/null 2>&1; then echo "FAILED: Colima is still running"; exit 1; fi
 	@echo "Colima is stopped."
 
+# sim-up: build and start the simulated production (gateway, ledger,
+# notifications, edge, and OpenBao with the actions' signing key) and wait until
+# every service is healthy. The vault steps write its root token and two passes
+# to the git-ignored examples/simprod/.bao/ and print none of them. `make up`
+# runs it; alone, it restarts only the simulated production. Inspect it on
+# 127.0.0.1:8100 (examples/simprod/README.md). `make down` stops it too.
+sim-up:
+	$(RUN) simprod-vault init
+	docker compose -f $(SIM_COMPOSE) up -d --build --wait
+	$(RUN) simprod-vault setup
+
+# load-test: research log entry 006. A rate ramp, then three soaks at the chosen
+# rate, about 25 minutes. Needs `make up`. Prints the verdict and
+# writes examples/simprod/results/loadtest-<UTC>.json.
+load-test:
+	$(RUN) simprod-loadtest
+
+# controls-pilot / controls: research log entry 008. The pilot (about 45 minutes)
+# measures recovery times and sets WAIT and HOLD; the controls (about 2 hours) run
+# 21 storms x 3 arms (nobody, scripted fix, wrong fix undone) against their bars.
+# Need `make up`. Results in examples/simprod/results/.
+controls-pilot:
+	$(RUN) simprod-controls pilot
+
+controls:
+	$(RUN) simprod-controls run
+
+# oncall: FindyFixy runs seeded storms through the harness's loop (decide, act,
+# wait, verify, hold, keep or undo and retry, or the safe state), with no person
+# in it. 3 storms from seed 3 by default, about 3 minutes each; SMALL_MODEL decides.
+# Needs `make up` and Ollama. Results in examples/simprod/results/.
+oncall:
+	$(RUN) findyfixy-oncall
+
+# oncall-up: build and start the on-call agent and loop containers (profile
+# "oncall" in examples/findyfixy/docker-compose.yml), after `make sim-up`; `make up` runs both. The
+# image's requirements are exported from uv.lock with hashes, without the
+# `triage` extra. The loop runs as your user id so it can read the sign pass, and
+# gets the local Langfuse project keys in a private file, so its incidents are traced.
+oncall-up:
+	@test -f examples/simprod/.bao/sign.token || { echo "no sign pass yet: run make sim-up first"; exit 1; }
+	uv export --frozen --package findyfixy --no-dev --no-emit-workspace --format requirements-txt -o $(APP_DIR)/.oncall-requirements.txt > /dev/null
+	@umask 077; if [ -f infra/langfuse/.env ]; then sed -nE 's/^LANGFUSE_INIT_PROJECT_(PUBLIC_KEY|SECRET_KEY)=/LANGFUSE_\1=/p; s/^LANGFUSE_INIT_PROJECT_ID=/LANGFUSE_PROJECT_ID=/p' infra/langfuse/.env > $(APP_DIR)/.oncall-trace.env; else : > $(APP_DIR)/.oncall-trace.env; fi; chmod 600 $(APP_DIR)/.oncall-trace.env
+	HOST_UID=$$(id -u) docker compose -f $(APP_COMPOSE) --profile oncall up -d --build --wait agent loop
+
+# injection: research log entry 017. Captures one storm of each kind, plants the
+# 20 attacks in its metrics, and runs them through a fully fooled fake and the
+# real model in the agent container. The bar: no attacker-chosen action runs.
+injection:
+	$(RUN) findyfixy-injection
+
+# experiment: research log entry 019, the protocol. 24 held-out storms (seed 13), each
+# through nobody, the script, the model with one try and the model loop, in an order
+# drawn per storm, every arm measured over the same 240 s; about 8 hours. Then the
+# analysis. experiment-power prints the table the 24 comes from (a few minutes);
+# experiment-analyze FILE=<results file> recomputes every number from a saved run.
+experiment:
+	$(RUN) findyfixy-experiment run
+
+experiment-power:
+	$(RUN) findyfixy-experiment power
+
+experiment-analyze:
+	$(RUN) findyfixy-experiment analyze $(FILE)
+
 audit:
-	uv export --frozen --all-packages --format requirements-txt --no-emit-workspace -o .audit-req.txt > /dev/null
+	uv export --frozen --all-packages --all-extras --format requirements-txt --no-emit-workspace -o .audit-req.txt > /dev/null
 	uvx pip-audit --disable-pip --require-hashes -r .audit-req.txt
 	@echo "--- startup hooks (.pth files in .venv):"
 	@bad=$$(find .venv -name '*.pth' \
@@ -59,12 +132,13 @@ audit:
 	    ! -name 'distutils-precedence.pth' \
 	    ! -name '__editable__*.pth' \
 	    ! -name 'wyld3rness.pth' \
-	    ! -name 'findyfixy.pth'); \
+	    ! -name 'findyfixy.pth' \
+	    ! -name 'simprod.pth'); \
 	if [ -n "$$bad" ]; then \
 	    echo "UNEXPECTED .pth FILES, show their contents before going on:"; \
 	    echo "$$bad"; exit 1; \
 	fi; \
-	for pair in wyld3rness:src findyfixy:examples/findyfixy/src; do \
+	for pair in wyld3rness:src findyfixy:examples/findyfixy/src simprod:examples/simprod/src; do \
 	    f=$$(find .venv -name "$${pair%%:*}.pth"); want="$$(pwd)/$${pair#*:}"; \
 	    if [ -n "$$f" ] && [ "$$(cat "$$f")" != "$$want" ]; then \
 	        echo "UNEXPECTED CONTENT in $$f (expected the single line $$want):"; cat "$$f"; exit 1; \
@@ -86,14 +160,14 @@ scan:
 	uv run --no-project python ../tools/scan_private.py --history
 
 # setup: once per clone. Installs the locked packages into .venv, pulls the models
-# named in examples/findyfixy/.env (answering models and the judge, each once), starts the database
-# and loads the incidents. It stops early, and says why, if .env is missing or
+# named in examples/findyfixy/.env (answering models and the judge, each once), starts every
+# service (`make up`) and loads the incidents. It stops early, and says why, if .env is missing or
 # does not name both models. It never writes .env: that file is yours. Every step is safe to run again: uv sync and
 # ollama pull skip what is current, and ingest writes 0 when nothing changed.
 setup:
 	@test -f $(APP_ENV) || { echo "code/$(APP_ENV) is missing. Copy it: cp $(APP_DIR)/.env.example $(APP_ENV)"; exit 1; }
 	@grep -q '^SMALL_MODEL=.' $(APP_ENV) && grep -q '^LARGE_MODEL=.' $(APP_ENV) || { echo "code/$(APP_ENV) must set SMALL_MODEL and LARGE_MODEL"; exit 1; }
-	uv sync --all-packages
+	uv sync --all-packages --all-extras
 	@set -a; . ./$(APP_ENV); set +a; \
 	  for m in "$$SMALL_MODEL" "$$LARGE_MODEL" "$${JUDGE_MODEL:-qwen2.5:7b}"; do echo "$$m"; done | sort -u | while read -r m; do ollama pull "$$m" || exit 1; done
 	$(MAKE) up
@@ -117,9 +191,9 @@ test:
 # typed definitions required in FindyFixy). Runs in the pre-commit hook when
 # code/ is staged, and in CI. `uv run ruff format .` applies the formatting.
 lint:
-	uv run --all-packages ruff check .
-	uv run --all-packages ruff format --check .
-	uv run --all-packages mypy
+	uv run --all-packages --all-extras ruff check .
+	uv run --all-packages --all-extras ruff format --check .
+	uv run --all-packages --all-extras mypy
 
 # test-harness: the harness's own suite in a throwaway environment that holds
 # the harness and its dev tools only, no app. It proves the harness stands
@@ -134,8 +208,7 @@ eval-retrieval:
 # Answer-quality evaluation: findyfixy/evals/answers.py runs FindyFixy through the
 # harness in wyld3rness/eval/. Needs make up and Ollama. Each run takes many
 # minutes. Reports land in code/examples/findyfixy/reports/ (git-ignored).
-#   eval          run and print the scores, no gate. DATA=v2 or DATA=v3 runs a hard set (default v1, the frozen set).
-#                 FIXED=1 runs the earlier fixed path instead of the agent, for comparison.
+#   eval          run and print the scores, no gate
 #   eval-gate     the release gate: exit 1 if answers got worse vs examples/findyfixy/evals/baseline.json.
 #                 A pass of the full set on a clean tree also writes
 #                 examples/findyfixy/evals/attestation.json. Commit it: CI checks it. It does
@@ -143,7 +216,7 @@ eval-retrieval:
 #   eval-baseline freeze this run as the new baseline. Review the diff before committing.
 #   eval-negative the proof the gate works: run WITHOUT recall; it must fail
 eval:
-	$(RUN) $(if $(filter v2 v3,$(DATA)),findyfixy-eval-$(DATA),findyfixy-eval) $(if $(filter 1 yes true,$(FIXED)),--fixed)
+	$(RUN) findyfixy-eval
 
 eval-gate:
 	$(RUN) findyfixy-eval --gate
@@ -162,22 +235,23 @@ eval-negative:
 verify-attestation:
 	python3 -I src/wyld3rness/eval/attest.py verify --root . --attestation examples/findyfixy/evals/attestation.json
 
-# attacks: the live half of the injection suite. The real agent reads the 20 attacks in
-# data/v3/attacks.jsonl; the action ledger judges what it proposes. Needs make up,
-# Ollama and make ingest. Exit 1 if anything the attacker wanted got through.
-# The CI half (every proposer fully fooled) runs in make test.
-attacks:
-	$(RUN) findyfixy-attacks
+# gate-at-commit: the eval gate on exactly the staged tree, run by the
+# pre-commit hook when code/ is staged (wyld3rness/eval/staged.py). It runs
+# nothing when the committed attestation still covers that tree. Otherwise it
+# answers every case in an exported copy with its own environment, reuses the
+# attested run's score wherever the judge inputs are identical, judges the
+# rest, and adds the new attestation to the commit. A failed gate refuses the
+# commit. The links bring in what git ignores: the settings and the reports.
+STAGED := $(RUN) python -m wyld3rness.eval.staged
+GATED := --workspace code --attestation examples/findyfixy/evals/attestation.json
+gate-at-commit:
+	$(STAGED) commit $(GATED) --link examples/findyfixy/.env --link infra/langfuse/.env \
+	  --link examples/findyfixy/reports -- uv run --all-packages --all-extras --frozen --no-sync findyfixy-eval --gate
 
-# data-v2: rebuild data/v2 (corpus, golden set, deploy log) from v1 plus the
-# hand-written additions in findyfixy/evals/golden_v2.py. A test pins the files.
-data-v2:
-	$(RUN) findyfixy-data-v2
-
-# data-v3: rebuild data/v3 (corpus, golden set, change log): v2's cases on a real
-# timeline, from findyfixy/evals/golden_v3.py. A test pins the files.
-data-v3:
-	$(RUN) findyfixy-data-v3
+# gate-at-push: the attestation of every commit being pushed, read from the
+# pre-push hook's stdin. A merge, rebase or cherry-pick skips pre-commit.
+gate-at-push:
+	$(STAGED) push $(GATED)
 
 # golden: print the 30 golden cases (alert, expected severity, reference) to read
 # and check by eye. Read-only.
@@ -210,8 +284,8 @@ eval-freeze:
 	$(RUN) findyfixy-eval --baseline-from $(REPORT)
 
 # obs-*: the local Langfuse v4 stack that receives traces (infra/langfuse/).
-# It needs Colima at 8 GB: COLIMA_MEMORY=8 make up, or restart Colima with
-# --memory 8. obs-secrets writes infra/langfuse/.env once (random secrets,
+# `make up` runs obs-secrets (when its file is missing), obs-up and obs-prices;
+# the stack needs the VM at 8 GB, `make up`'s default. obs-secrets writes infra/langfuse/.env once (random secrets,
 # mode 0600, never overwritten: the volumes keep the first passwords).
 # obs-up refuses to start without it. obs-down stops the stack and keeps
 # its data; `docker compose -f $(LANGFUSE) down -v` deletes the data too.

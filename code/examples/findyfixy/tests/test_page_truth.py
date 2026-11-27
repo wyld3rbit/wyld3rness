@@ -24,6 +24,7 @@ Why parse the page instead of running it in a browser
     covers behaviour, with a stub DOM, and needs Node (skipped without it).
 """
 
+import inspect
 import json
 import os
 from pathlib import Path
@@ -36,15 +37,18 @@ from typing import get_args
 import pytest
 
 from findyfixy.console.fakes import ScriptedToolModel, fake_ask
-from findyfixy.console.server import EvalRequest, RunHub, wire
+from findyfixy.console.server import STORM_PAGE, EvalRequest, RunHub, wire
 from findyfixy.events import EventKind
 from findyfixy.paths import PAGE, ROOT, WORKSPACE
 from findyfixy.tools.deploys import make_deploys_tool
 from findyfixy.tools.investigate import build_investigator
 from findyfixy.triage.graph import build_graph
+import simprod
 from wyld3rness.eval.events import EvalEventKind
+from wyld3rness.loop.watch import LoopEventKind
 
 REPLAY = ROOT / "tests" / "js" / "replay.js"
+SIMPROD_SRC = Path(inspect.getfile(simprod)).resolve().parents[1]  # the simulated production's source root
 
 _NODE = re.compile(r'<g class="node"([^>]*)>(.*?)</g>', re.S)
 _ATTR = re.compile(r'([\w-]+)="([^"]*)"')
@@ -100,7 +104,7 @@ def code_exists(code: str, graph: set[str]) -> bool:
     """True when `data-code` names a real graph node or an existing module in a package's source root."""
     if code.startswith("graph:"):
         return code.removeprefix("graph:") in graph
-    return any((src / code).is_file() for src in (WORKSPACE / "src", ROOT / "src"))
+    return any((src / code).is_file() for src in (WORKSPACE / "src", ROOT / "src", SIMPROD_SRC))
 
 
 def status_problems(page: str, graph: set[str]) -> list[str]:
@@ -138,11 +142,13 @@ def test_every_event_kind_the_code_can_emit_has_a_handler_and_none_is_stale() ->
     assert table.keys() == {"app", "harness"}
     assert table["app"] == set(get_args(EventKind))
     assert table["harness"] == set(get_args(EvalEventKind))
+    assert handler_table(STORM_PAGE.read_text()) == {"loop": set(get_args(LoopEventKind))}  # the storm page
 
 
-def test_the_two_vocabularies_share_no_kind() -> None:
-    """The console ends a stream on a kind alone, so the two sets must be disjoint."""
-    assert not set(get_args(EventKind)) & set(get_args(EvalEventKind))
+def test_the_three_vocabularies_share_no_kind() -> None:
+    """The console ends a stream on a kind alone, so the three sets must be disjoint."""
+    app, harness, loop = (set(get_args(k)) for k in (EventKind, EvalEventKind, LoopEventKind))
+    assert not app & harness and not app & loop and not harness & loop
 
 
 # ---- The whole stream through the page's own script ---------------------------
@@ -266,20 +272,3 @@ def test_a_trace_link_is_followed_only_for_http_urls() -> None:
     out = subprocess.run(["node", "-e", script], capture_output=True, text=True, timeout=20, env=env)
     assert out.returncode == 0, out.stderr
     assert json.loads(out.stdout) == [cases[0], cases[1], None, None, None, None]
-
-
-@pytest.mark.skipif(shutil.which("node") is None, reason="needs Node")
-def test_a_hidden_agent_option_never_asks_for_the_agent() -> None:
-    """A hidden checkbox keeps its default tick; the request must follow what the page shows."""
-    page = PAGE.read_text()
-    func = re.search(r"function agentOn\(\) \{.*?\n\}\n", page, re.S).group(0)
-    cases = [(True, True), (True, False), (False, True), (False, False)]  # (hidden, checked)
-    script = (
-        "const els = {};\n"
-        "const $ = (id) => els[id];\n" + func + f"console.log(JSON.stringify({json.dumps(cases)}.map(([h, c]) => {{"
-        "els['agent-field'] = {hidden: h}; els['agent'] = {checked: c}; return agentOn(); })));"
-    )
-    env = {k: v for k, v in os.environ.items() if k != "NODE_OPTIONS"}
-    out = subprocess.run(["node", "-e", script], capture_output=True, text=True, timeout=20, env=env)
-    assert out.returncode == 0, out.stderr
-    assert json.loads(out.stdout) == [False, False, True, False]

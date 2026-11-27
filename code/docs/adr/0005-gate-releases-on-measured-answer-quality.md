@@ -1,7 +1,7 @@
 # ADR 0005: Gate releases on measured answer quality
 
 Status: accepted. Written 2026-10-29, after the phase closed, from the phase notes, the changelog and the decision log.
-Phase: Day 5. Code at close: commit `1e7f27a`. Run data: the Evidence section below.
+Phase: Day 5. Code at close: commit `1e7f27a`. Run data: the Day 5 entries of [code/CHANGELOG.md](../../CHANGELOG.md), and `record/progress.json`. There is no `notes/day5.md`.
 
 ## Decision
 
@@ -38,7 +38,7 @@ Answering model: adopted. Qwen3 4B-instruct, Apache-2.0, thinking off, temperatu
 
 ## Staffing
 
-No hire. One engineer and one AI assistant built the phase. The work ran as parallel packages in git worktrees, and the lead ran the gate before any merge.
+One engineer and one AI assistant built the phase. The work ran as parallel packages in git worktrees, and the lead ran the gate before any merge.
 Add people when gates fail builds faster than anyone can investigate them, or when a second system shares the harness.
 
 ## What would change this

@@ -1,42 +1,30 @@
 # FindyFixy
 
-The example app the wyld3rness harness is tested on: an incident-triage agent. It is a uv workspace member with its own `code/examples/findyfixy/pyproject.toml`, which declares its libraries, its dependency on the harness and its commands (`findyfixy-console`, `findyfixy-eval` and the rest; the Makefile wraps the common ones).
+The agent the harness is tested on. It triages incidents (`make triage`) and, on call, proposes fixes that the harness's loop applies to [simprod](../simprod/README.md) (`make oncall`). Settings go in `code/examples/findyfixy/.env`, copied from `code/examples/findyfixy/.env.example`.
 
-Beside the package: `code/examples/findyfixy/tests/` (its tests, [README](tests/README.md)), `code/examples/findyfixy/data/` (the versioned synthetic corpus, golden sets, deploy and change logs, [README](data/README.md)), `code/examples/findyfixy/evals/` (the frozen baseline and the attestation CI checks, [README](evals/README.md)), `code/examples/findyfixy/config/prices.toml` (reference prices per token) and `code/examples/findyfixy/docker-compose.yml` (Postgres with pgvector). Settings go in `code/examples/findyfixy/.env`, copied from `code/examples/findyfixy/.env.example`.
+## Where things are
 
-The package is `code/examples/findyfixy/src/findyfixy/`. Dependencies point inward: only entry points and `code/examples/findyfixy/src/findyfixy/observability/tracing.py` import the composition root `code/examples/findyfixy/src/findyfixy/wiring.py` or `code/examples/findyfixy/src/findyfixy/settings.py`, and `code/examples/findyfixy/tests/test_architecture.py` enforces it.
+| Folder in `code/examples/findyfixy/src/findyfixy/` | Holds |
+|---|---|
+| oncall/ | the harness's ports for on-call: environment, decider (the model), policy table, script, attacks, experiment, and the agent and loop services |
+| triage/, tools/, retrieval/ | the triage graph, its tools and its incident memory |
+| evals/ | the golden set and the adapter the eval gate drives |
+| console/ | the console: the storm page (home) and the architecture page |
+| wiring.py, settings.py | the one composition root and the configuration |
 
-**Router, agent and triage**
-- `code/examples/findyfixy/src/findyfixy/triage/graph.py`: the small-model-first router graph, and its agent mode: investigate with tools, then decide, with a hand-over to a human when the loop runs out of turns or time.
-- `code/examples/findyfixy/src/findyfixy/triage/record.py`: the triage record, the agent's decision (an action from a closed set) and validate-retry for model output.
-- `code/examples/findyfixy/src/findyfixy/tools/investigate.py`: the tool-calling loop with its turn cap and deadline.
-- `code/examples/findyfixy/src/findyfixy/tools/deploys.py`, `code/examples/findyfixy/src/findyfixy/tools/changes.py`, `code/examples/findyfixy/src/findyfixy/tools/services.py` and `code/examples/findyfixy/src/findyfixy/tools/memory.py`: the agent's read-only tools: the deploy log (v1, v2), the change log as of the case's alert time (v3), the service map and incident search.
-- `code/examples/findyfixy/src/findyfixy/tools/guard.py`: wraps every agent tool so each call carries a token from the harness's credential broker, scoped to the agent, the tool and the resource the call reads, and verified before the tool runs. `GRANTS` lists which tools each agent may call.
-- `code/examples/findyfixy/src/findyfixy/tools/submit.py`: `submit_decision`, how the agent finishes: its arguments are the validated decision, and it executes nothing.
-- `code/examples/findyfixy/src/findyfixy/policy.py`: FindyFixy's side of the harness's action ledger: its declared actions, the rollback rule checked against the alert and the change log (the target is the alerting service or one it depends on, the deploy is the only change to it in the 2 hours before the alert and is safe to roll back, and the version is the one before it), failing closed without them, and each service's blast radius. The graph's policy step sends every decision through it; the decision itself is left as written, and the verdict is recorded beside it.
-- `code/examples/findyfixy/src/findyfixy/events.py`: the run events the graph reports.
-- `code/examples/findyfixy/src/findyfixy/observability/adapter.py`: those events as OpenTelemetry spans, through the harness's `SpanTree`. The console turns it on when tracing is configured (`open_tracing` in `code/examples/findyfixy/src/findyfixy/observability/tracing.py`); `RunTracer` does the same for eval cases, which share one emitter across threads. `traced_sink` gives the console's event log a `run_traced` event per run, with the link to its trace.
-- `code/examples/findyfixy/src/findyfixy/llm.py`: how the answering model is called (its options, timeout and the validated decision call), shared by the triage graph, the agent's builder and the console.
+Beside the package: `code/examples/findyfixy/tests/`, `code/examples/findyfixy/data/` (synthetic corpus and golden set), `code/examples/findyfixy/evals/` (baseline and attestation).
 
-**Memory**
-- `code/examples/findyfixy/src/findyfixy/retrieval/corpus.py`, `code/examples/findyfixy/src/findyfixy/retrieval/corpus_v2.py` and `code/examples/findyfixy/src/findyfixy/retrieval/ingest.py`: build the synthetic incident corpus (v1, then v2's poisoned and cascade additions) and ingest each data version into its own table.
-- `code/examples/findyfixy/src/findyfixy/retrieval/search.py` and `code/examples/findyfixy/src/findyfixy/retrieval/retrieve.py`: nearest-chunk search and the three retrievers.
-- `code/examples/findyfixy/src/findyfixy/retrieval/incidents.py`: the small hand-written incident bank.
-- `code/examples/findyfixy/src/findyfixy/model_cache.py`: loads the pinned embedder and reranker from the local cache, and downloads only when the cache does not hold them.
+## Common changes
 
-**Evaluation**
-- `code/examples/findyfixy/src/findyfixy/evals/golden.py`: the golden set, built from the corpus.
-- `code/examples/findyfixy/src/findyfixy/evals/golden_v2.py`, `code/examples/findyfixy/src/findyfixy/evals/golden_v3.py` and `code/examples/findyfixy/src/findyfixy/evals/answers_hard.py`: the v2 hard cases, the same cases on a timeline with a change log (v3), and their eval command (scores only).
-- `code/examples/findyfixy/src/findyfixy/evals/attacks.py` and `code/examples/findyfixy/src/findyfixy/evals/attacks_live.py`: the 20 injection attacks (15 written, 5 poisoned), each with the action its attacker wants, and `make attacks`, which runs the real agent on them and reports what got through and which severity orders it obeyed. The fully fooled half runs in `make test`.
-- `code/examples/findyfixy/src/findyfixy/evals/adapter.py`: FindyFixy as a system under test for the harness in `code/src/wyld3rness/`: holdout recall, the severity label, the twin data, and in agent mode the action label and the tool results the judge sees.
-- `code/examples/findyfixy/src/findyfixy/evals/answers.py`: the answer evaluation's entry point. It builds the live adapter and hands it to the harness command line. It also declares what the CI gate attests: the entry module whose imports make up the eval path, the data directory, the baseline, the lock file and the compose file, and the database check that stops a gate run on a stale ingest.
-- `code/examples/findyfixy/src/findyfixy/evals/queries.py` and `code/examples/findyfixy/src/findyfixy/evals/retrieval.py`: the labelled queries and the retrieval evaluation.
+| To | Change | Then run |
+|---|---|---|
+| Allow a new kind of action | the action and its undo in `code/examples/findyfixy/src/findyfixy/oncall/env.py`, its rule in `code/examples/findyfixy/src/findyfixy/oncall/policy.py`, the endpoint in simprod | `make test`, then `make oncall` |
+| Change how the model proposes | `code/examples/findyfixy/src/findyfixy/oncall/decide.py` | `make test`, then `make experiment` |
+| Add an attack | `code/examples/findyfixy/src/findyfixy/oncall/attacks.py` | `make injection` |
+| Change a triage answer | anything on the eval path, or `code/examples/findyfixy/data/` | the commit runs the eval gate |
 
-**Entry points and wiring**
-- `code/examples/findyfixy/src/findyfixy/wiring.py`, `code/examples/findyfixy/src/findyfixy/settings.py` and `code/examples/findyfixy/src/findyfixy/paths.py`: the composition root, the configuration read from the environment, and where files live.
-- `code/examples/findyfixy/src/findyfixy/observability/tracing.py`: `command_trace`, how each command (triage, retrieval eval, ingest, search, the tool paths) becomes a trace, with the tracer built from settings. The MCP server and the console build their provider at startup and use the harness's `CommandTrace` per tool call or request. `code/examples/findyfixy/src/findyfixy/wiring.py` `stage_spans` turns the retriever's stages into spans.
-- `code/examples/findyfixy/src/findyfixy/observability/prices.py`: `make obs-prices`, which registers `code/examples/findyfixy/config/prices.toml` with Langfuse through the harness's `code/src/wyld3rness/trace/prices.py`.
-- `code/examples/findyfixy/src/findyfixy/console/server.py`, `code/examples/findyfixy/src/findyfixy/console/fakes.py`, `code/examples/findyfixy/src/findyfixy/console/dev_reload.py` and `code/examples/findyfixy/src/findyfixy/console/stress.py`: the live console, its scripted stand-ins, hot reload and stress settings.
-- `code/examples/findyfixy/src/findyfixy/console/static/architecture.html`: the page the console serves, the live picture of both lanes. Each box's tooltip says what it does, and `code/examples/findyfixy/tests/test_page_truth.py` keeps the boxes true to the code.
-- `code/examples/findyfixy/src/findyfixy/console/eval_run.py`: the console's eval run. It streams the harness's events next to the graph's for each case, and applies the gate read-only. It writes no report.
-- `code/examples/findyfixy/src/findyfixy/mcp/server.py`, `code/examples/findyfixy/src/findyfixy/mcp/client.py`, `code/examples/findyfixy/src/findyfixy/mcp/run.py` and `code/examples/findyfixy/src/findyfixy/tools/direct_run.py`: the tool served over MCP and the two measured paths to it.
+## Rules the tests enforce
+
+- Only entry points import the composition root (`code/examples/findyfixy/tests/test_architecture.py`).
+- Each box on the architecture page names the code behind it, and a box marked built must exist (`code/examples/findyfixy/tests/test_page_truth.py`).
+- The agent's container reaches only the model server: no keys, no route to simprod.

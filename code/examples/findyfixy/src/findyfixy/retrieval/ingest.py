@@ -1,9 +1,8 @@
 """Ingestion job: incident postmortems in, embedded chunks out (Day 3).
 
-What: reads each data version's `data/<version>/incidents.jsonl`, splits each
-incident into its four sections, embeds each section, and stores it in Postgres
-with pgvector, one table per version. It is safe to re-run: unchanged chunks
-are not touched.
+What: reads `data/incidents.jsonl`, splits each incident into its four
+sections, embeds each section, and stores it in Postgres with pgvector. It is
+safe to re-run: unchanged chunks are not touched.
 
 Pipeline: source -> chunk -> hash -> diff against the table -> embed only what
 changed -> one transaction (upsert changed, delete retracted).
@@ -23,11 +22,6 @@ Design decisions and what changes at scale:
   idempotent, because one long transaction holds locks and bloats the WAL.
 - The embedder is injected. Tests pass a fake, so the logic is checked without a
   model. The real one is built only in `main`, never at import time.
-- One table per data version (`TABLES`). v1 keeps the table it always had,
-  `chunks`, so its rows, ids and SQL are exactly those of every earlier run,
-  and a v1 query can never return a v2-only incident. The cost is
-  a copy of v1's 800 vectors in each later table (`chunks_v2`, `chunks_v3`). At scale you would keep one
-  table with a version column (or a partition per version) instead of copies.
 - `twin_of` in the source file is the Day 4 answer key. This module never reads
   it. If retrieval could see its own answer key, the recall number would mean
   nothing.
@@ -46,7 +40,7 @@ from typing import TYPE_CHECKING, Literal, get_args
 from pgvector import Vector
 import psycopg
 
-from findyfixy.paths import DATA_VERSIONS, DataVersion, data_dir
+from findyfixy.paths import DATA
 
 if TYPE_CHECKING:
     from psycopg import Connection
@@ -58,25 +52,9 @@ MODEL_NAME = "BAAI/bge-small-en-v1.5"
 MODEL_REVISION = "5c38ec7c405ec4b44b94cc5a9bb96e735b38267a"
 DIMENSIONS = 384
 
-# The table each data version is loaded into. The names are constants, never
-# input, which is why they can be formatted into SQL below. Every function that
-# touches a table takes a version and resolves the name here (`table_for`), so
-# no caller can hand a raw string to the SQL.
-TABLES: dict[DataVersion, str] = {"v1": "chunks", "v2": "chunks_v2", "v3": "chunks_v3"}
-
-
-def table_for(version: DataVersion) -> str:
-    """The table of one data version. Raises ValueError on an unknown version."""
-    if version not in TABLES:
-        raise ValueError(f"unknown data version {version!r}; expected one of {', '.join(TABLES)}")
-    return TABLES[version]
-
-
-def source_path(version: DataVersion) -> Path:
-    """The corpus file a version loads. The eval reads the table, not this file, so the
-    eval gate checks the two agree (`database_staleness`) before it attests."""
-    return data_dir(version) / "incidents.jsonl"
-
+# The corpus this job loads. The eval reads the table, not this file, so the
+# eval gate checks the two agree (`database_staleness`) before it attests.
+SOURCE_PATH = DATA / "incidents.jsonl"
 
 Section = Literal["summary", "timeline", "root_cause", "remediation"]
 SECTIONS: tuple[Section, ...] = get_args(Section)
@@ -91,8 +69,8 @@ DEFAULT_DSN = "host=127.0.0.1 port=5432 dbname=triage user=postgres password=dev
 
 # `embedding vector(384)` fixes the dimension in the column type, so a vector
 # from the wrong model is rejected by the database instead of stored silently.
-_SCHEMA = """
-CREATE TABLE IF NOT EXISTS {table} (
+_SCHEMA = f"""
+CREATE TABLE IF NOT EXISTS chunks (
     id              text PRIMARY KEY,
     incident_id     text NOT NULL,
     section         text NOT NULL,
@@ -102,15 +80,15 @@ CREATE TABLE IF NOT EXISTS {table} (
     body            text NOT NULL,
     hash            text NOT NULL,
     embedding_model text NOT NULL,
-    embedding       vector({dimensions}) NOT NULL
+    embedding       vector({DIMENSIONS}) NOT NULL
 )
 """
 # HNSW with pgvector's defaults (m = 16, ef_construction = 64). Cosine
 # operator class, because the vectors are normalised and queries use cosine.
-_INDEX = "CREATE INDEX IF NOT EXISTS {table}_embedding_hnsw ON {table} USING hnsw (embedding vector_cosine_ops)"
+_INDEX = "CREATE INDEX IF NOT EXISTS chunks_embedding_hnsw ON chunks USING hnsw (embedding vector_cosine_ops)"
 
 _UPSERT = """
-INSERT INTO {table} (id, incident_id, section, service, severity, incident_date,
+INSERT INTO chunks (id, incident_id, section, service, severity, incident_date,
                     body, hash, embedding_model, embedding)
 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 ON CONFLICT (id) DO UPDATE SET
@@ -240,26 +218,25 @@ def plan_changes(chunks: Iterable[Chunk], existing: Mapping[str, str]) -> Plan:
     return Plan(to_write, to_delete, unchanged=len(chunks) - len(to_write))
 
 
-def ensure_schema(conn: Connection, version: DataVersion = "v1") -> None:
-    """Create the extension, and one version's table and HNSW index, if they are missing.
+def ensure_schema(conn: Connection) -> None:
+    """Create the extension, table and HNSW index if they are missing.
 
     Safe to run every time. The connection is in autocommit mode, so each
     statement stands alone and the table exists before `Vector` values are sent.
     """
-    table = table_for(version)
     conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
-    conn.execute(_SCHEMA.format(table=table, dimensions=DIMENSIONS))
-    conn.execute(_INDEX.format(table=table))
+    conn.execute(_SCHEMA)
+    conn.execute(_INDEX)
 
 
-def existing_hashes(conn: Connection, version: DataVersion = "v1") -> dict[str, str]:
-    """Chunk id to stored hash in one version's table, for the diff. One row per chunk, no vectors."""
-    return dict(conn.execute(f"SELECT id, hash FROM {table_for(version)}").fetchall())
+def existing_hashes(conn: Connection) -> dict[str, str]:
+    """Chunk id to stored hash, for the diff. One row per chunk, no vectors."""
+    return dict(conn.execute("SELECT id, hash FROM chunks").fetchall())
 
 
-def stored_models(conn: Connection, version: DataVersion = "v1") -> set[str]:
-    """The embedding model names one version's table holds. One name when it is consistent."""
-    return {row[0] for row in conn.execute(f"SELECT DISTINCT embedding_model FROM {table_for(version)}").fetchall()}
+def stored_models(conn: Connection) -> set[str]:
+    """The embedding model names the table holds. One name when it is consistent."""
+    return {row[0] for row in conn.execute("SELECT DISTINCT embedding_model FROM chunks").fetchall()}
 
 
 def staleness(plan: Plan, models: Collection[str], model: str = MODEL_NAME) -> list[str]:
@@ -286,19 +263,17 @@ def staleness(plan: Plan, models: Collection[str], model: str = MODEL_NAME) -> l
     return reasons
 
 
-def database_staleness(conn: Connection, version: DataVersion = "v1", path: Path | None = None) -> list[str]:
-    """`staleness` of one version's live table against its source file. Reads ids, hashes and names, no vectors.
+def database_staleness(conn: Connection, path: Path = SOURCE_PATH) -> list[str]:
+    """`staleness` of the live table against the source file. Reads ids, hashes and names, no vectors.
 
     Read-only, and no model is loaded: the plan needs only the source text
     and the stored hashes. A missing table is stale too, with its own fix.
-    `path` replaces the version's source file in tests.
     """
-    table = table_for(version)
     try:
-        existing, models = existing_hashes(conn, version), stored_models(conn, version)
+        existing, models = existing_hashes(conn), stored_models(conn)
     except psycopg.errors.UndefinedTable:
-        return [f"the database has no {table} table: run make ingest"]
-    return staleness(plan_changes(read_chunks(path or source_path(version)), existing), models)
+        return ["the database has no chunks table: run make ingest"]
+    return staleness(plan_changes(read_chunks(path), existing), models)
 
 
 def embed_in_batches(embed: Embedder, texts: Sequence[str], batch_size: int) -> list[list[float]]:
@@ -324,10 +299,8 @@ def apply_plan(
     plan: Plan,
     vectors: Sequence[Sequence[float]],
     model: str = MODEL_NAME,
-    version: DataVersion = "v1",
 ) -> None:
-    """Write the plan to one version's table in one transaction: upsert changed chunks, delete retracted."""
-    table = table_for(version)
+    """Write the plan in one transaction: upsert changed chunks, delete retracted."""
     with conn.transaction():
         if plan.to_write:
             rows = [
@@ -345,9 +318,9 @@ def apply_plan(
                 )
                 for c, v in zip(plan.to_write, vectors, strict=True)
             ]
-            conn.cursor().executemany(_UPSERT.format(table=table), rows)
+            conn.cursor().executemany(_UPSERT, rows)
         if plan.to_delete:
-            conn.execute(f"DELETE FROM {table} WHERE id = ANY(%s)", (list(plan.to_delete),))
+            conn.execute("DELETE FROM chunks WHERE id = ANY(%s)", (list(plan.to_delete),))
 
 
 def ingest(
@@ -357,17 +330,16 @@ def ingest(
     *,
     model: str = MODEL_NAME,
     batch_size: int = 64,
-    version: DataVersion = "v1",
 ) -> Report:
     """Bring the table in line with `chunks`, doing only the work that is needed.
 
     Embedding is the slow step, so it runs after the diff and only for chunks
     that are new or changed. On an unchanged re-run the model is never called.
     """
-    ensure_schema(conn, version)
-    plan = plan_changes(chunks, existing_hashes(conn, version))
+    ensure_schema(conn)
+    plan = plan_changes(chunks, existing_hashes(conn))
     vectors = embed_in_batches(embed, [c.embed_text for c in plan.to_write], batch_size)
-    apply_plan(conn, plan, vectors, model, version)
+    apply_plan(conn, plan, vectors, model)
     return Report(
         total=len(chunks),
         written=len(plan.to_write),
@@ -412,27 +384,24 @@ def database_url() -> str:
 
 
 def main() -> None:
-    """Ingest every data version into its own table and print one report per version.
+    """Ingest `data/incidents.jsonl` into the local database and print a report.
 
-    The data paths are resolved from this file, not the working directory. The
-    embedding model is loaded once, and only when some version has work.
+    The data path is resolved from this file, not the working directory.
     """
     from findyfixy.observability.tracing import command_trace
 
-    sources = {version: read_chunks(source_path(version)) for version in DATA_VERSIONS}
-    summary = ", ".join(f"{version}: {len(chunks)} chunks" for version, chunks in sources.items())
+    chunks = read_chunks(SOURCE_PATH)
     with (
-        command_trace("ingest", input=summary) as command,
+        command_trace("ingest", input=f"{SOURCE_PATH.name}: {len(chunks)} chunks") as command,
         psycopg.connect(database_url(), autocommit=True) as conn,
     ):
-        for version in DATA_VERSIONS:
-            ensure_schema(conn, version)
+        ensure_schema(conn)
         # Registering after the extension exists lets psycopg send `Vector` values.
         from pgvector.psycopg import register_vector
 
         register_vector(conn)
         with command.step("plan") as step:
-            needs_model = any(_needs_model(conn, chunks, v) for v, chunks in sources.items())
+            needs_model = _needs_model(conn, chunks)
             step.set(needs_model=needs_model)
         with command.step("load embedder", {"loaded": needs_model}):
             embed = make_embedder() if needs_model else _never_called
@@ -442,15 +411,14 @@ def main() -> None:
             with command.step("embed", {"texts": len(texts)}):
                 return embed(texts)
 
-        reports = {v: ingest(conn, chunks, traced_embed, version=v) for v, chunks in sources.items()}
-        command.output("; ".join(f"{v} {r}" for v, r in reports.items()))
-    for version, report in reports.items():
-        print(f"{version} {report}")
+        report = ingest(conn, chunks, traced_embed)
+        command.output(str(report))
+    print(report)
 
 
-def _needs_model(conn: Connection, chunks: Sequence[Chunk], version: DataVersion = "v1") -> bool:
+def _needs_model(conn: Connection, chunks: Sequence[Chunk]) -> bool:
     """True when the plan has work. Skips the slow model load on a no-op re-run."""
-    return bool(plan_changes(chunks, existing_hashes(conn, version)).to_write)
+    return bool(plan_changes(chunks, existing_hashes(conn)).to_write)
 
 
 def _never_called(texts: Sequence[str]) -> list[list[float]]:

@@ -9,7 +9,7 @@ What it does
     from OpenTelemetry is imported, so a command reads the same either way.
 
 Why one helper for every command
-    "Everything the project does is observable" (Day 6) means every
+    "Everything the project does is observable" (Day 6, step 5) means every
     entry point that touches a model, the database, a tool or the network
     makes a trace. Without one shape for it, each command would start a
     provider, name its spans and close the exporter its own way, and one of
@@ -73,6 +73,11 @@ class CommandTrace:
     def tracer(self) -> Tracer | None:
         """The tracer, for code that builds its own spans (an app's adapter), or None."""
         return self._tracing.tracer() if self._tracing is not None else None
+
+    @property
+    def trace_id(self) -> str | None:
+        """The trace's id once the command has started, or None without tracing."""
+        return self._tree.trace_id if self._tree is not None else None
 
     @property
     def tracing(self) -> Tracing | None:

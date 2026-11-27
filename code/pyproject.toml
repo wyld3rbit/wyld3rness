@@ -15,7 +15,6 @@ dependencies = [
     "opentelemetry-exporter-otlp-proto-http>=1.45.2",
     "opentelemetry-sdk>=1.45.2",
     "pydantic>=2.14.1",
-    "pyjwt>=2.15.1",
 ]
 
 # The CI gate's check, for a local run. CI itself calls the file with plain
@@ -33,7 +32,7 @@ build-backend = "uv_build"
 # installs the harness alone, which is how `make test-harness` proves it stands
 # without any app.
 [tool.uv.workspace]
-members = ["examples/findyfixy"]
+members = ["examples/findyfixy", "examples/simprod"]
 
 [tool.uv]
 # Release cooldown: ignore anything published after this date, because fresh
@@ -42,23 +41,18 @@ members = ["examples/findyfixy"]
 exclude-newer = "2026-11-02T00:00:00Z"
 # `mcp` lists these as hard requirements, but only its HTTP serving and OAuth
 # features import them. This project talks to MCP over stdio, so they are not
-# needed. A never-true marker removes them from the install while the lock
-# still records them. If an MCP feature ever raises ImportError for one of
-# these, delete its line here.
-# An override also cancels a package you add yourself: `uv add uvicorn`
-# succeeds, then the import fails. Day 9 needs a server such as uvicorn, so
-# delete that line FIRST. examples/findyfixy/tests/test_dependencies.py fails
-# if not, for a package added to any workspace member. pyjwt's line was
-# removed on Day 7: the harness's credential broker depends on it. mcp asks for
-# pyjwt's `crypto` extra, which pulls in cryptography (and cffi, pycparser);
-# the broker signs with HMAC-SHA256, which needs only the standard library, so
-# cryptography is kept out too. An asymmetric key (RS256, EdDSA) would need it:
-# delete its line then.
+# needed. A never-true marker removes them from the install (about 4.4 MB, most
+# of it `cryptography`) while the lock still records them. If an MCP feature
+# ever raises ImportError for one of these, delete its line here.
+# An override also cancels a package you add yourself: `uv add pyjwt` succeeds,
+# then `import jwt` fails. A broker needs pyjwt and an API needs a server such as
+# uvicorn, so delete those lines FIRST. examples/findyfixy/tests/test_dependencies.py
+# fails if not, for a package added to any workspace member.
 override-dependencies = [
   "uvicorn ; sys_platform == 'never'",
   "python-multipart ; sys_platform == 'never'",
+  "pyjwt ; sys_platform == 'never'",
   "click ; sys_platform == 'never'",
-  "cryptography ; sys_platform == 'never'",
 ]
 
 [dependency-groups]
@@ -70,10 +64,11 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-# Both packages are installed (editable) by `uv sync --all-packages`, so no
-# path tweak is needed: tests import `wyld3rness` and `findyfixy` as a user would.
-# tests/ is the harness's suite, examples/findyfixy/tests/ the example's.
-testpaths = ["tests", "examples/findyfixy/tests"]
+# Every member is installed (editable) by `uv sync --all-packages`, so no path
+# tweak is needed: tests import `wyld3rness`, `findyfixy` and `simprod` as a user would.
+# tests/ is the harness's suite, examples/findyfixy/tests/ the agent's and
+# examples/simprod/tests/ the simulated production's.
+testpaths = ["tests", "examples/findyfixy/tests", "examples/simprod/tests"]
 # Tests that call real models are deselected by default. They need a running
 # Ollama and are slow and non-deterministic. Run them with:
 #   uv run pytest -m integration
@@ -81,7 +76,7 @@ testpaths = ["tests", "examples/findyfixy/tests"]
 # runs the whole golden set through live models and takes a long time. Run it with:
 #   uv run pytest -m quality
 # A -m on the command line overrides this one (the last -m wins).
-# Test file names are unique across both suites: pytest's default import mode
+# Test file names are unique across all suites: pytest's default import mode
 # imports each by its bare name.
 addopts = "-m 'not integration and not quality'"
 markers = [
@@ -102,17 +97,15 @@ select = ["E", "W", "F", "I", "B", "UP", "SIM", "RUF"]
 # Synthetic incident text, one sentence per string: splitting them adds noise, not clarity.
 "examples/findyfixy/src/findyfixy/retrieval/corpus.py" = ["E501"]
 "examples/findyfixy/src/findyfixy/evals/queries.py" = ["E501"]
-"examples/findyfixy/src/findyfixy/retrieval/corpus_v2.py" = ["E501"]
-"examples/findyfixy/src/findyfixy/evals/golden_v2.py" = ["E501"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["wyld3rness", "findyfixy"]
+known-first-party = ["wyld3rness", "findyfixy", "simprod"]
 # `import x` and `from x import y` sorted together by module name, as the code already is.
 force-sort-within-sections = true
 
 [tool.mypy]
 python_version = "3.13"
-files = ["src", "examples/findyfixy/src"]
+files = ["src", "examples/findyfixy/src", "examples/simprod/src"]
 warn_unused_ignores = true
 warn_redundant_casts = true
 check_untyped_defs = true

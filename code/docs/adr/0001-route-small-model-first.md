@@ -1,7 +1,7 @@
 # ADR 0001: Route on a small model first and distrust its confidence
 
 Status: accepted. Written 2026-10-29, after the phase closed, from the phase notes, the changelog and the decision log.
-Phase: Day 1. Code at close: commit `853532b`. Run data: the Evidence section below.
+Phase: Day 1. Code at close: commit `853532b`. Run data: the Results section of [lessons/d01.md](../../../lessons/d01.md).
 
 ## Decision
 
@@ -40,7 +40,7 @@ Routing gateways: sold by vendors. The comparison waits for cost data (Day 8).
 
 ## Staffing
 
-No hire. One engineer and one AI assistant built the phase.
+One engineer and one AI assistant built the phase.
 Add people when gates fail builds faster than anyone can investigate them.
 Add people when a second system needs the same controls and the harness needs an owner.
 

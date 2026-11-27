@@ -19,13 +19,18 @@ PAGE = snap.PAGE.read_text()
 DRAWN = [r for r in snap.RECORDS if r not in snap.FROZEN]
 
 
+def as_built(page: str, name: str) -> str:
+    """The page with one planned node, found by its title, flipped to built."""
+    block = next(b for b in snap.page_parts(page)[0] if snap.node_name(b) == name)
+    return page.replace(block, block.replace('data-status="planned"', 'data-status="built"', 1))
+
+
 def test_the_latest_phase_matches_the_live_page() -> None:
     assert snap.built_in_phase(max(snap.PHASES)) == snap.built_on_page(PAGE)
 
 
 def test_flipping_a_node_on_the_page_without_a_new_phase_is_caught() -> None:
-    old = '<g class="node" data-status="planned" data-layer="harness" data-code="none">\n        <title>Planned for Day 8.'
-    flipped = PAGE.replace(old, old.replace('"planned"', '"built"'))
+    flipped = as_built(PAGE, "Kill switch")  # still planned
     assert flipped != PAGE
     assert snap.built_in_phase(max(snap.PHASES)) != snap.built_on_page(flipped)
 
@@ -51,9 +56,20 @@ def test_a_frozen_record_is_never_drawn_from_the_page() -> None:
 
 
 def test_every_record_maps_to_a_known_phase() -> None:
-    """Each ADR picture shows a phase that exists, and the newest ADR shows the latest phase."""
+    """Each ADR picture shows a phase that exists, and the newest ADR shows the latest closed phase."""
     assert set(snap.RECORDS.values()) <= set(snap.PHASES)
-    assert snap.RECORDS[max(snap.RECORDS)] == max(snap.PHASES)
+    latest = max(snap.PHASES)
+    if snap.OPEN_PHASE is not None:
+        assert snap.OPEN_PHASE == latest, "only the latest phase can be open"
+        latest -= 1
+    assert snap.newest_phase() == latest
+    assert set(snap.AT_CLOSE) <= set(snap.FROZEN), "a second picture is only for a record frozen as accepted"
+
+
+def test_the_outcome_picture_equals_a_fresh_render() -> None:
+    """Each Outcome picture is the page drawn at its phase, byte for byte."""
+    for record, phase in snap.AT_CLOSE.items():
+        assert snap.close_path(record).read_text() == snap.snapshot(phase, PAGE), "stale: run make adr-snapshot"
 
 
 def test_phase_five_draws_both_lanes_and_the_loop_between_them() -> None:
@@ -65,18 +81,21 @@ def test_phase_five_draws_both_lanes_and_the_loop_between_them() -> None:
                  "Large model", "Triage record", "Eval gate", "CI gate"):
         block = svg.split(f">{name}<")[0].rsplit("<g ", 1)[1]
         assert 'data-status="built"' in block, name
-    for name in ("Tracing", "Policy", "Gateway", "Human review"):
+    for name in ("Tracing", "Policy", "Gateway", "Budget", "Verify", "Safe state"):
+        assert f">{name}<" in svg, name
         block = svg.split(f">{name}<")[0].rsplit("<g ", 1)[1]
         assert 'data-status="planned"' in block, name
     assert "data-code" not in svg and "<title>" not in svg and "tool step off" not in svg
 
 
-def test_a_node_built_later_is_drawn_planned_with_its_day() -> None:
-    """The action ledger was built on Day 7: a Day 6 picture drawn from today's page shows it planned, labelled Day 7."""
-    svg = snap.snapshot(6, PAGE)
-    block = svg.split(">Action ledger<")[0].rsplit("<g ", 1)[1]
+def test_a_node_built_later_is_drawn_planned_with_its_day(monkeypatch) -> None:
+    # Pretend Policy was built on Day 7: the Day 6 picture must still show it planned.
+    monkeypatch.setitem(snap.FIRST_BUILT, "Policy", 7)
+    page = as_built(PAGE, "Policy")
+    svg = snap.snapshot(6, page)
+    block = svg.split(">Policy<")[0].rsplit("<g ", 1)[1]
     assert 'data-status="planned"' in block
-    assert ">Day 7<" in svg.split(">Action ledger<")[1].split("</g>")[0]
+    assert ">Day 7<" in svg.split(">Policy<")[1].split("</g>")[0]
 
 
 def test_every_drawn_snapshot_is_well_formed() -> None:
@@ -88,3 +107,38 @@ def test_the_committed_drawn_images_equal_a_fresh_render() -> None:
     for record in DRAWN:
         path = snap.image_path(record)
         assert path.read_text() == snap.render(record, PAGE), f"{path.name} is stale: run make adr-snapshot"
+
+
+def test_the_page_draws_the_whole_loop_with_cost_and_no_human_review() -> None:
+    """The plan on the page: act, verify, undo or stop, inside a budget, with nobody approving each action."""
+    names = {snap.node_name(b) for b in snap.page_parts(PAGE)[0]}
+    assert {"Policy", "Identity", "Act", "Verify", "Undo", "Safe state", "Kill switch", "Budget", "Scorecard"} <= names
+    assert "Human review" not in names
+
+
+def test_the_target_design_is_drawn_from_the_page() -> None:
+    """One source: the design figure is a render of the page, with its planned paths."""
+    svg = snap.target(PAGE)
+    xml.dom.minidom.parseString(svg)
+    assert snap.TARGET.read_text() == svg, "target-design.svg is stale: run make adr-snapshot"
+    assert 'id="p_verify_undo"' in svg
+
+
+def test_adr_0008_keeps_the_plan_it_was_accepted_with() -> None:
+    """A direction record: frozen, with its planned paths, and not captioned as an earlier phase."""
+    svg = snap.image_path(8).read_text()
+    assert 8 in snap.FROZEN
+    assert 'id="p_verify_undo"' in svg and 'id="p_verify_safe"' in svg
+    assert "close of Day 6" not in svg
+
+
+def test_the_target_keeps_its_plan_when_a_phase_is_added(monkeypatch) -> None:
+    """A new phase must not empty the planned loop out of the target design."""
+    monkeypatch.setattr(snap, "PHASES", range(1, max(snap.PHASES) + 2))
+    assert 'id="p_verify_undo"' in snap.target(PAGE)
+
+
+def test_every_phase_drawn_from_the_page_is_well_formed() -> None:
+    """Not left to DRAWN, which is empty while every record is frozen."""
+    for phase in (5, max(snap.PHASES)):
+        xml.dom.minidom.parseString(snap.snapshot(phase, PAGE))

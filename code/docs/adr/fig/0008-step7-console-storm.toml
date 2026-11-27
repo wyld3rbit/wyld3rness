@@ -1,0 +1,131 @@
+# Day 7, step 7: the console drives a storm and shows it try by try (ADR 0008). Drawn by tools/diagram.py; edit this file, not the picture.
+# A box is solid when its code exists, dashed when it is planned.
+caption = "Day 7, step 7: the console drives a storm and shows each try as it happens, or replays a saved one. Solid is built, dashed is planned."
+width = 1180
+height = 470
+
+[[box]]
+id = "console"
+name = "Console"
+sub = "Storm run, or Replay"
+icon = "Scorecard"
+x = 40
+y = 40
+status = "planned"
+
+[[box]]
+id = "driver"
+name = "Storm driver"
+sub = "fresh services, fault"
+icon = "Faults"
+x = 440
+y = 40
+status = "built"
+
+[[box]]
+id = "services"
+name = "simprod"
+sub = "the storm runs here"
+icon = "Services"
+x = 990
+y = 40
+status = "built"
+
+[[box]]
+id = "saved"
+name = "Saved runs"
+sub = "results files"
+icon = "Triage record"
+x = 240
+y = 210
+status = "built"
+
+[[box]]
+id = "customers"
+name = "Customers"
+sub = "failures each second"
+icon = "Verify"
+x = 990
+y = 210
+status = "built"
+
+[[box]]
+id = "loop"
+name = "Loop container"
+sub = "one incident at a time"
+icon = "Policy"
+x = 440
+y = 210
+status = "built"
+
+[[box]]
+id = "watch"
+name = "Watch"
+sub = "an event per step"
+icon = "Tracing"
+x = 440
+y = 370
+status = "planned"
+
+[[box]]
+id = "decider"
+name = "Model or script"
+sub = "proposes"
+icon = "Small model"
+x = 990
+y = 370
+status = "built"
+
+[[edge]]
+from = "console"
+to = "driver"
+label = "POST /storm"
+status = "planned"
+
+[[edge]]
+from = "driver"
+to = "services"
+label = "reset, fault"
+status = "built"
+
+[[edge]]
+from = "driver"
+to = "loop"
+label = "the incident"
+status = "built"
+
+[[edge]]
+from = "loop"
+to = "watch"
+status = "planned"
+
+[[edge]]
+from = "watch"
+to = "decider"
+label = "decide"
+status = "built"
+
+[[edge]]
+from = "services"
+to = "customers"
+status = "built"
+
+[[edge]]
+from = "watch"
+to = "console"
+label = "events, polled"
+status = "planned"
+via = [[115, 402]]
+
+[[edge]]
+from = "customers"
+to = "console"
+label = "each second"
+status = "planned"
+via = [[1065, 330], [170, 330]]
+
+[[edge]]
+from = "saved"
+to = "console"
+label = "replay"
+status = "planned"

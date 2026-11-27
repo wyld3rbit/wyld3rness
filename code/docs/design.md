@@ -1,63 +1,115 @@
-# Design: the harness as a control plane
+# Design and strategy
 
-This document is the target design of wyld3rness: the shape the transitions in [`strategy.md`](strategy.md) move toward. The ADRs in `adr/` record what each phase decided and built, and the strategy holds the diagnosis, the policies and the invariants. This page holds only the shape.
+**wyld3rness is a harness for LLM agents that run on-call with no person approving each action, inside a budget.** It is tested on FindyFixy, which acts only on a simulated production. Each phase's choices, with the options rejected, are in the [decision records](adr/README.md); every measurement is in the [research log](research-log.md).
 
-## The question
+![The target design: what people set before runtime, the harness, the triage agent, the two proposers (a model that reads the metrics and a script with no model), the act, verify and undo loop, and the simulated production. Solid is built, dashed is planned.](target-design.svg)
 
-An LLM agent is a non-deterministic component inside a system that must behave deterministically where it matters. The same alert can produce a different answer on a different day, a retrieved document can carry instructions, and a confident answer can be wrong. The question the harness answers is how much an agent may do on its own, and on what evidence.
+## The idea
 
-The answer this design gives: the agent never decides its own authority. Every request crosses a fixed set of checkpoints, each checkpoint enforces one invariant in code, and the authority each kind of action runs with is set by measured evidence, also in code.
+An agent will sometimes be wrong with full confidence, and the text it reads can be hostile. So the design makes it **safe and affordable to be wrong**: a wrong action is limited before it runs, detected on what customers saw, undone, and paid for from a budget that cannot be exceeded.
 
-## Two planes
+| Who | Decides | When |
+|---|---|---|
+| People | The goal, the allowed kinds of action, the budget, the eval gate | Before runtime |
+| Harness, in code | Whether an action may run, whether it worked, undo, stop | Every step |
+| A proposer (a model or a script) | Which typed action to try | Once per try |
+| The system | Whether customers recovered | After every action |
 
-The **data plane** is the app. FindyFixy, the example app, takes an incident alert and investigates it with read-only tools: past incidents, what changed, and what each service depends on. In the target shape, specialists investigate in parallel, each answering one question, and a coordinator merges their findings and proposes a triage record with one next action. The data plane is where the models' judgement is used.
+A proposer can change none of the first two rows.
 
-The **control plane** is the harness. It sits on every path in and out of the data plane: requests, model calls, tool calls, proposed actions, releases. It never relies on the model behaving. Each of its checkpoints is deterministic code that holds the same way for every request.
+## The harness
 
-![The two planes: the agent as the data plane, the harness as the control plane around it. Solid is built, dashed is planned.](target-design.svg)
+![The harness: what people set before runtime; the eval gate, the CI check and tracing at every commit and model call; and for every incident, the policy, a one-time pass, the action, the recovery check, keep or undo, the safe state, and the hand-off to a person. Proposers, a script or the app's model behind a budget, feed the policy; the app's environment port applies actions and reports what customers saw.](img/harness.svg)
+
+The harness never imports the app: each control is a port the app implements or calls. The ports and how to plug in an app are in the [harness README](../src/wyld3rness/README.md). Where each part runs, and what each container cannot reach, is drawn in [ADR 0008](adr/0008-autonomous-operation-with-cost-as-an-invariant.md#step-4-the-trust-boundary-and-the-budget-written-in-the-plan-before-the-code).
+
+## Guiding policies
+
+1. **Never act on what the model says about itself.** Actions, retries and stops are decided from facts the model cannot write.
+2. **Set the bar before the run.** A change is adopted on a measurement whose bar was written first; a rejection is a result.
+3. **Every rule is a check that fails.** A test, hook or CI job breaks when the rule is broken.
+4. **The harness never depends on the app.** A second app needs an adapter, not a harness change.
+5. **Open source, local and pinned, blueprint first.** Custom code covers only what an established blueprint lacks.
+6. **Unknown is not zero.** A failed measurement is excluded and counted, never scored as 0.
+7. **Cost is an invariant.** Cost per resolved incident counts every attempt, failed ones included. Among options that pass the safety and resolution bars, the cheapest wins, and a script with no model is always one of them.
+8. **Code owns the loop.** The proposer makes one decision; code decides whether it may act, whether it worked and when to stop.
 
 ## Invariants
 
-Each checkpoint enforces one invariant. The invariants, the policy behind each and the check that proves it are listed once, in the enforcements of [`strategy.md`](strategy.md#enforcements).
+A control counts as built only when a check fails if someone goes around it.
 
-## One request, end to end
+| Invariant | Status |
+|---|---|
+| No change that can alter an answer ships without a passing, attested eval | built |
+| Every run, model call and decision is a trace, with its cost | built |
+| The harness never imports the app | built |
+| No action runs unless its kind is allowed and its preconditions hold when it runs | built |
+| No credential outlives one action | built |
+| Outside text is data, never instructions | built |
+| Nothing is called fixed until customers recover and stay recovered | built |
+| Every incident ends resolved or in a safe state | built |
+| No incident spends past its budget | partly built: the on-call proposer's calls only |
+| A safe state hands the incident to a person | built |
+| No model call bypasses one gateway | planned |
+| Autonomy of each kind of action follows its evidence | planned |
 
-An engineer pastes an alert, or the alert arrives on its own. The coordinator starts the specialists in parallel: what changed in the service and what it depends on, whether this has happened before, and whether the service is the cause or a victim. Each specialist reads only through its own tools, and every tool call presents a token the broker issued to that agent for that one tool and resource, which expires in five minutes. Every model call goes through the gateway, which checks the agent's and the team's budget, picks the model for the role, and records tokens and cost. Retrieved text is marked as untrusted data in every prompt.
+## How a proposer earns its place
 
-The coordinator merges the findings and proposes a triage record and one action; schema validation rejects a malformed record. Every proposal, from the coordinator or any specialist, goes to the action ledger, which checks it against facts the model cannot forge: the action is one the app declared, the severity comes from the validated record, and a rollback is allowed only when its target is the service the alert fired on or one it depends on, the deploy is the only change to that service in the two hours before the alert, read from the change log, and it is marked safe to roll back. Otherwise it becomes a page to a person, with the changes in that window listed. The ledger also holds a lock per blast radius (the service and everything that depends on it), so two actions that could interfere never run together, and it allows one destructive action in flight per incident.
+![The experiment: a protocol committed first; held-out storms, each through four options in random order (nobody, the script, the model with one try, the model with up to three); every option that acts goes through the same boundary; customers are measured by the host; customer minutes lost per run feed a paired analysis with repeats for noise; the decision rule written in advance is applied.](img/experiment.svg)
 
-If the action is allowed, its class decides what happens next. A read action runs. A destructive action runs at the level the autonomy policy grants its class: it waits for a human at Level 2, and runs with a human on the loop only at Level 3. Actions execute one at a time: the next one starts only after a check that the alert's signal recovered, and a failed check stops the run and pages. Every step lands in the trace, with the agent that took it, and eval scores attach to the same trace.
+Every proposer meets the same storms, unseen while it was built, in random order, through the same boundary. What counts is the customer minutes lost in a fixed window after the fault, measured outside the loop. The prediction and the decision rule are committed before the run. If the model does not beat the script, the script keeps those incidents. Protocol and results: [research log](research-log.md), entries 019 and 020.
 
 ## Autonomy as policy
 
-There are three levels. At Level 1 the agent advises and humans act. At Level 2 the agent acts after a human approves. At Level 3 the agent acts, and humans govern from on the loop, with the power to undo.
+The target is Level 3: the agent acts, rolls back and writes the postmortem, and people set and review the rules rather than approve each action. A person approves each kind of action once, and evidence from the simulated production keeps or removes it.
 
-Autonomy is set per action class, not per agent:
-
-| Class | Examples | Starts at |
+| Kind | Example | Level 3 requires |
 |---|---|---|
-| Read | recall, read logs, read metrics, list deploys | Level 3: runs freely |
-| Reversible | page a human, open a ticket | Level 3: acts, human on the loop |
-| Destructive | roll back a deploy | Level 2: acts after a human approves |
+| Can be undone | revert config, add capacity | a tested undo and a recovery check |
+| Cannot be undone, limited harm | flush a cache | a scope and rate limit, and a recovery check |
+| Can do lasting damage | delete logs | a precondition code can prove, or the safe state |
 
-A class moves up one level only when its evidence passes thresholds stored in code: the eval gate on the current golden set, 0 unauthorized actions in the injection suite, and an approval record in which humans agreed with the agent's proposals often enough over enough cases. A regression in any of them moves the class down without a human decision, as far as Level 1, where the action is only proposed. The thresholds are set from measured data in Day 10, not guessed in advance.
+## The release path
 
-## How an app plugs in
+```
+git commit ─► export the staged tree ─► eval run (unchanged answers keep their scores)
+           ─► gate fails on a regression ─► attestation added to the commit
+git push   ─► every pushed commit's attestation checked ─► CI recomputes it, refuses an uncovered change
+```
 
-The harness never imports the app. Each control is a port the app implements or calls:
+Why at commit and not in CI: [ADR 0008, step 0](adr/0008-autonomous-operation-with-cost-as-an-invariant.md#step-0-the-gate-at-commit-written-after-the-build). Why CI checks an attestation instead of running the eval: [ADR 0006](adr/0006-eval-gate-as-harness-component-attested-in-ci.md).
 
-- `SystemUnderTest` (built): describe, answer, summarise. The eval gate runs the app through it.
-- The event adapter (built): the app reports its steps, and the harness turns them into spans.
-- The action port and ledger (Day 7): the app declares its actions, their classes and the facts policy checks; any of its agents proposes through it.
-- The model port (Day 8): each of the app's agents asks the gateway for a completion under its role's budget and never holds a model client.
-- The approval port (Day 9): the harness pauses a run and resumes it on an approval record.
+## The repository
 
-Dependencies point inward: the harness defines the ports, the app depends on them, and one composition root in the app wires the real implementations.
+```
+code/
+├── src/wyld3rness/          the harness: never imports an app
+│   ├── eval/                eval gate, judge, attestation
+│   ├── trace/               spans, scores, cost
+│   └── loop/                the incident loop, policy, pass, budget, verdict, script, experiment
+├── examples/findyfixy/      the agent under test: triage, on-call proposer, console
+├── examples/simprod/        the simulated production it acts on
+├── infra/                   self-hosted services
+└── docs/                    this page, the decision records, the research log
+tools/                       public checks: docs drift, privacy scan, pictures
+```
 
-## Two harnesses
+| Concern | Choice | License |
+|---|---|---|
+| Models | Qwen3 and Qwen2.5, served by Ollama | Apache 2.0, MIT |
+| Agent graph | LangGraph | MIT |
+| Validated output | Pydantic | MIT |
+| Incident memory | Postgres with pgvector | PostgreSQL |
+| Tracing | OpenTelemetry into self-hosted Langfuse | Apache 2.0, MIT |
+| Signing | OpenBao Transit | MPL 2.0 |
+| Simulated production | Python standard library, Docker Compose | PSF |
 
-This design is the runtime harness: what ships around the app. The build harness is how the coding agent is constrained while it writes the code: written rules for the agent, the pre-commit hooks, the privacy scan, plan-before-code, and a fresh-agent review before each substantial commit. Both are named in every write-up, because the word harness means the second one to many readers.
+## Next
 
-## What this design does not cover
+1. **Stop the bleeding fast:** a runbook acts at once on known signatures while the agent diagnoses; fixes go to a small slice first; the model has a decision deadline; check windows are sized to traffic; every model call goes through one gateway that enforces the budget.
+2. **Every human fix recorded:** the agent reads everything and changes only through typed actions; people act through the same recorded tools; each resolved incident becomes a replayable storm and an incident-memory case.
+3. **Autonomy earned by evidence:** a new kind of change, found by a person or proposed by the agent, is tested on its replayed storm, approved once, and kept or removed by evidence; faults outside the runbook's catalogue test whether the model earns its place.
 
-It is one machine, one engineer and synthetic data. Multi-tenant isolation, high availability, data retention and a real identity provider are named where they would change a decision, and are not built. Specialists per infrastructure layer (Kubernetes, network, ML serving) fit the same ledger, broker and budgets, and need telemetry per layer first; they are left to the vision. The judge is a model too, so the eval gate measures agreement with a judge, which is itself checked by hand on sampled cases.
+## Limits
+
+One machine, one engineer, synthetic data and a simulated production. Nothing here shows safety on real systems.

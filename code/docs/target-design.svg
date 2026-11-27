@@ -1,87 +1,276 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 570" width="800" height="570" role="img" aria-label="The two planes. The data plane is the agents: read-only specialists investigate in parallel, a coordinator merges their findings and proposes one action. The control plane is the harness, a checkpoint on every path in and out of it. An identity broker issues a token per call, scoped to one agent, tool and resource. Every model call goes through a gateway with budgets per agent and per team. Every proposal, from any agent, passes the action ledger, then approval, before it reaches tools and systems, one action at a time. Every step is traced, traces feed evaluation, and evaluation sets the autonomy level of each action class, which approval applies. Tracing, evaluation, the action ledger, identity and the proposal are built; the specialists, the coordinator, the gateway, approval and autonomy are planned.">
-<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,1 L10,5 L0,9 z" fill="#16181D"/></marker><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,1 L10,5 L0,9 z" fill="#B4381E"/></marker></defs>
-<rect width="800" height="570" fill="#FFFFFF"/>
-<text x="40" y="30" font-family="Menlo, 'SF Mono', Consolas, monospace" font-size="13" fill="#5C616B" font-weight="700" text-anchor="start" letter-spacing="1.5">CONTROL PLANE: THE HARNESS</text>
-<rect x="270" y="176" width="300" height="126" rx="4" fill="#FBEAE5" stroke="#B4381E" stroke-width="2"/>
-<text x="284" y="288" font-family="Menlo, 'SF Mono', Consolas, monospace" font-size="13" fill="#B4381E" font-weight="700" text-anchor="start" letter-spacing="1.5">DATA PLANE: THE AGENTS</text>
-<rect x="278" y="186" width="92" height="66" rx="2" fill="#FFFFFF" stroke="#5C616B" stroke-width="1.4" stroke-dasharray="5 4"/>
-<g transform="translate(314.0,193) scale(0.833)" fill="none" stroke="#5C616B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></g>
-<text x="324.0" y="242" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" fill="#5C616B" font-weight="700" text-anchor="middle" >Specialists</text>
-<rect x="380" y="186" width="92" height="66" rx="2" fill="#FFFFFF" stroke="#5C616B" stroke-width="1.4" stroke-dasharray="5 4"/>
-<g transform="translate(416.0,193) scale(0.833)" fill="none" stroke="#5C616B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></g>
-<text x="426.0" y="242" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" fill="#5C616B" font-weight="700" text-anchor="middle" >Coordinator</text>
-<rect x="482" y="186" width="80" height="66" rx="2" fill="#FFFFFF" stroke="#16181D" stroke-width="1.4"/>
-<g transform="translate(512.0,193) scale(0.833)" fill="none" stroke="#16181D" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></g>
-<text x="522.0" y="242" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="13" fill="#16181D" font-weight="700" text-anchor="middle" >Proposal</text>
-<path d="M370,222 L378,222" fill="none" stroke="#16181D" stroke-width="1.6" marker-end="url(#ah)"/>
-<path d="M472,222 L480,222" fill="none" stroke="#16181D" stroke-width="1.6" marker-end="url(#ah)"/>
-<g transform="translate(52,180) scale(1.083)" fill="none" stroke="#16181D" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></g>
-<text x="40" y="230" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15" fill="#16181D" font-weight="700" text-anchor="start" >Engineer</text>
-<text x="40" y="250" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15" fill="#16181D" font-weight="700" text-anchor="start" >or alert</text>
-<path d="M120,222 L138,222" fill="none" stroke="#16181D" stroke-width="1.6" marker-end="url(#ah)"/>
-<rect x="140" y="186" width="116" height="74" rx="2" fill="#FFFFFF" stroke="#16181D" stroke-width="1.4"/>
-<text x="198.0" y="210" font-family="Menlo, 'SF Mono', Consolas, monospace" font-size="13" fill="#5C616B" font-weight="400" text-anchor="middle" letter-spacing="1.2"></text>
-<text x="198.0" y="238" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="21" fill="#16181D" font-weight="700" text-anchor="middle" ></text>
-<text x="198.0" y="262" font-family="Menlo, 'SF Mono', Consolas, monospace" font-size="13" fill="#5C616B" font-weight="400" text-anchor="middle" ></text>
-<g transform="translate(187.0,194) scale(0.917)" fill="none" stroke="#B4381E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5"/></g>
-<text x="198.0" y="234" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="16" fill="#16181D" font-weight="700" text-anchor="middle" >Identity</text>
-<text x="198.0" y="251" font-family="Menlo, 'SF Mono', Consolas, monospace" font-size="13" fill="#5C616B" font-weight="400" text-anchor="middle" >per agent</text>
-<path d="M256,222 L282,222" fill="none" stroke="#16181D" stroke-width="1.6" marker-end="url(#ah)"/>
-<rect x="360" y="46" width="120" height="74" rx="2" fill="#FFFFFF" stroke="#16181D" stroke-width="1.4" stroke-dasharray="5 4"/>
-<text x="420.0" y="70" font-family="Menlo, 'SF Mono', Consolas, monospace" font-size="13" fill="#5C616B" font-weight="400" text-anchor="middle" letter-spacing="1.2"></text>
-<text x="420.0" y="98" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="21" fill="#16181D" font-weight="700" text-anchor="middle" ></text>
-<text x="420.0" y="122" font-family="Menlo, 'SF Mono', Consolas, monospace" font-size="13" fill="#5C616B" font-weight="400" text-anchor="middle" ></text>
-<g transform="translate(409.0,54) scale(0.917)" fill="none" stroke="#5C616B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="8" x="2" y="14" rx="2"/><path d="M6.01 18H6"/><path d="M10.01 18H10"/><path d="M15 10v4"/><path d="M17.84 7.17a4 4 0 0 0-5.66 0"/><path d="M20.66 4.34a8 8 0 0 0-11.31 0"/></g>
-<text x="420.0" y="94" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="16" fill="#5C616B" font-weight="700" text-anchor="middle" >Gateway</text>
-<text x="420.0" y="111" font-family="Menlo, 'SF Mono', Consolas, monospace" font-size="13" fill="#5C616B" font-weight="400" text-anchor="middle" >budgets, pins</text>
-<path d="M420,186 L420,122" fill="none" stroke="#16181D" stroke-width="1.6" marker-end="url(#ah)"/>
-<text x="430" y="160" font-family="Menlo, 'SF Mono', Consolas, monospace" font-size="13" fill="#5C616B" font-weight="400" text-anchor="start" >every model call</text>
-<rect x="626" y="172" width="140" height="74" rx="2" fill="#FFFFFF" stroke="#16181D" stroke-width="1.4"/>
-<text x="696.0" y="196" font-family="Menlo, 'SF Mono', Consolas, monospace" font-size="13" fill="#5C616B" font-weight="400" text-anchor="middle" letter-spacing="1.2"></text>
-<text x="696.0" y="224" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="21" fill="#16181D" font-weight="700" text-anchor="middle" ></text>
-<text x="696.0" y="248" font-family="Menlo, 'SF Mono', Consolas, monospace" font-size="13" fill="#5C616B" font-weight="400" text-anchor="middle" ></text>
-<g transform="translate(685.0,180) scale(0.917)" fill="none" stroke="#B4381E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></g>
-<text x="696.0" y="220" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="16" fill="#16181D" font-weight="700" text-anchor="middle" >Action ledger</text>
-<text x="696.0" y="237" font-family="Menlo, 'SF Mono', Consolas, monospace" font-size="13" fill="#5C616B" font-weight="400" text-anchor="middle" >policy, locks</text>
-<rect x="626" y="274" width="140" height="74" rx="2" fill="#FFFFFF" stroke="#16181D" stroke-width="1.4" stroke-dasharray="5 4"/>
-<text x="696.0" y="298" font-family="Menlo, 'SF Mono', Consolas, monospace" font-size="13" fill="#5C616B" font-weight="400" text-anchor="middle" letter-spacing="1.2"></text>
-<text x="696.0" y="326" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="21" fill="#16181D" font-weight="700" text-anchor="middle" ></text>
-<text x="696.0" y="350" font-family="Menlo, 'SF Mono', Consolas, monospace" font-size="13" fill="#5C616B" font-weight="400" text-anchor="middle" ></text>
-<g transform="translate(685.0,282) scale(0.917)" fill="none" stroke="#5C616B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/></g>
-<text x="696.0" y="322" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="16" fill="#5C616B" font-weight="700" text-anchor="middle" >Approval</text>
-<text x="696.0" y="339" font-family="Menlo, 'SF Mono', Consolas, monospace" font-size="13" fill="#5C616B" font-weight="400" text-anchor="middle" >human or earned</text>
-<path d="M558,219 L624,209" fill="none" stroke="#16181D" stroke-width="1.6" marker-end="url(#ah)"/>
-<path d="M696,248 L696,274" fill="none" stroke="#16181D" stroke-width="1.6" marker-end="url(#ah)"/>
-<path d="M696,348 L696,384" fill="none" stroke="#16181D" stroke-width="1.6" marker-end="url(#ah)"/>
-<g transform="translate(685,388) scale(0.917)" fill="none" stroke="#16181D" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></g>
-<text x="696" y="430" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15" fill="#16181D" font-weight="700" text-anchor="middle" >Tools and systems</text>
-<text x="696" y="448" font-family="Menlo, 'SF Mono', Consolas, monospace" font-size="13" fill="#5C616B" font-weight="400" text-anchor="middle" >one at a time</text>
-<path d="M420,302 L420,336" fill="none" stroke="#16181D" stroke-width="1.6" marker-end="url(#ah)" stroke-dasharray="4 4"/>
-<text x="432" y="322" font-family="Menlo, 'SF Mono', Consolas, monospace" font-size="13" fill="#5C616B" font-weight="400" text-anchor="start" >every step</text>
-<rect x="300" y="338" width="120" height="74" rx="2" fill="#FFFFFF" stroke="#16181D" stroke-width="1.4"/>
-<text x="360.0" y="362" font-family="Menlo, 'SF Mono', Consolas, monospace" font-size="13" fill="#5C616B" font-weight="400" text-anchor="middle" letter-spacing="1.2"></text>
-<text x="360.0" y="390" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="21" fill="#16181D" font-weight="700" text-anchor="middle" ></text>
-<text x="360.0" y="414" font-family="Menlo, 'SF Mono', Consolas, monospace" font-size="13" fill="#5C616B" font-weight="400" text-anchor="middle" ></text>
-<g transform="translate(349.0,346) scale(0.917)" fill="none" stroke="#B4381E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></g>
-<text x="360.0" y="386" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="16" fill="#16181D" font-weight="700" text-anchor="middle" >Tracing</text>
-<text x="360.0" y="403" font-family="Menlo, 'SF Mono', Consolas, monospace" font-size="13" fill="#5C616B" font-weight="400" text-anchor="middle" >every run</text>
-<rect x="300" y="452" width="120" height="74" rx="2" fill="#FFFFFF" stroke="#16181D" stroke-width="1.4"/>
-<text x="360.0" y="476" font-family="Menlo, 'SF Mono', Consolas, monospace" font-size="13" fill="#5C616B" font-weight="400" text-anchor="middle" letter-spacing="1.2"></text>
-<text x="360.0" y="504" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="21" fill="#16181D" font-weight="700" text-anchor="middle" ></text>
-<text x="360.0" y="528" font-family="Menlo, 'SF Mono', Consolas, monospace" font-size="13" fill="#5C616B" font-weight="400" text-anchor="middle" ></text>
-<g transform="translate(349.0,460) scale(0.917)" fill="none" stroke="#B4381E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></g>
-<text x="360.0" y="500" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="16" fill="#16181D" font-weight="700" text-anchor="middle" >Evaluation</text>
-<text x="360.0" y="517" font-family="Menlo, 'SF Mono', Consolas, monospace" font-size="13" fill="#5C616B" font-weight="400" text-anchor="middle" >gate, CI</text>
-<rect x="470" y="452" width="140" height="74" rx="2" fill="#FFFFFF" stroke="#16181D" stroke-width="1.4" stroke-dasharray="5 4"/>
-<text x="540.0" y="476" font-family="Menlo, 'SF Mono', Consolas, monospace" font-size="13" fill="#5C616B" font-weight="400" text-anchor="middle" letter-spacing="1.2"></text>
-<text x="540.0" y="504" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="21" fill="#16181D" font-weight="700" text-anchor="middle" ></text>
-<text x="540.0" y="528" font-family="Menlo, 'SF Mono', Consolas, monospace" font-size="13" fill="#5C616B" font-weight="400" text-anchor="middle" ></text>
-<g transform="translate(529.0,460) scale(0.917)" fill="none" stroke="#5C616B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="21" x2="14" y1="4" y2="4"/><line x1="10" x2="3" y1="4" y2="4"/><line x1="21" x2="12" y1="12" y2="12"/><line x1="8" x2="3" y1="12" y2="12"/><line x1="21" x2="16" y1="20" y2="20"/><line x1="12" x2="3" y1="20" y2="20"/><line x1="14" x2="14" y1="2" y2="6"/><line x1="8" x2="8" y1="10" y2="14"/><line x1="16" x2="16" y1="18" y2="22"/></g>
-<text x="540.0" y="500" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="16" fill="#5C616B" font-weight="700" text-anchor="middle" >Autonomy</text>
-<text x="540.0" y="517" font-family="Menlo, 'SF Mono', Consolas, monospace" font-size="13" fill="#5C616B" font-weight="400" text-anchor="middle" >level per action</text>
-<path d="M360,412 L360,450" fill="none" stroke="#16181D" stroke-width="1.6" marker-end="url(#ah)"/>
-<path d="M420,489 L468,489" fill="none" stroke="#16181D" stroke-width="1.6" marker-end="url(#ah)"/>
-<path d="M610,489 L784,489 L784,311 L768,311" fill="none" stroke="#B4381E" stroke-width="2" marker-end="url(#ar)"/>
-<text x="626" y="478" font-family="Menlo, 'SF Mono', Consolas, monospace" font-size="13" fill="#B4381E" font-weight="700" text-anchor="start" >sets the level</text>
-<text x="40" y="558" font-family="Menlo, 'SF Mono', Consolas, monospace" font-size="14" fill="#5C616B" font-weight="400" text-anchor="start" >Solid: built. Dashed: planned.</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-60 -234 1000 1230" width="1000" height="1230" role="img" aria-label="Target design. Solid is built. Dashed is planned.">
+<style>
+.lane { fill: #0d1729; stroke: #2a3a5c; stroke-width: 1; }
+.lane.harness { stroke: #c084fc; stroke-opacity: .45; }
+.lane-label { fill: #8da2c8; font-size: 12px; font-weight: 600; letter-spacing: .04em; }
+.lane-label.harness { fill: #c084fc; }
+.node rect, .node polygon { fill: #0b1220; stroke: #5cc8ff; stroke-width: 1.5; }
+.node .t { fill: #dbe6ff; font-size: 14px; font-weight: 600; text-anchor: middle; }
+.node .s, .node .badge { fill: #8da2c8; font-size: 11px; text-anchor: middle; }
+.node[data-status=planned] rect { stroke: #7f8fb0; stroke-dasharray: 5 4; }
+.node[data-status=planned] .t, .node[data-status=planned] .s { fill: #7f8fb0; }
+.edge { fill: none; stroke: #5b6f99; stroke-width: 2; marker-end: url(#arrow); }
+.edge.tool { stroke: #fbbf24; marker-end: url(#arrow-tool); }
+.edge-label { fill: #8da2c8; font-size: 11px; text-anchor: middle; }
+.edge.planned { stroke: #7f8fb0; stroke-width: 1.5; stroke-dasharray: 5 5; marker-end: url(#arrow-planned); }
+.lane.human { stroke: #e07a5f; stroke-opacity: .6; }
+.lane-label.human { fill: #e07a5f; }
+.node .i.i.i { fill: none; stroke: #e07a5f; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.node[data-status=planned] .i.i.i { stroke: #7f8fb0; stroke-dasharray: none; }
+.caption { fill: #dbe6ff; font-size: 14px; font-weight: 600; }
+text { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+</style>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,1 L10,5 L0,9 z" fill="#5b6f99"/></marker><marker id="arrow-tool" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,1 L10,5 L0,9 z" fill="#fbbf24"/></marker><marker id="arrow-planned" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,1 L10,5 L0,9 z" fill="#7f8fb0"/></marker></defs>
+<rect x="-60" y="-234" width="1000" height="1230" fill="#0b1220"/>
+<text class="caption" x="-46" y="-210">Target design. Solid is built. Dashed is planned.</text>
+<rect class="lane human" x="-54" y="-192" width="988" height="58" rx="10"/>
+<text class="lane-label human" x="-44" y="-174">Before runtime, a human sets</text>
+<rect class="lane harness" x="-54" y="-122" width="988" height="114" rx="10"/>
+<text class="lane-label harness" x="-44" y="-106">Harness</text>
+<rect class="lane" x="-54" y="24" width="988" height="536" rx="10"/>
+<text class="lane-label" x="-20" y="44">FindyFixy</text>
+<rect class="lane harness" x="-54" y="576" width="988" height="286" rx="10"/>
+<text class="lane-label harness" x="-20" y="598">Harness: act, verify, undo. No human per action</text>
+<rect class="lane" x="-54" y="878" width="988" height="110" rx="10"/>
+<text class="lane-label" x="-20" y="898">Simulated production</text>
+<path id="e_eval_q" class="edge" d="M-28,-16 L-28,260 L10,260"/>
+<path id="e_rec_eval" class="edge" d="M845,228 L845,10 L70,10 L70,-16"/>
+<path id="e_q_inv" class="edge" d="M120,260 L142,260"/>
+<path id="e_inv_small" class="edge" d="M272,260 L294,260"/>
+<path id="e_small_val" class="edge" d="M424,260 L446,260"/>
+<path id="e_val_route" class="edge" d="M576,260 L598,260"/>
+<path id="e_retry" class="edge" d="M511,292 C511,352 359,352 359,292"/>
+<path id="e_route_rec" class="edge" d="M718,260 L780,260"/>
+<path id="e_route_large" class="edge" d="M658,305 L658,388"/>
+<path id="e_large_rec" class="edge" d="M723,420 C845,420 845,330 845,292"/>
+<path id="e_q_recall" class="edge tool" d="M65,228 L65,126"/>
+<path id="e_inv_tool" class="edge tool" d="M207,228 L207,126"/>
+<path id="p_small_gateway" class="edge planned" d="M400,228 L400,20 L525,20 L525,-31"/>
+<path id="p_val_second" class="edge planned" d="M511,228 L511,127"/>
+<path id="p_rec_policy" class="edge planned" d="M880,292 L880,619"/>
+<path id="p_policy_identity" class="edge" d="M796,652 L759,652"/>
+<path id="p_identity_act" class="edge" d="M628,652 L591,652"/>
+<path id="p_act_verify" class="edge" d="M460,652 L423,652"/>
+<path id="p_verify_undo" class="edge" d="M292,652 L255,652"/>
+<path id="p_verify_safe" class="edge" d="M300,684 L300,718 L40,718 L40,685"/>
+<path id="p_undo_safe" class="edge" d="M124,652 L87,652"/>
+<path id="p_undo_again" class="edge" d="M189,620 L189,508 L459,508"/>
+<path id="p_decide_policy" class="edge" d="M525,540 L525,554 L815,554 L815,619"/>
+<path id="p_script_policy" class="edge" d="M758,508 L840,508 L840,619"/>
+<path id="p_verify_score" class="edge planned" d="M357,684 L357,727"/>
+<path id="p_safe_score" class="edge planned" d="M21,684 L21,760 L291,760"/>
+<path id="p_safe_handoff" class="edge" d="M-10,684 L-10,812 L123,812"/>
+<path id="p_kill_policy" class="edge planned" d="M861,728 L861,685"/>
+<path id="p_act_services" class="edge" d="M525,684 L525,911"/>
+<path id="p_services_verify" class="edge" d="M470,912 L470,872 L436,872 L436,670 L423,670"/>
+<path id="p_services_alerts" class="edge planned" d="M460,944 L255,944"/>
+<path id="p_faults_services" class="edge planned" d="M796,944 L591,944"/>
+<path id="p_alerts_question" class="edge planned" d="M124,944 L-48,944 L-48,310 L30,310 L30,293"/>
+<text class="edge-label" x="40" y="-149">the goal</text>
+<text class="edge-label" x="185" y="-149">the invariants</text>
+<text class="edge-label" x="370" y="-149">the kinds of action allowed</text>
+<text class="edge-label" x="565" y="-149">the budget per incident</text>
+<text class="edge-label" x="780" y="-149">the gate, which no agent can edit</text>
+<text class="edge-label" x="-36" y="130" transform="rotate(-90 -36 130)">cases in</text>
+<text class="edge-label" x="460" y="4">answers scored</text>
+<text class="edge-label" x="435" y="366">retry with the error text (once)</text>
+<text class="edge-label" x="749" y="250">confident</text>
+<text class="edge-label" x="745" y="352">low confidence or invalid</text>
+<text class="edge-label" x="71" y="182">similar incidents</text>
+<text class="edge-label" x="273" y="643">no</text>
+<text class="edge-label" x="112" y="704">out of tries or budget</text>
+<text class="edge-label" x="186" y="732">no, and cannot be undone</text>
+<text class="edge-label" x="320" y="500">again, with what failed</text>
+<text class="edge-label" x="390" y="710">recovered</text>
+<text class="edge-label" x="388" y="874">real signals</text>
+<text class="edge-label" x="40" y="936">page</text>
+<g class="node" id="n_q" data-status="built">
+        <rect x="10" y="228" width="110" height="64" rx="8"/>
+        <path class="i" transform="translate(15 232) scale(.56)" d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path class="i" transform="translate(15 232) scale(.56)" d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>
+        <text class="t" x="65" y="256">Question</text>
+        <text class="s" x="65" y="274">incident report</text>
+      </g>
+<g class="node" id="n_inv" data-status="built">
+        <rect x="142" y="228" width="130" height="64" rx="8"/>
+        <circle class="i" transform="translate(147 232) scale(.56)" cx="11" cy="11" r="8"/><path class="i" transform="translate(147 232) scale(.56)" d="m21 21-4.3-4.3"/>
+        <text class="t" x="207" y="254">Investigate</text>
+        <text class="s" x="207" y="271">tool-calling model</text>
+        <text class="badge" x="207" y="286" id="b_inv"> </text>
+      </g>
+<g class="node" id="n_small" data-status="built">
+        <rect x="294" y="228" width="130" height="64" rx="8"/>
+        <rect class="i" transform="translate(299 232) scale(.56)" width="16" height="16" x="4" y="4" rx="2"/><rect class="i" transform="translate(299 232) scale(.56)" width="6" height="6" x="9" y="9" rx="1"/><path class="i" transform="translate(299 232) scale(.56)" d="M15 2v2"/><path class="i" transform="translate(299 232) scale(.56)" d="M15 20v2"/><path class="i" transform="translate(299 232) scale(.56)" d="M2 15h2"/><path class="i" transform="translate(299 232) scale(.56)" d="M2 9h2"/><path class="i" transform="translate(299 232) scale(.56)" d="M20 15h2"/><path class="i" transform="translate(299 232) scale(.56)" d="M20 9h2"/><path class="i" transform="translate(299 232) scale(.56)" d="M9 2v2"/><path class="i" transform="translate(299 232) scale(.56)" d="M9 20v2"/>
+        <text class="t" x="359" y="254">Small model</text>
+        <text class="s" x="359" y="271">answers first</text>
+        <text class="badge" x="359" y="286" id="b_small"> </text>
+      </g>
+<g class="node" id="n_val" data-status="built">
+        <rect x="446" y="228" width="130" height="64" rx="8"/>
+        <circle class="i" transform="translate(451 232) scale(.56)" cx="12" cy="12" r="10"/><path class="i" transform="translate(451 232) scale(.56)" d="m9 12 2 2 4-4"/>
+        <text class="t" x="511" y="254">Validate</text>
+        <text class="s" x="511" y="271">Pydantic, 1 retry</text>
+        <text class="badge" x="511" y="286" id="b_val"> </text>
+      </g>
+<g class="node" id="n_route" data-status="built">
+        <polygon points="658,215 718,260 658,305 598,260"/>
+        <path class="i" transform="translate(651 222) scale(.56)" d="M16 3h5v5"/><path class="i" transform="translate(651 222) scale(.56)" d="M8 3H3v5"/><path class="i" transform="translate(651 222) scale(.56)" d="M12 22v-8.3a4 4 0 0 0-1.172-2.872L3 3"/><path class="i" transform="translate(651 222) scale(.56)" d="m15 9 6-6"/>
+        <text class="t" x="658" y="258">Route</text>
+        <text class="badge" x="658" y="274" id="b_route"> </text>
+      </g>
+<g class="node" id="n_large" data-status="built">
+        <rect x="593" y="388" width="130" height="64" rx="8"/>
+        <rect class="i" transform="translate(598 392) scale(.56)" width="16" height="16" x="4" y="4" rx="2"/><rect class="i" transform="translate(598 392) scale(.56)" width="6" height="6" x="9" y="9" rx="1"/><path class="i" transform="translate(598 392) scale(.56)" d="M15 2v2"/><path class="i" transform="translate(598 392) scale(.56)" d="M15 20v2"/><path class="i" transform="translate(598 392) scale(.56)" d="M2 15h2"/><path class="i" transform="translate(598 392) scale(.56)" d="M2 9h2"/><path class="i" transform="translate(598 392) scale(.56)" d="M20 15h2"/><path class="i" transform="translate(598 392) scale(.56)" d="M20 9h2"/><path class="i" transform="translate(598 392) scale(.56)" d="M9 2v2"/><path class="i" transform="translate(598 392) scale(.56)" d="M9 20v2"/>
+        <text class="t" x="658" y="414">Large model</text>
+        <text class="s" x="658" y="431">off if one model is set</text>
+        <text class="badge" x="658" y="446" id="b_large"> </text>
+      </g>
+<g class="node" id="n_rec" data-status="built">
+        <rect x="780" y="228" width="130" height="64" rx="8"/>
+        <path class="i" transform="translate(785 232) scale(.56)" d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path class="i" transform="translate(785 232) scale(.56)" d="M9 18h6"/><path class="i" transform="translate(785 232) scale(.56)" d="M10 22h4"/>
+        <text class="t" x="845" y="254">Triage record</text>
+        <text class="s" x="845" y="271">severity, component</text>
+        <text class="badge" x="845" y="286" id="b_rec"> </text>
+      </g>
+<g class="node" id="n_recall" data-status="built">
+        <rect x="10" y="62" width="110" height="64" rx="8"/>
+        <ellipse class="i" transform="translate(15 66) scale(.56)" cx="12" cy="5" rx="9" ry="3"/><path class="i" transform="translate(15 66) scale(.56)" d="M3 5V19A9 3 0 0 0 21 19V5"/><path class="i" transform="translate(15 66) scale(.56)" d="M3 12A9 3 0 0 0 21 12"/>
+        <text class="t" x="65" y="86">Recall</text>
+        <text class="s" x="65" y="103">hybrid + rerank</text>
+        <text class="badge" x="65" y="119" id="b_recall"> </text>
+      </g>
+<g class="node" id="n_tool" data-status="built">
+        <rect x="142" y="62" width="130" height="64" rx="8"/>
+        <path class="i" transform="translate(147 66) scale(.56)" d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+        <text class="t" x="207" y="86">Deploy tool</text>
+        <text class="s" x="207" y="103">get_recent_deploys</text>
+        <text class="badge" x="207" y="119" id="b_tool"> </text>
+      </g>
+<g class="node" id="n_decide" data-status="built">
+        <rect x="460" y="476" width="130" height="64" rx="8"/>
+        <rect class="i" transform="translate(465 480) scale(.56)" width="16" height="16" x="4" y="4" rx="2"/><rect class="i" transform="translate(465 480) scale(.56)" width="6" height="6" x="9" y="9" rx="1"/><path class="i" transform="translate(465 480) scale(.56)" d="M15 2v2"/><path class="i" transform="translate(465 480) scale(.56)" d="M15 20v2"/><path class="i" transform="translate(465 480) scale(.56)" d="M2 15h2"/><path class="i" transform="translate(465 480) scale(.56)" d="M2 9h2"/><path class="i" transform="translate(465 480) scale(.56)" d="M20 15h2"/><path class="i" transform="translate(465 480) scale(.56)" d="M20 9h2"/><path class="i" transform="translate(465 480) scale(.56)" d="M9 2v2"/><path class="i" transform="translate(465 480) scale(.56)" d="M9 20v2"/>
+        <text class="t" x="525" y="502">Decide</text>
+        <text class="s" x="525" y="519">model reads metrics</text>
+      </g>
+<g class="node" id="n_script" data-status="built">
+        <rect x="628" y="476" width="130" height="64" rx="8"/>
+        <path class="i" transform="translate(633 480) scale(.56)" d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+        <text class="t" x="693" y="502">Script</text>
+        <text class="s" x="693" y="519">fixed fixes, no model</text>
+      </g>
+<g class="node" id="n_handoff" data-status="built">
+        <rect x="124" y="780" width="130" height="64" rx="8"/>
+        <path class="i" transform="translate(129 784) scale(.56)" d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path class="i" transform="translate(129 784) scale(.56)" d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>
+        <text class="t" x="189" y="806">Hand-off</text>
+        <text class="s" x="189" y="823">tell a person</text>
+      </g>
+<g class="node" id="n_eval" data-status="built">
+        <rect x="-44" y="-96" width="130" height="80" rx="8"/>
+        <circle class="i" transform="translate(-39 -92) scale(.56)" cx="12" cy="12" r="10"/><circle class="i" transform="translate(-39 -92) scale(.56)" cx="12" cy="12" r="6"/><circle class="i" transform="translate(-39 -92) scale(.56)" cx="12" cy="12" r="2"/>
+        <text class="t" x="21" y="-74">Eval gate</text>
+        <text class="s" x="21" y="-58">harness, any app</text>
+        <text class="badge" x="21" y="-43" id="b_eval"> </text>
+        <text class="badge" x="21" y="-28" id="b_evalscore"> </text>
+      </g>
+<g class="node" data-status="built">
+        <rect x="124" y="-96" width="130" height="64" rx="8"/>
+        <circle class="i" transform="translate(129 -92) scale(.56)" cx="12" cy="12" r="10"/><path class="i" transform="translate(129 -92) scale(.56)" d="m9 12 2 2 4-4"/>
+        <text class="t" x="189" y="-70">CI gate</text>
+        <text class="s" x="189" y="-52">run at commit, attested</text>
+      </g>
+<g class="node" data-status="built">
+        <rect x="292" y="-96" width="130" height="64" rx="8"/>
+        <path class="i" transform="translate(297 -92) scale(.56)" d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/>
+        <text class="t" x="357" y="-70">Tracing</text>
+        <text class="s" x="357" y="-52">harness, Langfuse</text>
+      </g>
+<g class="node" data-status="planned">
+        <rect x="460" y="-96" width="130" height="64" rx="8"/>
+        <rect class="i" transform="translate(465 -92) scale(.56)" width="20" height="8" x="2" y="14" rx="2"/><path class="i" transform="translate(465 -92) scale(.56)" d="M6.01 18H6"/><path class="i" transform="translate(465 -92) scale(.56)" d="M10.01 18H10"/><path class="i" transform="translate(465 -92) scale(.56)" d="M15 10v4"/><path class="i" transform="translate(465 -92) scale(.56)" d="M17.84 7.17a4 4 0 0 0-5.66 0"/><path class="i" transform="translate(465 -92) scale(.56)" d="M20.66 4.34a8 8 0 0 0-11.31 0"/>
+        <text class="t" x="525" y="-70">Gateway</text>
+        <text class="s" x="525" y="-52">every model call</text>
+      </g>
+<g class="node" id="n_budget" data-status="built">
+        <rect x="628" y="-96" width="130" height="64" rx="8"/>
+        <circle class="i" transform="translate(633 -92) scale(.56)" cx="8" cy="8" r="6"/><path class="i" transform="translate(633 -92) scale(.56)" d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path class="i" transform="translate(633 -92) scale(.56)" d="M7 6h1v4"/><path class="i" transform="translate(633 -92) scale(.56)" d="m16.71 13.88.7.71-2.82 2.82"/>
+        <text class="t" x="693" y="-70">Budget</text>
+        <text class="s" x="693" y="-52">cost per incident</text>
+      </g>
+<g class="node" data-status="planned">
+        <rect x="796" y="-96" width="130" height="64" rx="8"/>
+        <line class="i" transform="translate(801 -92) scale(.56)" x1="21" x2="14" y1="4" y2="4"/><line class="i" transform="translate(801 -92) scale(.56)" x1="10" x2="3" y1="4" y2="4"/><line class="i" transform="translate(801 -92) scale(.56)" x1="21" x2="12" y1="12" y2="12"/><line class="i" transform="translate(801 -92) scale(.56)" x1="8" x2="3" y1="12" y2="12"/><line class="i" transform="translate(801 -92) scale(.56)" x1="21" x2="16" y1="20" y2="20"/><line class="i" transform="translate(801 -92) scale(.56)" x1="12" x2="3" y1="20" y2="20"/><line class="i" transform="translate(801 -92) scale(.56)" x1="14" x2="14" y1="2" y2="6"/><line class="i" transform="translate(801 -92) scale(.56)" x1="8" x2="8" y1="10" y2="14"/><line class="i" transform="translate(801 -92) scale(.56)" x1="16" x2="16" y1="18" y2="22"/>
+        <text class="t" x="861" y="-70">Autonomy</text>
+        <text class="s" x="861" y="-52">evidence sets it</text>
+      </g>
+<g class="node" data-status="planned">
+        <rect x="446" y="62" width="130" height="64" rx="8"/>
+        <rect class="i" transform="translate(451 66) scale(.56)" width="16" height="16" x="4" y="4" rx="2"/><rect class="i" transform="translate(451 66) scale(.56)" width="6" height="6" x="9" y="9" rx="1"/><path class="i" transform="translate(451 66) scale(.56)" d="M15 2v2"/><path class="i" transform="translate(451 66) scale(.56)" d="M15 20v2"/><path class="i" transform="translate(451 66) scale(.56)" d="M2 15h2"/><path class="i" transform="translate(451 66) scale(.56)" d="M2 9h2"/><path class="i" transform="translate(451 66) scale(.56)" d="M20 15h2"/><path class="i" transform="translate(451 66) scale(.56)" d="M20 9h2"/><path class="i" transform="translate(451 66) scale(.56)" d="M9 2v2"/><path class="i" transform="translate(451 66) scale(.56)" d="M9 20v2"/>
+        <text class="t" x="521" y="88">Second opinion</text>
+        <text class="s" x="511" y="106">evidence disagrees</text>
+      </g>
+<g class="node" id="n_policy" data-status="built">
+        <rect x="796" y="620" width="130" height="64" rx="8"/>
+        <path class="i" transform="translate(801 624) scale(.56)" d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path class="i" transform="translate(801 624) scale(.56)" d="m9 12 2 2 4-4"/>
+        <text class="t" x="861" y="646">Policy</text>
+        <text class="s" x="861" y="664">allowed kind?</text>
+      </g>
+<g class="node" id="n_identity" data-status="built">
+        <rect x="628" y="620" width="130" height="64" rx="8"/>
+        <path class="i" transform="translate(633 624) scale(.56)" d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle class="i" transform="translate(633 624) scale(.56)" cx="16.5" cy="7.5" r=".5"/>
+        <text class="t" x="693" y="646">Identity</text>
+        <text class="s" x="693" y="664">this action only</text>
+      </g>
+<g class="node" id="n_act" data-status="built">
+        <rect x="460" y="620" width="130" height="64" rx="8"/>
+        <polygon class="i" transform="translate(465 624) scale(.56)" points="6 3 20 12 6 21 6 3"/>
+        <text class="t" x="525" y="646">Act</text>
+        <text class="s" x="525" y="664">typed, one at a time</text>
+      </g>
+<g class="node" id="n_verify" data-status="built">
+        <rect x="292" y="620" width="130" height="64" rx="8"/>
+        <path class="i" transform="translate(297 624) scale(.56)" d="m12 14 4-4"/><path class="i" transform="translate(297 624) scale(.56)" d="M3.34 19a10 10 0 1 1 17.32 0"/>
+        <text class="t" x="357" y="646">Verify</text>
+        <text class="s" x="357" y="664">did it recover?</text>
+      </g>
+<g class="node" id="n_undo" data-status="built">
+        <rect x="124" y="620" width="130" height="64" rx="8"/>
+        <circle class="i" transform="translate(129 624) scale(.56)" cx="18" cy="18" r="3"/><circle class="i" transform="translate(129 624) scale(.56)" cx="6" cy="6" r="3"/><path class="i" transform="translate(129 624) scale(.56)" d="M6 21V9a9 9 0 0 0 9 9"/>
+        <text class="t" x="189" y="646">Undo</text>
+        <text class="s" x="189" y="664">then try again</text>
+      </g>
+<g class="node" id="n_safe" data-status="built">
+        <rect x="-44" y="620" width="130" height="64" rx="8"/>
+        <path class="i" transform="translate(-39 624) scale(.56)" d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path class="i" transform="translate(-39 624) scale(.56)" d="m9 12 2 2 4-4"/>
+        <text class="t" x="21" y="646">Safe state</text>
+        <text class="s" x="21" y="664">contain and stop</text>
+      </g>
+<g class="node" data-status="planned">
+        <rect x="292" y="728" width="130" height="64" rx="8"/>
+        <circle class="i" transform="translate(297 732) scale(.56)" cx="8" cy="8" r="6"/><path class="i" transform="translate(297 732) scale(.56)" d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path class="i" transform="translate(297 732) scale(.56)" d="M7 6h1v4"/><path class="i" transform="translate(297 732) scale(.56)" d="m16.71 13.88.7.71-2.82 2.82"/>
+        <text class="t" x="357" y="754">Scorecard</text>
+        <text class="s" x="357" y="772">cost, minutes, harm</text>
+      </g>
+<g class="node" data-status="planned">
+        <rect x="796" y="728" width="130" height="64" rx="8"/>
+        <path class="i" transform="translate(801 732) scale(.56)" d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle class="i" transform="translate(801 732) scale(.56)" cx="9" cy="7" r="4"/><polyline class="i" transform="translate(801 732) scale(.56)" points="16 11 18 13 22 9"/>
+        <text class="t" x="861" y="754">Kill switch</text>
+        <text class="s" x="861" y="772">stops every action</text>
+      </g>
+<g class="node" data-status="planned">
+        <rect x="124" y="912" width="130" height="64" rx="8"/>
+        <path class="i" transform="translate(129 916) scale(.56)" d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path class="i" transform="translate(129 916) scale(.56)" d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>
+        <text class="t" x="189" y="938">Alerts</text>
+        <text class="s" x="189" y="956">error budget burn</text>
+      </g>
+<g class="node" id="n_services" data-status="built">
+        <rect x="460" y="912" width="130" height="64" rx="8"/>
+        <ellipse class="i" transform="translate(465 916) scale(.56)" cx="12" cy="5" rx="9" ry="3"/><path class="i" transform="translate(465 916) scale(.56)" d="M3 5V19A9 3 0 0 0 21 19V5"/><path class="i" transform="translate(465 916) scale(.56)" d="M3 12A9 3 0 0 0 21 12"/>
+        <text class="t" x="525" y="938">Services</text>
+        <text class="s" x="525" y="956">under real load</text>
+      </g>
+<g class="node" data-status="planned">
+        <rect x="796" y="912" width="130" height="64" rx="8"/>
+        <path class="i" transform="translate(801 916) scale(.56)" d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+        <text class="t" x="861" y="938">Faults</text>
+        <text class="s" x="861" y="956">hidden from the agent</text>
+      </g>
 </svg>

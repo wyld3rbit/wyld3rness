@@ -149,7 +149,7 @@ class EventSpans:
             )
         elif kind == "node_exited":
             # Tool calls the model asked for but the loop never ran (it stopped
-            # on its turn cap or deadline) must not look like lookups that happened.
+            # at its turn cap) must not look like lookups that happened.
             for key in self._pending_tools:
                 tree.close(key, error="not run: the investigate loop stopped first")
             self._pending_tools = []
@@ -174,7 +174,6 @@ class EventSpans:
             tree.close(
                 "model",
                 output=d.get("reply"),
-                error="cut off at the deadline" if d.get("cut") else None,
                 attributes={
                     GEN_AI_RESPONSE_MODEL: d.get("served_by"),
                     GEN_AI_INPUT_TOKENS: d.get("input_tokens"),
@@ -201,23 +200,10 @@ class EventSpans:
                     output=d.get("result"),
                     error="tool returned an error" if d.get("error") else None,
                 )
-        elif kind in ("validation", "retry", "fault_injected", "route", "handover", "policy"):
+        elif kind in ("validation", "retry", "fault_injected", "route"):
             tree.event(kind, {k: attribute_value(v) for k, v in d.items()})
             if kind == "route":
                 tree.set({"findyfixy.route": d.get("target")})
-            if kind == "handover":
-                # Code replaced the agent's proposal: searchable on the span, not only in the event list.
-                tree.set({"findyfixy.handover": d.get("reason"), "findyfixy.handover.proposed": d.get("proposed")})
-            if kind == "policy":
-                # The action ledger's verdict: searchable, so "every downgraded rollback" is one filter.
-                tree.set(
-                    {
-                        "findyfixy.policy.outcome": d.get("outcome"),
-                        "findyfixy.policy.proposed": d.get("proposed"),
-                        "findyfixy.policy.action": d.get("action"),
-                        "findyfixy.policy.proposer": d.get("proposer"),
-                    }
-                )
         elif kind == "run_finished":
             self.finish_run(output=d.get("triage"), model_used=d.get("model_used"))
         elif kind == "run_failed":

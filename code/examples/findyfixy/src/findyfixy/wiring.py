@@ -15,30 +15,41 @@ functions, so importing this module costs nothing.
 """
 
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
-from functools import cache, partial
+import contextlib
+import logging
 import threading
-from typing import TYPE_CHECKING
+import time
+from typing import TYPE_CHECKING, TypeVar
 
 from findyfixy.triage.record import RECALL_K, Prior
 
 if TYPE_CHECKING:
     from contextlib import AbstractContextManager
 
-    from langchain_core.tools import BaseTool
     from psycopg import Connection
 
-    from findyfixy.events import Emit
-    from findyfixy.paths import DataVersion
     from findyfixy.retrieval.ingest import Embedder
-    from findyfixy.retrieval.retrieve import Rerank, Retriever, Stage
-    from findyfixy.tools.changes import Change
-    from findyfixy.tools.investigate import Investigator
-    from findyfixy.triage.graph import Recall, TriageGraph
-    from findyfixy.triage.record import AlertFacts, Decision
-    from wyld3rness.action.ledger import Verdict
-    from wyld3rness.identity.broker import CredentialBroker
+    from findyfixy.retrieval.retrieve import Retriever, Stage
+    from findyfixy.triage.graph import Recall
     from wyld3rness.trace.tracing import Tracing
+
+
+_log = logging.getLogger(__name__)
+_T = TypeVar("_T")
+
+# How long a query waits for a lost database to come back. A restart of the
+# local Postgres takes seconds; the longest seen here took 39.5 s (research
+# log, entry 004). Past the deadline the call fails and the caller records
+# that case; the next call tries once more.
+RECONNECT_DEADLINE_S = 60.0
+# Connection settings that turn a hang into an error the reconnect can act on.
+# A connect that gets no answer gives up after CONNECT_TIMEOUT_S. TCP
+# keepalives probe a silent connection after 10 s, every 5 s, 3 times, so a
+# dead network path is detected in about 25 s instead of the system's hours.
+CONNECT_TIMEOUT_S = 5
+KEEPALIVE_IDLE_S, KEEPALIVE_INTERVAL_S, KEEPALIVE_COUNT = 10, 5, 3
+RECONNECT_FIRST_WAIT_S = 1.0
+RECONNECT_MAX_WAIT_S = 8.0
 
 
 def connect() -> "Connection":
@@ -52,205 +63,34 @@ def connect() -> "Connection":
 
     from findyfixy.retrieval.ingest import database_url
 
-    conn = psycopg.connect(database_url(), autocommit=True)
+    conn = psycopg.connect(
+        database_url(),
+        autocommit=True,
+        connect_timeout=CONNECT_TIMEOUT_S,
+        keepalives=1,
+        keepalives_idle=KEEPALIVE_IDLE_S,
+        keepalives_interval=KEEPALIVE_INTERVAL_S,
+        keepalives_count=KEEPALIVE_COUNT,
+    )
     register_vector(conn)
     return conn
 
 
-# Data versions whose cases carry what their alert states (time and service)
-# and a change log (tools/changes.py). Earlier versions have a deploy log
-# against one shared moment and no alert facts.
-CHANGE_LOG_VERSIONS: frozenset["DataVersion"] = frozenset({"v3"})
-
-
-def load_facts(version: "DataVersion", alert: "AlertFacts | None") -> "list[Change] | None":
-    """The change log a version's agent and ledger share, loaded once; None for a version without one.
-
-    A change-log version needs the alert's facts, because its log is absolute:
-    without the alert's time nothing can be called recent. Raises ValueError
-    when they are missing, or given to a version that cannot use them.
-    """
-    from findyfixy.tools.changes import changes_path, load_changes
-
-    if version in CHANGE_LOG_VERSIONS:
-        if alert is None:
-            raise ValueError(f"data {version} looks back from each case's alert: pass its AlertFacts")
-        return load_changes(changes_path(version))
-    if alert is not None:
-        raise ValueError(f"data {version} has a deploy log with no clock: the alert facts would be ignored")
-    return None
-
-
-def changes_tool(version: "DataVersion", changes: "list[Change] | None", alert: "AlertFacts | None") -> "BaseTool":
-    """The tool that lists what changed: the version's deploy log, or the loaded change log as of the alert."""
-    from findyfixy.tools.changes import make_changes_tool
-    from findyfixy.tools.deploys import deploys_path, make_deploys_tool
-
-    if changes is not None and alert is not None:
-        return make_changes_tool(changes, alert.at)
-    return make_deploys_tool(deploys_path(version))
-
-
-def agent_instructions(version: "DataVersion") -> Callable[[str], str]:
-    """The agent's instructions, naming the change tool `build_agent` gives it for `version`."""
-    from findyfixy.tools.changes import CHANGES_TOOL
-    from findyfixy.tools.deploys import DEPLOYS_TOOL
-    from findyfixy.tools.investigate import agent_prompt
-
-    return partial(agent_prompt, changes_tool=CHANGES_TOOL if version in CHANGE_LOG_VERSIONS else DEPLOYS_TOOL)
-
-
-Judge = Callable[["Decision"], "Verdict"]
-
-
-@dataclass(frozen=True)
-class Agent:
-    """The agent's loop, the instructions that name its tools, and how to judge its decision. Built together.
-
-    The graph's investigate step sends `instructions(question)` to the loop.
-    Each graph build calls `new_judge()` for its policy step: a fresh action
-    ledger per incident, so one run's held rollback never queues another's.
-    Kept in one object because they must agree: instructions naming a tool the
-    loop does not have send the model calling a tool that fails, and a judge
-    reading other facts than the agent's tools would decide on evidence the
-    agent never saw.
-    """
-
-    investigator: "Investigator"
-    instructions: Callable[[str], str]
-    new_judge: Callable[[], Judge]
-
-
-def judge_factory(changes: "list[Change] | None", alert: "AlertFacts | None") -> Callable[[], Judge]:
-    """Build a fresh judge (one action ledger) per incident, over the same loaded facts the agent's tool reads.
-
-    With no change log (v1, v2) every rollback fails closed.
-    """
-    from findyfixy.policy import FindyFixyActions, make_judge
-
-    incident = f"{alert.service} alert at {alert.at.isoformat()}" if alert is not None else "incident"
-    return lambda: make_judge(incident, FindyFixyActions(changes, alert))
-
-
-def build_judge(version: "DataVersion", alert: "AlertFacts | None" = None) -> Judge:
-    """One judge for one incident of `version`: what a caller without an agent (a test, a replay) uses."""
-    return judge_factory(load_facts(version, alert), alert)()
-
-
-@cache
-def process_broker() -> "CredentialBroker":
-    """The credential broker for this process, built on first use with a random in-memory key.
-
-    One per process: every agent in it shares the key, and nothing is stored.
-    The grants are the app's (tools/guard.py).
-    """
-    from findyfixy.tools.guard import GRANTS
-    from wyld3rness.identity.broker import CredentialBroker
-
-    return CredentialBroker(GRANTS)
-
-
-def build_agent(
-    model: str, recall: "Recall", version: "DataVersion" = "v1", alert: "AlertFacts | None" = None
-) -> Agent:
-    """The agent's investigation loop (Day 7): `model` with its three read-only tools and its budget.
-
-    The tools are incident search over `recall`, what changed in a service
-    (`changes_tool`), and the service map. `recall` decides what search may
-    see: the eval passes one with the case's own incident held out, the console
-    the plain one. What changed follows the data version: v1 and v2 read their
-    deploy log, v3 its change log as of the case's alert. The log is loaded
-    once and shared with the judge. One builder for the eval and the console,
-    so the two cannot run different agents.
-
-    Every tool here only reads, and each call carries a token the process's
-    credential broker issued for this agent, tool and resource, verified
-    before the tool reads (tools/guard.py). Nothing the agent proposes is
-    executed; the action ledger judges each proposal, and execution waits for
-    approval.
-    """
-    from langchain_ollama import ChatOllama
-
-    from findyfixy.llm import answer_options
-    from findyfixy.tools.guard import AGENT, guard
-    from findyfixy.tools.investigate import AGENT_DEADLINE_S, AGENT_MAX_TURNS, build_investigator
-    from findyfixy.tools.memory import make_search_tool
-    from findyfixy.tools.services import make_services_tool
-    from findyfixy.tools.submit import SUBMIT_TOOL, make_submit_tool
-
-    changes = load_facts(version, alert)
-    broker = process_broker()
-    tools = [
-        guard(tool, broker, AGENT)
-        for tool in (
-            make_search_tool(recall),
-            changes_tool(version, changes, alert),
-            make_services_tool(),
-            make_submit_tool(),
-        )
-    ]
-    llm = ChatOllama(model=model, **answer_options()).bind_tools(tools)
-    investigator = build_investigator(
-        llm, tools, max_turns=AGENT_MAX_TURNS, deadline_s=AGENT_DEADLINE_S, finish_tool=SUBMIT_TOOL
-    )
-    return Agent(investigator, agent_instructions(version), judge_factory(changes, alert))
-
-
-def build_agent_graph(
-    small: str,
-    large: str,
-    recall: "Recall",
-    version: "DataVersion" = "v1",
-    alert: "AlertFacts | None" = None,
-    emit: "Emit | None" = None,
-) -> "TriageGraph":
-    """The production agent graph for one incident: the agent, its decision call and its policy step.
-
-    The one place the eval and `make attacks` build it, so the two always
-    measure the same agent. A fresh ledger per call (`new_judge`).
-    """
-    from findyfixy.events import no_emit
-    from findyfixy.llm import ollama_decision_ask
-    from findyfixy.triage.graph import build_graph
-
-    built = build_agent(small, recall, version, alert)
-    return build_graph(
-        ollama_decision_ask,
-        small_model=small,
-        large_model=large,
-        emit=emit or no_emit,
-        investigator=built.investigator,
-        investigate_model=small,
-        agent=True,
-        agent_instructions=built.instructions,
-        judge=built.new_judge(),
-    )
-
-
 def build_retriever(
-    conn: "Connection",
-    embedder: "Embedder | None" = None,
-    stage: "Stage | None" = None,
-    version: "DataVersion" = "v1",
-    reranker: "Rerank | None" = None,
+    conn: "Connection", embedder: "Embedder | None" = None, stage: "Stage | None" = None
 ) -> "Retriever":
-    """Hybrid retriever over every passage of one data version's table.
+    """Hybrid retriever over every passage in the database.
 
     Loads the embedding model and the reranker (about 1.3 GB of weights). Pass an
     `embedder` you already have to share one loaded model. `stage` wraps each
-    retrieval stage (`stage_spans` makes them tracing spans). `version` picks
-    the table (v1 by default, the frozen corpus every earlier run used).
-    `reranker` shares one loaded cross-encoder between versions.
+    retrieval stage (`stage_spans` makes them tracing spans).
     """
     from findyfixy.retrieval.ingest import make_embedder
     from findyfixy.retrieval.retrieve import Retriever, load_passages, make_reranker, no_stages, postgres_vector_search
 
     embedder = embedder or make_embedder()
     return Retriever(
-        load_passages(conn, version),
-        postgres_vector_search(conn, embedder, version),
-        reranker if reranker is not None else make_reranker(),
-        stage=stage or no_stages,
+        load_passages(conn), postgres_vector_search(conn, embedder), make_reranker(), stage=stage or no_stages
     )
 
 
@@ -280,7 +120,7 @@ class SharedRetrieval:
     Why shared: the console runs triage (recall) and, from Day 5, eval runs
     whose judge also needs the embedder. Built separately, they held two copies
     of the embedding model and the reranker (about 1.3 GB) and two database
-    connections, on a 16 GB machine that also holds two answering models and a
+    connections, within the 16 GB the project asks for, which also holds two answering models and a
     judge. One instance serves both.
 
     Why lazy: building it loads two models and opens the database. Doing that
@@ -289,92 +129,123 @@ class SharedRetrieval:
     console turns it into a failed run) and the next call tries again. What was
     built is kept.
 
-    Versions: one instance serves one data version (`version`), and
-    `with_version` hands out a sibling for another version over the same
-    state. The connection, the embedder and the reranker are loaded once and
-    shared; only the retriever (which holds a version's passages) is built per
-    version. So the console can run a v2 eval without a second 1.3 GB copy.
-
     Thread safety: one lock covers every use. Neither a psycopg connection nor
     a loaded model is safe to call from two threads at once, and the lock also
     keeps two first calls from building twice. It is held only for retrieval
-    and embedding (well under a second), never across a model call.
+    and embedding (well under a second), never across a model call, and it is
+    released while waiting for a lost database (below), so the embedder stays
+    usable.
+
+    A lost database. A restart, a failover or a dropped network path kills the
+    one connection, and every later query would fail until the process
+    restarted. So when a query fails and its connection is closed or broken,
+    the connection and the retriever are dropped, and the query is rebuilt and
+    retried with backoff (1, 2, 4, 8, 8 ... s) until `RECONNECT_DEADLINE_S`;
+    past it the error propagates. Nothing else is retried: an error on a live
+    connection (a timeout, out of memory) is the query's own failure, and a
+    database that was never reached on first use fails at once, so a missing
+    `make up` is reported in seconds. The rebuild reloads the reranker too: a
+    few seconds, paid once per lost connection. The loss and the recovery are
+    logged as warnings, so a run's output shows them; a loss past the deadline
+    reaches the caller as a failed case or run.
+    Why not a pool: queries are serialized by the lock, so a pool would hold
+    connections nothing uses at once; a pool also needs the same liveness
+    check. A server that answers many requests at once needs one.
     """
 
     def __init__(
         self,
         *,
         make_embedder: "Callable[[], Embedder] | None" = None,
-        make_reranker: "Callable[[], Rerank] | None" = None,
         stage: "Stage | None" = None,
-        version: "DataVersion" = "v1",
+        sleep: Callable[[float], None] = time.sleep,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
-        """Hold nothing yet. `make_embedder` and `make_reranker` are for tests; `stage` traces
-        the retrieval stages; `version` picks the data version recall reads (v1 by default)."""
-        self._state = _Loaded(make_embedder=make_embedder, make_reranker=make_reranker, stage=stage)
-        self._version = version
-
-    def with_version(self, version: "DataVersion") -> "SharedRetrieval":
-        """A sibling that reads `version`, sharing this one's connection, models and lock."""
-        sibling = SharedRetrieval.__new__(SharedRetrieval)
-        sibling._state, sibling._version = self._state, version
-        return sibling
-
-    @property
-    def version(self) -> "DataVersion":
-        """The data version this instance's recall reads."""
-        return self._version
+        """Hold nothing yet. `make_embedder`, `sleep` and `clock` are for tests; `stage` traces the retrieval stages."""
+        self._make_embedder = make_embedder
+        self._stage = stage
+        self._sleep, self._clock = sleep, clock
+        self._lock = threading.Lock()
+        self._embedder: Embedder | None = None
+        self._conn: Connection | None = None
+        self._retriever: Retriever | None = None
 
     def _load_embedder(self) -> "Embedder":
-        """The embedder, loaded once for every version. The caller holds the lock."""
-        state = self._state
-        if state.embedder is None:
-            if state.make_embedder is None:
+        """The embedder, loaded once. The caller holds the lock."""
+        if self._embedder is None:
+            if self._make_embedder is None:
                 from findyfixy.retrieval.ingest import make_embedder
 
-                state.make_embedder = make_embedder
-            state.embedder = state.make_embedder()
-        return state.embedder
-
-    def _load_reranker(self) -> "Rerank":
-        """The cross-encoder, loaded once for every version. The caller holds the lock."""
-        state = self._state
-        if state.reranker is None:
-            if state.make_reranker is None:
-                from findyfixy.retrieval.retrieve import make_reranker
-
-                state.make_reranker = make_reranker
-            state.reranker = state.make_reranker()
-        return state.reranker
+                self._make_embedder = make_embedder
+            self._embedder = self._make_embedder()
+        return self._embedder
 
     def _load_retriever(self) -> "Retriever":
-        """This version's retriever over the shared models, built once. The caller holds the lock.
+        """The retriever over the shared embedder, built once. The caller holds the lock.
 
-        A failed first build closes the connection it opened, so a retry starts clean.
+        A failed build closes the connection it opened, so a retry starts clean.
         """
-        state = self._state
-        retriever = state.retrievers.get(self._version)
-        if retriever is not None:
-            return retriever
-        embedder = self._load_embedder()
-        reranker = self._load_reranker()
-        opened = state.conn is None
-        conn = state.conn or connect()
-        try:
-            retriever = build_retriever(conn, embedder, state.stage, self._version, reranker)
-        except BaseException:
-            if opened:
+        if self._retriever is None:
+            embedder = self._load_embedder()
+            conn = connect()
+            try:
+                self._retriever = build_retriever(conn, embedder, self._stage)
+            except BaseException:
                 conn.close()
-            raise
-        state.conn = conn
-        state.retrievers[self._version] = retriever
-        return retriever
+                raise
+            self._conn = conn
+        return self._retriever
+
+    def _drop_connection(self) -> None:
+        """Forget the connection and the retriever built on it. The caller holds the lock."""
+        if self._conn is not None:
+            with contextlib.suppress(Exception):  # it is already broken; closing is best effort
+                self._conn.close()
+        self._conn = self._retriever = None
+
+    def _connection_gone(self) -> bool:
+        """True when a connection was open and is now closed or broken. The caller holds the lock."""
+        return self._conn is not None and bool(self._conn.closed or self._conn.broken)
+
+    def _wait(self, seconds: float) -> None:
+        """Sleep with the lock released, so the embedder and other callers are not held up."""
+        self._lock.release()
+        try:
+            self._sleep(seconds)
+        finally:
+            self._lock.acquire()
+
+    def _query(self, use: "Callable[[Retriever], _T]") -> _T:
+        """`use(retriever)`, rebuilt and retried while a lost database comes back (see the class docstring)."""
+        import psycopg
+
+        lost = (psycopg.OperationalError, psycopg.InterfaceError)
+        try:
+            return use(self._load_retriever())
+        except lost as err:
+            if not self._connection_gone():
+                raise  # never connected, or the connection is fine: not a lost database
+            _log.warning("database connection lost (%s); reconnecting", type(err).__name__)
+        self._drop_connection()
+        started, wait = self._clock(), RECONNECT_FIRST_WAIT_S
+        while True:
+            if self._clock() + wait - started > RECONNECT_DEADLINE_S:
+                _log.warning("database still unreachable after %.1f s; giving up on this call", self._clock() - started)
+                return use(self._load_retriever())  # one last try; its error is the one the caller sees
+            self._wait(wait)
+            wait = min(wait * 2, RECONNECT_MAX_WAIT_S)
+            try:
+                result = use(self._load_retriever())
+            except lost:
+                self._drop_connection()
+                continue
+            _log.warning("database reconnected after %.1f s", self._clock() - started)
+            return result
 
     def candidates(self, question: str, n: int) -> list[Prior]:
-        """Top `n` incidents of this version by hybrid search and rerank, as prompt-ready briefs."""
-        with self._state.lock:
-            retriever = self._load_retriever()
-            return [retriever.brief(f.incident_id) for f in retriever.hybrid_rerank(question, n)]
+        """Top `n` incidents by hybrid search and rerank, as prompt-ready briefs."""
+        with self._lock:
+            return self._query(lambda r: [r.brief(f.incident_id) for f in r.hybrid_rerank(question, n)])
 
     def recall(self, k: int = RECALL_K) -> "Recall":
         """The graph's recall step: the top `k` candidates for a question."""
@@ -387,38 +258,12 @@ class SharedRetrieval:
 
     def embed(self, texts: "Sequence[str]") -> list[list[float]]:
         """Embed texts with the shared model (the judge's relevancy metric needs it)."""
-        with self._state.lock:
+        with self._lock:
             return self._load_embedder()(texts)
 
     def close(self) -> None:
-        """Close the shared connection and drop every version's retriever. Safe to call twice.
-
-        Closes it for the siblings too: they share the state.
-        """
-        state = self._state
-        with state.lock:
-            if state.conn is not None:
-                state.conn.close()
-            state.conn = None
-            state.retrievers.clear()
-
-
-class _Loaded:
-    """What a `SharedRetrieval` and its siblings share: the lock, the connection, the models, the retrievers."""
-
-    def __init__(
-        self,
-        *,
-        make_embedder: "Callable[[], Embedder] | None",
-        make_reranker: "Callable[[], Rerank] | None",
-        stage: "Stage | None",
-    ) -> None:
-        """Nothing loaded yet."""
-        self.make_embedder = make_embedder
-        self.make_reranker = make_reranker
-        self.stage = stage
-        self.lock = threading.Lock()
-        self.embedder: Embedder | None = None
-        self.conn: Connection | None = None
-        self.reranker: Rerank | None = None
-        self.retrievers: dict[DataVersion, Retriever] = {}
+        """Close the database connection and drop what was built. Safe to call twice."""
+        with self._lock:
+            if self._conn is not None:
+                self._conn.close()
+            self._conn = self._retriever = None

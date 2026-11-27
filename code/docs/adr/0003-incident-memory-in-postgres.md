@@ -1,7 +1,7 @@
 # ADR 0003: Store incident memory in Postgres with pgvector
 
 Status: accepted. Written 2026-10-29, after the phase closed, from the phase notes, the changelog and the decision log.
-Phase: Day 3. Code at close: commit `21b4c4a`. Run data: the Evidence section below.
+Phase: Day 3. Code at close: commit `21b4c4a`. Run data: the Results section of [lessons/d03.md](../../../lessons/d03.md).
 
 ## Decision
 
@@ -38,7 +38,7 @@ Ingestion job and corpus generator: built.
 
 ## Staffing
 
-No hire. One engineer and one AI assistant built the phase.
+One engineer and one AI assistant built the phase.
 
 ## What would change this
 

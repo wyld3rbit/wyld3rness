@@ -1,7 +1,7 @@
 # ADR 0004: Retrieve with hybrid search and a reranker
 
 Status: accepted. Written 2026-10-29, after the phase closed, from the phase notes, the changelog and the decision log.
-Phase: Day 4. Code at close: commit `cd9283d`. Run data: the Evidence section below.
+Phase: Day 4. Code at close: commit `cd9283d`. Run data: the Results section of [lessons/d04.md](../../../lessons/d04.md).
 
 ## Decision
 
@@ -36,7 +36,7 @@ Audit: 7 known vulnerabilities in packages this step did not touch (`filelock` 4
 
 ## Staffing
 
-No hire. One engineer and one AI assistant built the phase.
+One engineer and one AI assistant built the phase.
 
 ## What would change this
 

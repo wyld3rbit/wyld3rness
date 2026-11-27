@@ -306,6 +306,10 @@ def response_relevancy(judge: Judge, embed: Embed, question: str, answer: str, n
         generated = judge.ask(QUESTIONS_PROMPT.format(answer=answer, n=n), Questions).questions
     except JudgeError as err:
         return _failed(f"judge: {err}")
+    # A wrong count fails the metric instead of keeping the first `n`: those
+    # would be questions the judge did not choose as a set. On some cases this
+    # judge writes one too many on every run, so the failure is repeatable,
+    # not noise (research log), and only a judge change removes it.
     if len(generated) != n:
         return _failed(f"the judge wrote {len(generated)} questions, expected {n}")
     vectors = embed([question, *generated])

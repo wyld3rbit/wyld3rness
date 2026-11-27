@@ -1,7 +1,7 @@
 """Day 2: the live console server. Run the real graph, stream its events.
 
 What it does
-    Serves the architecture page and runs the triage graph on request. While
+    Serves the storm page (home) and the architecture page, and runs the triage graph on request. While
     a run is in flight it streams every event (findyfixy/events.py) to the browser
     over Server-Sent Events (SSE). The page animates from those events.
 
@@ -11,12 +11,19 @@ What it does
     streamed event is tagged with its `source`, "app" or "harness", so the
     page can tell the two vocabularies apart.
 
-        GET  /         the page (docs/architecture.html)
+        GET  /         the storm page (console/static/storm.html): a storm, live or replayed
+        GET  /architecture  the architecture page, with triage and eval runs (console/static/architecture.html)
         GET  /config   questions, fake scenarios, which modes are available
         POST /run      start one run (or a hunt): {"mode", "question"?, "scenario"?}
         POST /eval     start one eval run: {"mode", "cases": 1..N}, N the set's size
+        POST /storm    drive one storm on simprod: {"kind", "decider"} (console/storm.py)
+        POST /replay   replay a saved storm run: {"file", "run", "speed"}
+        POST /handoff  the on-call inbox: an Alertmanager webhook from the loop when an
+                       incident ends in the safe state (wyld3rness/loop/handoff.py)
+        GET  /handoffs the hand-offs received since the console started, newest first
         POST /stop     ask a hunt or an eval run to stop after its current run or
-                       case; answers {"stopping": false} when nothing can stop
+                       case, or a replay at once; answers {"stopping": false} when
+                       nothing can stop (a live storm cannot be stopped here)
         GET  /events   SSE stream of the latest run, replayed from the start
 
     The console is a viewer. An eval run here writes no report and no
@@ -31,7 +38,7 @@ Test it:  uv run pytest
 Why the standard library, and not FastAPI
     This is a local dev tool with four routes. `http.server` adds nothing to
     the supply chain (no new package, no license, no advisory to track).
-    The cost is hand-written plumbing and no async. At gateway scale (Day 8)
+    The cost is hand-written plumbing and no async. At gateway scale
     use a real framework. Moving over is cheap: the logic lives in `RunHub`,
     and the HTTP layer is a thin shell around it.
 
@@ -52,7 +59,7 @@ Security model (a local tool is still a web server)
     - An eval run's case count must be a JSON integer from 1 to the size of
       the chosen set (the golden set live, the invented set fake). Strict:
       "2", 2.0 and true are refused, and so is any unknown field.
-    - One run at a time, triage or eval. Two 7B-class runs would not fit in 16 GB.
+    - One run at a time, triage or eval. Two 7B-class runs would not fit in the 16 GB the project asks for.
 
 Failure modes
     - A browser that disconnects mid-stream is a broken pipe in the handler.
@@ -63,7 +70,7 @@ Failure modes
       the error. The server stays up.
 """
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from dataclasses import asdict
 from functools import partial
 from http import HTTPStatus
@@ -99,23 +106,27 @@ from findyfixy.console.fakes import (
     fake_eval,
     inject_bad_first_reply,
 )
+from findyfixy.console.storm import LoopEvent, ReplayRequest, StormRequest, drive, load_run, play, replay_events
+from findyfixy.console.storm import saved_runs as list_saved_runs
 from findyfixy.console.stress import DESCRIPTIONS, STRESSES, Stress, make_ollama_ask
 from findyfixy.events import Emit, Event, make_emit, make_stamped_emit
-from findyfixy.llm import answer_options, ollama_ask, ollama_decision_ask
+from findyfixy.llm import answer_options, ollama_ask
 from findyfixy.observability.adapter import EventSpans, traced_sink
 from findyfixy.observability.tracing import open_tracing
-from findyfixy.paths import DATA_VERSIONS, EVALS, PAGE, ROOT, WORKSPACE, DataVersion
+from findyfixy.paths import EVALS, PAGE, ROOT, WORKSPACE
 from findyfixy.retrieval.incidents import DEFAULT_PATH, Incident, load_incidents
 from findyfixy.settings import load_env, optional_models
 from findyfixy.tools.deploys import make_deploys_tool
-from findyfixy.tools.guard import TOOL_STEP, guard
-from findyfixy.tools.investigate import Investigator, agent_prompt, build_investigator
+from findyfixy.tools.investigate import Investigator, build_investigator
 from findyfixy.triage.graph import QUESTIONS, THRESHOLD, Recall, build_graph
 from findyfixy.triage.record import RECALL_K, Ask, TriageError
-from findyfixy.wiring import Agent, SharedRetrieval, build_agent, process_broker, stage_spans
+from findyfixy.wiring import SharedRetrieval, stage_spans
 from wyld3rness.trace.tracing import Tracing
 
 Mode = Literal["live", "fake"]
+
+# The console's home page, a storm as it happens. Kept here, not in paths.py, which the gate attestation hashes.
+STORM_PAGE = PAGE.with_name("storm.html")
 
 # Realistic incidents are log excerpts of a few thousand characters (see
 # findyfixy/retrieval/incidents.py), so the question cap is far above a one-line question.
@@ -124,6 +135,33 @@ _MAX_QUESTION = 8000
 _KEEPALIVE_SECONDS = 10.0
 
 _FORCE_THRESHOLD = 1.01
+
+# The on-call inbox keeps the latest hand-offs in memory: it is a receiver for a demo,
+# not a pager. A real on-call tool takes the same webhook (ADR 0009, step 0).
+_INBOX_KEEP = 50
+# The loop container reaches the console through Docker's name for the host. Only the
+# inbox accepts that Host header; every other route keeps the loopback-only check.
+_INBOX_HOSTS = ("127.0.0.1", "localhost", "host.docker.internal")
+
+
+class Inbox:
+    """The latest hand-offs, newest first. Thread-safe: the server answers on many threads."""
+
+    def __init__(self, keep: int = _INBOX_KEEP) -> None:
+        self._items: list[dict[str, object]] = []
+        self._keep = keep
+        self._lock = threading.Lock()
+
+    def add(self, alert: dict[str, object]) -> None:
+        """Keep `alert` with the time it arrived; the oldest beyond `keep` is dropped."""
+        with self._lock:
+            self._items.insert(0, {"received": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "alert": alert})
+            del self._items[self._keep :]
+
+    def items(self) -> list[dict[str, object]]:
+        """A copy of what is kept, newest first."""
+        with self._lock:
+            return list(self._items)
 
 
 # A hunt repeats real model runs, so the cap is a cost and time bound. The
@@ -136,11 +174,12 @@ _HUNT_TERMINAL = ("hunt_finished",)
 # Harness kinds. The app and harness vocabularies share no kind name
 # (tests/test_page_truth.py checks it), so a kind alone says which run ended.
 _EVAL_TERMINAL = ("eval_finished", "eval_failed")
+_STORM_TERMINAL = ("storm_finished", "storm_failed")  # the loop vocabulary; shares no kind with the others
 
 # Read-only: the console compares a full eval run to it and never writes it.
 BASELINE_PATH = EVALS / "baseline.json"
 
-StreamEvent = Event | HarnessEvent
+StreamEvent = Event | HarnessEvent | LoopEvent
 
 
 class RunRequest(BaseModel):
@@ -158,10 +197,6 @@ class RunRequest(BaseModel):
     stress: Stress = "none"
     # Live mode only. Run the tool step (look up deploys) before triage.
     use_tools: bool = False
-    # Live mode only (Day 7). Run the agent: investigate with its own tools,
-    # then decide. It replaces the tool step and recall, and asks for a
-    # `Decision`, so stress and the injected retry (built for `Triage`) are refused with it.
-    agent: bool = False
     # Live mode only. Repeat real runs until a reply fails validation, or until
     # this many runs have been made. None means a single run.
     hunt_max: int | None = Field(default=None, ge=1, le=HUNT_LIMIT)
@@ -180,16 +215,6 @@ class EvalRequest(BaseModel):
 
     mode: Mode
     cases: StrictInt = Field(ge=1)
-    # Which golden set a live run uses: v1 (frozen, the gate's set), or a hard
-    # set, scores only: v2, or v3 (v2 on a timeline, with a change log). Fake
-    # runs have their own invented set.
-    data: DataVersion = "v1"
-    # Live only (Day 7): run the agent, the system under test. False runs the
-    # earlier fixed path for comparison, scores only: the gate's baseline is the agent's.
-    # Unset means the mode's own system: the agent live, the scripted system in
-    # fake mode. So a request that leaves it out gets what the command line
-    # runs, never the fixed path with the gate silently off.
-    agent: bool | None = None
 
 
 class Busy(Exception):
@@ -221,7 +246,7 @@ class _Watch:
 def _rotate(question: str, banks: list[list[str]]) -> list[str]:
     """The questions a hunt cycles through, starting at `question`.
 
-    If `question` is in one of the banks (the fixed five, or the incident
+    If `question` is in one of the banks (the lesson five, or the incident
     bank), rotate that bank so the cycle starts there. Any other question
     (typed by the user) is the only one used.
     """
@@ -252,32 +277,32 @@ class RunHub:
         fake_delay: float = 0.6,
         clock: Callable[[], float] = time.perf_counter,
         live_eval: EvalSuite | None = None,
-        live_eval_hard: Mapping[DataVersion, EvalSuite] | None = None,
         baseline_path: Path = BASELINE_PATH,
         tracing: Tracing | None = None,
-        make_agent: Callable[[str, Recall], Agent] | None = None,
+        storm_driver: Callable[[StormRequest, Callable[..., None]], None] = drive,
+        saved_runs: Callable[[], list[dict[str, object]]] = list_saved_runs,
+        load_saved: Callable[[ReplayRequest], dict[str, object]] = load_run,
     ) -> None:
         """Hold the wiring. Nothing runs until `start` or `start_eval`.
 
         `live_eval` is the real eval run and its golden set's size (built in
         `main` when models are configured); None means live eval runs are
-        refused as not configured. `live_eval_hard` holds the same for each
-        hard set that could be read (v2, v3), over its cases and table; it
-        never applies the gate. Fake eval runs are always available and
+        refused as not configured. Fake eval runs are always available and
         need no model.
 
         `tracing`, when set, turns every run into a trace (findyfixy/observability/adapter.py).
         None leaves the run exactly as it was.
 
-        `make_agent(model, recall)` builds the agent's loop, its
-        instructions and the judge of its decision for a live agent run (findyfixy/wiring.py, `build_agent`);
-        None turns agent runs off.
+        `storm_driver` runs one live storm (console/storm.py `drive`), and
+        `saved_runs` and `load_saved` list and read the runs a replay can show;
+        tests pass fakes, so no storm needs simprod.
         """
-        self._make_agent = make_agent
+        self._storm_driver = storm_driver
+        self.saved_runs = saved_runs
+        self._load_saved = load_saved
         self._tracing = tracing
         self._live_models = live_models
         self._live_eval = live_eval
-        self._live_eval_hard = dict(live_eval_hard or {})
         self._fake_eval = fake_eval(sleep, fake_delay)
         self._baseline_path = baseline_path
         self.incidents = incidents or []
@@ -311,23 +336,13 @@ class RunHub:
         return self._investigator is not None
 
     @property
-    def agent_available(self) -> bool:
-        """True when a live agent run can be built: models, recall and the agent builder."""
-        return self._live_models is not None and self._recall is not None and self._make_agent is not None
-
-    @property
     def live_available(self) -> bool:
         """True when `SMALL_MODEL` and `LARGE_MODEL` were configured."""
         return self._live_models is not None
 
     def eval_sizes(self) -> dict[str, int | None]:
         """How many cases each mode's eval set has. None for live when it is not configured."""
-        return {
-            "live": self._live_eval.size if self._live_eval else None,
-            # Every hard set has a key, None when it is off, so the page can grey it out.
-            **{f"live_{v}": s.size if (s := self._live_eval_hard.get(v)) else None for v in DATA_VERSIONS if v != "v1"},
-            "fake": self._fake_eval.size,
-        }
+        return {"live": self._live_eval.size if self._live_eval else None, "fake": self._fake_eval.size}
 
     def _begin(self, terminal: tuple[str, ...], *, stoppable: bool) -> int:
         """Claim the one run slot and reset the stream. Raises `Busy`. Returns the run id.
@@ -356,31 +371,19 @@ class RunHub:
         chosen set's size is a `ValueError` (422), checked before the slot is
         taken.
         """
-        agent = req.mode == "live" if req.agent is None else req.agent
-        if agent and req.mode != "live":
-            raise ValueError("the agent runs live only")
         if req.mode == "live":
             if self._live_eval is None:
                 raise NotConfigured("live eval needs SMALL_MODEL and LARGE_MODEL")
-            chosen = self._live_eval if req.data == "v1" else self._live_eval_hard.get(req.data)
-            if chosen is None:
-                raise NotConfigured(f"live {req.data} eval is not configured: its golden file could not be read")
-            suite = chosen
-        elif req.data != "v1":
-            raise ValueError(f"the {req.data} hard cases run live only; fake mode has its own invented set")
+            suite = self._live_eval
         else:
             suite = self._fake_eval
         if req.cases > suite.size:
             raise ValueError(f"cases must be between 1 and {suite.size} for {req.mode} mode")
         run_id = self._begin(_EVAL_TERMINAL, stoppable=True)
-        # The baseline is made on v1 with the agent, so a live fixed-path run is
-        # scores only. A fake run has its own scripted system and keeps showing
-        # the gate read-only, which is the point of the demo.
-        gated = req.data == "v1" and (req.mode == "fake" or agent)
-        threading.Thread(target=self._eval, args=(suite.run, req.cases, gated, agent), daemon=True).start()
+        threading.Thread(target=self._eval, args=(suite.run, req.cases), daemon=True).start()
         return run_id
 
-    def _eval(self, run: EvalRun, n: int, gated: bool = True, agent: bool = False) -> None:
+    def _eval(self, run: EvalRun, n: int) -> None:
         """The eval run thread. Always ends with exactly one terminal event.
 
         Two emitters feed one stream: the graph's events (app vocabulary) and
@@ -392,15 +395,60 @@ class RunHub:
         on_event = make_stamped_emit(self._publish, self._clock, HarnessEvent)
         try:
             run_and_judge(
-                run,
-                n,
-                emit=emit,
-                on_event=on_event,
-                should_stop=self._stop.is_set,
-                baseline_path=self._baseline_path,
-                gated=gated,
-                agent=agent,
+                run, n, emit=emit, on_event=on_event, should_stop=self._stop.is_set, baseline_path=self._baseline_path
             )
+        finally:
+            with self._cond:
+                self._running = False
+                self._cond.notify_all()
+
+    def start_storm(self, req: StormRequest) -> int:
+        """Drive one storm in a thread. Raises `Busy`. Not stoppable: an incident in flight is the loop's to end."""
+        run_id = self._begin(_STORM_TERMINAL, stoppable=False)
+        threading.Thread(target=self._storm, args=(req, run_id), daemon=True).start()
+        return run_id
+
+    def _publisher(self, run_id: int) -> Callable[[StreamEvent], None]:
+        """A sink for one run only: it drops what arrives after that run's terminal, or once another run began.
+
+        A storm has threads the console does not own (the storm driver's scraper,
+        the loop's reader), and one may still emit after the storm has ended.
+        """
+
+        def publish(event: StreamEvent) -> None:
+            with self._cond:  # one lock for the check and the append (the condition's lock is reentrant)
+                if run_id == self._run_id and not self._finished:
+                    self._publish(event)
+
+        return publish
+
+    def _storm(self, req: StormRequest, run_id: int) -> None:
+        """The storm thread: the driver emits every event, ending with one terminal. `_running` is cleared last."""
+        emit = make_stamped_emit(self._publisher(run_id), self._clock, LoopEvent)
+        try:
+            self._storm_driver(req, emit)
+        finally:
+            with self._cond:
+                self._running = False
+                self._cond.notify_all()
+
+    def start_replay(self, req: ReplayRequest) -> int:
+        """Replay a saved storm run in a thread. Raises `Busy`, or ValueError (422) for a run that is not saved."""
+        try:  # read and checked before the slot is taken: a record of another shape is a 422, never a crash
+            events = replay_events(self._load_saved(req))
+        except (KeyError, TypeError, AttributeError, IndexError) as exc:
+            raise ValueError(f"{req.file} run {req.run} cannot be replayed: {type(exc).__name__}: {exc}") from exc
+        run_id = self._begin(_STORM_TERMINAL, stoppable=True)
+        threading.Thread(target=self._replay, args=(events, req.speed, run_id), daemon=True).start()
+        return run_id
+
+    def _replay(self, events: list[tuple[float, str, dict[str, object]]], speed: int, run_id: int) -> None:
+        """The replay thread: the saved run's events at `speed` times real time, stoppable between events."""
+        emit = make_stamped_emit(self._publisher(run_id), self._clock, LoopEvent)
+        try:
+            play(events, emit, speed, self._stop.is_set, self._sleep)
+        except Exception as exc:  # a malformed record ends the stream with its reason
+            emit("storm_failed", error=f"{type(exc).__name__}: {exc}")
         finally:
             with self._cond:
                 self._running = False
@@ -412,8 +460,6 @@ class RunHub:
         Validation of the combination happens here, before the thread, so a
         bad request is a clean HTTP error and not a failed run.
         """
-        # The agent's loop, instructions and judge, on an agent run only.
-        built: Agent | None = None
         if req.mode == "live":
             if self._live_models is None:
                 raise NotConfigured("SMALL_MODEL and LARGE_MODEL are not set")
@@ -426,25 +472,15 @@ class RunHub:
             question = req.question.strip()
             forced = req.force_escalation
             investigator = None
-            if req.agent:
-                if self._make_agent is None or self._recall is None:
-                    raise NotConfigured("the agent needs the database and models configured")
-                if req.use_tools or req.stress != "none" or req.force_retry:
-                    raise ValueError(
-                        "the agent has its own tools and asks for a decision: no tool step, stress or retry"
-                    )
-                ask = ollama_decision_ask
-                built = self._make_agent(small, self._recall)
-                investigator = built.investigator
-            elif req.use_tools:
+            if req.use_tools:
                 if self._investigator is None:
                     raise NotConfigured("the tool step is not configured")
                 investigator = self._investigator
             if req.hunt_max is not None and (forced or req.force_retry):
                 raise ValueError("hunt cannot be combined with a forced fault")
         else:
-            if req.hunt_max is not None or req.force_retry or req.stress != "none" or req.agent:
-                raise ValueError("hunt, force_retry, stress and the agent need live mode")
+            if req.hunt_max is not None or req.force_retry or req.stress != "none":
+                raise ValueError("hunt, force_retry and stress need live mode")
             if req.scenario is None:
                 raise ValueError("fake mode needs a scenario")
             small, large = "small", "large"
@@ -455,7 +491,7 @@ class RunHub:
             if req.scenario in TOOL_HOURS:
                 investigator = build_investigator(
                     ScriptedToolModel(TOOL_HOURS[req.scenario]),
-                    guard(make_deploys_tool(), process_broker(), TOOL_STEP),
+                    make_deploys_tool(),
                 )
 
         run_id = self._begin(_HUNT_TERMINAL if req.hunt_max else _RUN_TERMINAL, stoppable=bool(req.hunt_max))
@@ -475,11 +511,8 @@ class RunHub:
             ),
             kwargs={
                 "investigator": investigator,
-                "built_agent": built,
                 "stress": req.stress,
-                # The agent searches through its own tool; a fixed recall step would add incidents it did not choose.
-                "recall": None if req.agent else self._recall_for(req.mode),
-                "agent": req.agent,
+                "recall": self._recall_for(req.mode),
             },
             daemon=True,
         ).start()
@@ -500,7 +533,7 @@ class RunHub:
             self._cond.notify_all()
 
     def _banks(self) -> list[list[str]]:
-        """The question banks a hunt can rotate: the fixed five, then incidents."""
+        """The question banks a hunt can rotate: the lesson five, then incidents."""
         return [QUESTIONS, [i.text for i in self.incidents]]
 
     def stop(self) -> bool:
@@ -529,10 +562,8 @@ class RunHub:
         force_retry: bool,
         *,
         investigator: Investigator | None = None,
-        built_agent: Agent | None = None,
         stress: Stress = "none",
         recall: Recall | None = None,
-        agent: bool = False,
     ) -> None:
         """The run thread. Always ends with exactly one terminal event.
 
@@ -573,8 +604,6 @@ class RunHub:
                 investigator,
                 stress,
                 recall,
-                agent,
-                built_agent,
             )
 
         try:
@@ -601,8 +630,6 @@ class RunHub:
         investigator: Investigator | None = None,
         stress: Stress = "none",
         recall: Recall | None = None,
-        agent: bool = False,
-        built_agent: Agent | None = None,
     ) -> Literal["finished", "failed", "error"]:
         """One graph run. Returns how it ended, after emitting its event.
 
@@ -623,7 +650,6 @@ class RunHub:
             tools=investigator is not None,
             stress=stress,
             recall=recall is not None,
-            agent=agent,
         )
         try:
             graph = build_graph(
@@ -635,9 +661,6 @@ class RunHub:
                 investigator=investigator,
                 investigate_model=small if investigator is not None and mode == "live" else None,
                 recall=recall,
-                agent=agent,
-                agent_instructions=built_agent.instructions if built_agent else agent_prompt,
-                judge=built_agent.new_judge() if built_agent else None,  # a fresh ledger per run
             )
             result = graph.invoke({"question": question})
             emit(
@@ -723,7 +746,7 @@ def wire(event: StreamEvent) -> dict[str, object]:
     The tag is added here, at the edge, so neither vocabulary needs to know
     about the other or about the page.
     """
-    source = "harness" if isinstance(event, HarnessEvent) else "app"
+    source = "harness" if isinstance(event, HarnessEvent) else "loop" if isinstance(event, LoopEvent) else "app"
     return {"source": source, **asdict(event)}
 
 
@@ -737,8 +760,10 @@ QUIET_ROUTES = ("/version", "/favicon.ico")
 UNTRACED_ROUTES = (*QUIET_ROUTES, "/events")
 
 
-def make_handler(hub: RunHub, page: Path, dev_root: Path | None = None) -> type[BaseHTTPRequestHandler]:
-    """Build the request handler class bound to `hub` and the page path.
+def make_handler(
+    hub: RunHub, page: Path, dev_root: Path | None = None, storm_page: Path = STORM_PAGE
+) -> type[BaseHTTPRequestHandler]:
+    """Build the request handler class bound to `hub` and the two pages: the storm at `/`, `page` at `/architecture`.
 
     `dev_root`, when given, turns on dev mode: `/version` reports a fingerprint
     of the watched files and this process's start time, and `/config` says so.
@@ -746,6 +771,7 @@ def make_handler(hub: RunHub, page: Path, dev_root: Path | None = None) -> type[
     exposes no file information.
     """
     boot = time.time_ns()  # changes on every restart, even with no file change
+    inbox = Inbox()
 
     class Handler(BaseHTTPRequestHandler):
         """Routes, header checks and SSE framing. Logic stays in `RunHub`."""
@@ -828,10 +854,11 @@ def make_handler(hub: RunHub, page: Path, dev_root: Path | None = None) -> type[
             if not self._host_ok():
                 return self._json(HTTPStatus.FORBIDDEN, {"error": "bad host"})
             url = urlparse(self.path)
-            if url.path == "/":
-                if not page.is_file():
+            pages = {"/": storm_page, "/architecture": page}
+            if url.path in pages:
+                if not pages[url.path].is_file():
                     return self._send(HTTPStatus.OK, b"page not built yet", "text/plain")
-                return self._send(HTTPStatus.OK, page.read_bytes(), "text/html; charset=utf-8")
+                return self._send(HTTPStatus.OK, pages[url.path].read_bytes(), "text/html; charset=utf-8")
             if url.path == "/favicon.ico":
                 # The page declares an inline icon, so browsers normally never ask.
                 # Some still do. Answer "no content" instead of a 404 in the log.
@@ -852,7 +879,6 @@ def make_handler(hub: RunHub, page: Path, dev_root: Path | None = None) -> type[
                         "incidents": [{"id": i.id, "title": i.title, "text": i.text} for i in hub.incidents],
                         "scenarios": list(SCENARIOS),
                         "tools_available": hub.tools_available,
-                        "agent_available": hub.agent_available,
                         "live_available": hub.live_available,
                         "threshold": THRESHOLD,
                         "hunt_default": HUNT_DEFAULT,
@@ -861,23 +887,54 @@ def make_handler(hub: RunHub, page: Path, dev_root: Path | None = None) -> type[
                         "dev_reload": dev_root is not None,
                         "eval_sizes": hub.eval_sizes(),
                         "eval_default": EVAL_DEFAULT,
+                        "saved_runs": hub.saved_runs(),
                     },
                 )
             if url.path == "/events":
                 return self._events(parse_qs(url.query))
+            if url.path == "/handoffs":
+                return self._json(HTTPStatus.OK, {"handoffs": inbox.items()})
             self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
+
+        def _handoff(self) -> None:
+            """POST /handoff: keep one Alertmanager webhook payload. Anything else is refused with the reason."""
+            assert isinstance(self.server, HTTPServer)
+            port = self.server.server_port
+            # No browser sends here: a page in a browser carries an Origin, and JSON forces a preflight
+            # this server never answers, so no web page can plant a hand-off.
+            if self.headers.get("Host") not in {f"{h}:{port}" for h in _INBOX_HOSTS} or self.headers.get("Origin"):
+                return self._json(HTTPStatus.FORBIDDEN, {"error": "bad host or origin"})
+            if not self.headers.get("Content-Type", "").startswith("application/json"):
+                return self._json(HTTPStatus.UNSUPPORTED_MEDIA_TYPE, {"error": "send JSON"})
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+            except ValueError:
+                length = -1
+            if not 0 < length <= _MAX_BODY:
+                return self._json(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, {"error": "bad body size"})
+            self.close_connection = False  # body is about to be read in full
+            try:
+                alert = json.loads(self.rfile.read(length))
+            except ValueError:
+                return self._json(HTTPStatus.BAD_REQUEST, {"error": "not JSON"})
+            if not isinstance(alert, dict) or not isinstance(alert.get("alerts"), list):
+                return self._json(HTTPStatus.UNPROCESSABLE_ENTITY, {"error": "not an Alertmanager webhook payload"})
+            inbox.add(alert)
+            self._json(HTTPStatus.OK, {"received": True})
 
         def _post(self) -> None:
             # Early rejects leave the body unread. Close the connection, or the
             # leftover bytes are parsed as the next request on a keep-alive socket.
             self.close_connection = True
+            if urlparse(self.path).path == "/handoff":
+                return self._handoff()
             if not self._host_ok() or not self._origin_ok():
                 return self._json(HTTPStatus.FORBIDDEN, {"error": "bad host or origin"})
             path = urlparse(self.path).path
             if path == "/stop":
                 # No body is read, and none is needed. Close, as above.
                 return self._json(HTTPStatus.OK, {"stopping": hub.stop()})
-            if path not in ("/run", "/eval"):
+            if path not in ("/run", "/eval", "/storm", "/replay"):
                 return self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
             if not self.headers.get("Content-Type", "").startswith("application/json"):
                 return self._json(HTTPStatus.UNSUPPORTED_MEDIA_TYPE, {"error": "send JSON"})
@@ -892,6 +949,10 @@ def make_handler(hub: RunHub, page: Path, dev_root: Path | None = None) -> type[
                 body = self.rfile.read(length)
                 if path == "/eval":
                     run_id = hub.start_eval(EvalRequest.model_validate_json(body))
+                elif path == "/storm":
+                    run_id = hub.start_storm(StormRequest.model_validate_json(body))
+                elif path == "/replay":
+                    run_id = hub.start_replay(ReplayRequest.model_validate_json(body))
                 else:
                     run_id = hub.start(RunRequest.model_validate_json(body))
             except (ValidationError, ValueError) as err:
@@ -971,34 +1032,6 @@ def parse_args(argv: list[str]) -> tuple[bool, int]:
     return reload, port
 
 
-def _hard_suites(retrieval: SharedRetrieval, tracing: Tracing | None) -> dict[DataVersion, EvalSuite]:
-    """The live eval over each hard set (v2, v3) whose data can be read. A warning for each that cannot.
-
-    A hard set is optional: a missing or invalid file turns off that choice
-    and nothing else, so v1 evals and triage still run. The session itself is
-    answers_hard.open_hard_session, the one place a hard session is wired; it
-    reads the cases each time it opens.
-    """
-    from findyfixy.evals.answers_hard import HARD_SETS, golden_path, load_hard, open_hard_session
-
-    suites: dict[DataVersion, EvalSuite] = {}
-    for version in HARD_SETS:
-        try:
-            size = len(load_hard(version))
-        except (OSError, ValueError) as err:
-            name = golden_path(version).name
-            print(f"{version} hard cases off: cannot read {name} ({type(err).__name__}: {err})", file=sys.stderr)
-            continue
-        suites[version] = live_eval(
-            partial(open_hard_session, version, retrieval=retrieval, tracing=tracing),
-            golden_path=golden_path(version),
-            repo_dir=ROOT,
-            progress=lambda msg: print(msg, file=sys.stderr, flush=True),
-            size=size,
-        )
-    return suites
-
-
 def main(argv: list[str] | None = None) -> None:
     """Read the environment, build the hub, serve until Ctrl-C.
 
@@ -1025,7 +1058,7 @@ def main(argv: list[str] | None = None) -> None:
     if models:
         from langchain_ollama import ChatOllama
 
-        tool = guard(make_deploys_tool(), process_broker(), TOOL_STEP)
+        tool = make_deploys_tool()
         investigator = build_investigator(ChatOllama(model=models.small, **answer_options()).bind_tools([tool]), tool)
     # One database connection, embedder and reranker for the whole process:
     # triage recall and the eval session share it, so a live eval loads no copy.
@@ -1033,7 +1066,7 @@ def main(argv: list[str] | None = None) -> None:
     # Closed last, which sends what is still queued.
     with open_tracing() as tracing:
         retrieval = SharedRetrieval(stage=stage_spans(tracing)) if models else None
-        live_eval_suite, hard_suites = None, {}
+        live_eval_suite = None
         if retrieval is not None:
             from findyfixy.evals.answers import open_live_session
             from findyfixy.evals.golden import DEFAULT_PATH as GOLDEN_PATH
@@ -1046,7 +1079,6 @@ def main(argv: list[str] | None = None) -> None:
                 progress=lambda msg: print(msg, file=sys.stderr, flush=True),
                 size=len(load_golden(GOLDEN_PATH)),
             )
-            hard_suites = _hard_suites(retrieval, tracing)
         hub = RunHub(
             tracing=tracing,
             live_models=(models.small, models.large) if models else None,
@@ -1054,8 +1086,6 @@ def main(argv: list[str] | None = None) -> None:
             investigator=investigator,
             recall=retrieval.recall(RECALL_K) if retrieval else None,
             live_eval=live_eval_suite,
-            live_eval_hard=hard_suites,
-            make_agent=build_agent if models else None,
         )
         dev = WORKSPACE if os.environ.get("FINDYFIXY_DEV") else None
         server = serve(hub, port=port, dev_root=dev)

@@ -1,16 +1,16 @@
-"""Day 2: the direct tool path, measured.
+"""Day 2, step 4: the direct tool path, measured.
 
 What it does
     Runs a fixed question that needs the deploy tool through the LangGraph
     tool loop (findyfixy/tools/investigate.py), 10 times, and prints one row per run:
     input tokens, output tokens, wall time, tool calls, the arguments the
-    model chose, and whether the answer was right. The MCP path (mcp/run.py) repeats it with the
+    model chose, and whether the answer was right. Step 5 repeats it with the
     tool served over MCP so the two can be compared.
 
 Why "direct" means an in-process tool inside a ToolNode
-    The tool is bound with `bind_tools` in a LangGraph `ToolNode`.
+    The lesson binds the tool with `bind_tools` in a LangGraph `ToolNode`.
     That is what `build_investigator` does. The tool is a plain Python
-    function called in the same process. The MCP path changes only where the tool
+    function called in the same process. Step 5 changes only where the tool
     comes from (an MCP server). The loop, the model, the prompt and this
     measurement stay the same, so the difference left is the transport.
 
@@ -21,7 +21,7 @@ The loop is bounded
 What the numbers can and cannot say
     - Input tokens include the tool's name, description and JSON Schema. They
       are sent on every turn. With one small tool that is tens of tokens.
-      MCP's per-turn overhead grows with the NUMBER of tools,
+      The MCP overhead the lesson warns about grows with the NUMBER of tools,
       so one tool will understate it. Say so when you quote the number.
     - The first run after a model load is slow. `main` runs one warm-up call
       that is printed but excluded from the summary.
@@ -54,7 +54,7 @@ if TYPE_CHECKING:
     from wyld3rness.trace.command import CommandTrace, Step
 
 # Fixed so runs are comparable across the direct and MCP paths. The data
-# (data/v1/deploys.json) holds two auth deploys near the boundary: 2.14.1 at 3h
+# (data/deploys.json) holds two auth deploys near the boundary: 2.14.1 at 3h
 # and 2.14.0 at 30h. A correct answer names the first and not the second.
 TASK = (
     "Which deploys to the auth service happened in the last 24 hours? "
