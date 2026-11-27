@@ -190,9 +190,7 @@ def _handle(
             ports = traced(trace.tracer, *watch.ports(env, decider, Policy(rules(edge=edge)), signer))
             outcome = run_incident(ports[0], ports[1], config, ports[2], ports[3])
             handed = hand_off(handoff, incident, outcome) if handoff is not None else None
-            if handed is not None:  # before incident_ended, so a viewer shows who was told before the end
-                watch.handed_off(handoff_summary(handed))
-            watch.finish(outcome)
+            watch.finish(outcome, handoff_summary(handed) if handed is not None else None)
         finally:
             stop.set()
         agent = record()

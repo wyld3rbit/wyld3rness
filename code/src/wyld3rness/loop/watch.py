@@ -130,10 +130,15 @@ class Watch:
             self.emit("verdict", **try_json(t))
         self._said = max(self._said, len(tries))
 
-    def finish(self, outcome: Outcome) -> None:
-        """The last verdicts and `incident_ended`. Call once, after `run_incident` returns."""
+    def finish(self, outcome: Outcome, handoff: dict[str, Any] | None = None) -> None:
+        """The last verdicts, the hand-off when there was one, then `incident_ended`. Call once, after `run_incident`.
+
+        `handoff` is what a viewer shows of it (`wyld3rness.loop.handoff.summary`).
+        """
         self._to_apply = 0
         self.verdicts(outcome.tries)
+        if handoff is not None:
+            self.emit("handoff", **handoff)
         self.emit(
             "incident_ended",
             ended=outcome.ended,
@@ -142,10 +147,6 @@ class Watch:
             safe_undos=[_label(a.action) for a in outcome.safe_undos],
             tries_used=len(outcome.tries),
         )
-
-    def handed_off(self, record: dict[str, Any]) -> None:
-        """`handoff`: what the person was sent and whether it arrived (`wyld3rness.loop.handoff.summary`)."""
-        self.emit("handoff", **record)
 
     def ports(
         self, env: Environment, decider: Decider, policy: Policy, signer: Signer

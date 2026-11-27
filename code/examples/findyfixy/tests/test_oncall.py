@@ -588,15 +588,17 @@ def test_a_refused_incident_still_closes_its_event_log() -> None:
 
 @pytest.mark.parametrize(("ended", "handed_off"), [("safe state", True), ("resolved", False)])
 def test_the_loop_service_hands_a_safe_state_to_a_person_before_it_ends(monkeypatch, ended, handed_off) -> None:
-    """The hand-off's event comes before incident_ended, and its record goes back in the answer."""
+    """The hand-off comes after the last verdict and before incident_ended, and its record goes back in the answer."""
     from findyfixy.oncall import service
-    from wyld3rness.loop.run import Outcome
+    from wyld3rness.loop.env import Action
+    from wyld3rness.loop.run import Outcome, Try
     from wyld3rness.loop.watch import EventLog
     from wyld3rness.testing import FakeHandoff
 
-    monkeypatch.setattr(
-        service, "run_incident", lambda *ports: Outcome(ended, "out of tries" if ended != "resolved" else "ok")
-    )
+    # One real try, so its verdict is still unreported when the loop returns, as in a live incident.
+    verdict = "resolved" if ended == "resolved" else "not verified"
+    last = Try(1, (Action("backoff", {"enabled": True}),), (), 1.0, verdict)
+    monkeypatch.setattr(service, "run_incident", lambda *ports: Outcome(ended, "out of tries", tries=[last]))
     log, handoff = EventLog(), FakeHandoff()
     body = {
         "incident": "i9",
@@ -613,6 +615,6 @@ def test_the_loop_service_hands_a_safe_state_to_a_person_before_it_ends(monkeypa
     kinds = [e["kind"] for e in log.since(0)[0]]
     if handed_off:
         assert answer["handoff"]["delivered"] is True and len(handoff.sent) == 1
-        assert kinds[-2:] == ["handoff", "incident_ended"]
+        assert kinds[-3:] == ["verdict", "handoff", "incident_ended"]  # the order a replay builds
     else:
         assert answer["handoff"] is None and handoff.sent == [] and "handoff" not in kinds

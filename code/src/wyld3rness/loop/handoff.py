@@ -23,6 +23,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
+import http.client
 import json
 from typing import Any, Protocol
 import urllib.error
@@ -125,7 +126,9 @@ class WebhookHandoff:
             status, answer = self._post(self.url, json.dumps(alert).encode(), self.timeout_s)
         except urllib.error.HTTPError as exc:
             return Delivery(False, self.url, f"HTTP {exc.code}")
-        except (OSError, ValueError) as exc:  # URLError and timeouts are OSError; a malformed URL is ValueError
+        # URLError and timeouts are OSError, a malformed URL is ValueError, and a receiver that is not
+        # speaking HTTP (a bad status line, a cut chunk) raises http.client.HTTPException.
+        except (OSError, ValueError, http.client.HTTPException) as exc:
             return Delivery(False, self.url, f"{type(exc).__name__}: {exc}")
         return Delivery(200 <= status < 300, self.url, f"HTTP {status} {answer}".strip())
 

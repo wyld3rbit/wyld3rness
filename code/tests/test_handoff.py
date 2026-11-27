@@ -105,3 +105,24 @@ def test_the_webhook_reaches_a_real_receiver() -> None:
         server.shutdown()
     assert record is not None and record["delivered"] is True and record["detail"] == "HTTP 200 ok"
     assert got == [record["alert"]]
+
+
+def test_a_receiver_that_does_not_speak_http_is_not_delivered_and_never_raises() -> None:
+    import socket
+
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(1)
+
+    def answer_garbage() -> None:
+        conn, _ = listener.accept()
+        conn.recv(65536)
+        conn.sendall(b"garbage\r\n")
+        conn.close()
+
+    threading.Thread(target=answer_garbage, daemon=True).start()
+    try:
+        delivery = WebhookHandoff(f"http://127.0.0.1:{listener.getsockname()[1]}/").send({"alerts": []})
+    finally:
+        listener.close()
+    assert delivery.delivered is False and "BadStatusLine" in delivery.detail
