@@ -11,7 +11,7 @@ y = 0
 w = 1240
 h = 104
 [[zone]]
-label = "Harness, at every commit and every model call"
+label = "Harness, at every commit and in each traced run"
 kind = "harness"
 x = 10
 y = 124

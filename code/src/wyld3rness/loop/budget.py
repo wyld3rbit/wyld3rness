@@ -1,4 +1,4 @@
-"""The budget: every model call reserves its worst case before it runs, so an incident cannot spend past its limit.
+"""The budget: each model call made through it reserves its worst case first; a call that does not fit is never made.
 
     reserve(model, prompt, output cap)
         worst case = (UTF-8 bytes of the prompt + template tokens) x input price + output cap x output price
@@ -13,12 +13,15 @@ model server. It overestimates, by about three times on the decider's prompts
 (research log, entry 014). The chat template adds a few tokens of its own, and
 `template_tokens` allows twice what entry 014 measured. A
 tokenizer that is not byte-level breaks the bound; this one is the reason a
-model needs a price entry before it can be called at all.
+model needs a price entry before it can be called at all. The limit holds only
+while both bounds hold: `settle` charges the tokens the reply reports, with no
+cap, so a model server that ignores the output cap can spend past it.
 
 Why a reservation and not a report: cost read from a trace is known after the
 money is gone. An unknown price refuses the call, and unknown token counts in
-the reply settle at the reservation, never at zero. Day 8's model gateway takes
-over this port with the same rule.
+the reply settle at the reservation, never at zero. Only the calls made
+through this port are budgeted; a model gateway in front of every call, planned,
+would take it over with the same rule.
 """
 
 from __future__ import annotations

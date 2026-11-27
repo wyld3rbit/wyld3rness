@@ -12,14 +12,15 @@ judged on. A run is judged only if that stream was measured whole: no counter
 reset, no scrape gap, and customers sent on time (`invalid` in controls.py).
 The runaway client's requests are not customers and are left out.
 
-The agent can read the same metrics through the edge, as an operator reads
-synthetic monitoring. It cannot change them, and it cannot change the verdict:
+The agent sees the customers' counters only in the observation the loop sends
+it, as an operator reads synthetic monitoring. It cannot change them, and it
+cannot change the verdict:
 the scraper runs in the host process that drives the storm, and a second one in
 FindyFixy's loop container for the loop's own verdict; never in the agent's
 container, which has no route to simprod.
 
-The verdict rules lived here until Day 7 step 3 and moved to the harness
-unchanged, so the loop keeps or undoes a fix by the rule the controls were
+The verdict rules lived here first and moved to the harness unchanged
+(ADR 0008, step 3), so the loop keeps or undoes a fix by the rule the controls were
 scored on. This module keeps what is simprod's: the metrics format, the
 scraper, and the measurement checks (late sends, scrape gaps). The services'
 image copies this file but never imports it; the host and the loop container do.

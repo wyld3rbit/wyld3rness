@@ -18,7 +18,7 @@ Beside the package: `code/examples/findyfixy/tests/`, `code/examples/findyfixy/d
 
 | To | Change | Then run |
 |---|---|---|
-| Allow a new kind of action | the action and its undo in `code/examples/findyfixy/src/findyfixy/oncall/env.py`, its rule in `code/examples/findyfixy/src/findyfixy/oncall/policy.py`, the endpoint in simprod | `make test`, then `make oncall` |
+| Allow a new kind of action | the action and its undo in `code/examples/findyfixy/src/findyfixy/oncall/env.py`, its rule in `code/examples/findyfixy/src/findyfixy/oncall/policy.py`, its name in `ActionChoice` and the prompt in `code/examples/findyfixy/src/findyfixy/oncall/decide.py`; in simprod, the endpoint, the edge's allow-list and the credential's action names | `make test`, then `make oncall` |
 | Change how the model proposes | `code/examples/findyfixy/src/findyfixy/oncall/decide.py` | `make test`, then `make experiment` |
 | Add an attack | `code/examples/findyfixy/src/findyfixy/oncall/attacks.py` | `make injection` |
 | Change a triage answer | anything on the eval path, or `code/examples/findyfixy/data/` | the commit runs the eval gate |

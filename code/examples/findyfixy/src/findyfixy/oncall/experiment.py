@@ -5,7 +5,8 @@
         script       {backoff}, {cap the busiest key}, {both}, in an order drawn for that storm, no model
         model-1      the model, one try
         model-loop   the model, up to three tries
-    every arm: same storm driver, same loop container, policy, signer, budget; measured over HORIZON_S
+    every arm: same storm driver, measured over HORIZON_S; every arm but nobody: same loop container,
+    policy and signer, and the model arms a budget (the script makes no model call and has none)
     ──► results file after every run ──► `analyze`: primary interval, secondaries, guardrails, the bar
 
 The primary metric is customer minutes lost in the HORIZON_S after the fault,

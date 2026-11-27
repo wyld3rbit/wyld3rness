@@ -22,7 +22,7 @@ status = "built"
 [[box]]
 id = "repeats"
 name = "12 repeats"
-sub = "AI loop, the noise"
+sub = "model loop, the noise"
 icon = "Faults"
 x = 555
 y = 700
@@ -45,7 +45,7 @@ y = 210
 status = "built"
 [[box]]
 id = "one"
-name = "AI, one try"
+name = "Model, one try"
 sub = "proposes once"
 icon = "Decide"
 x = 730
@@ -53,7 +53,7 @@ y = 210
 status = "built"
 [[box]]
 id = "loop"
-name = "AI loop"
+name = "Model loop"
 sub = "up to 3 tries"
 icon = "Autonomy"
 x = 1080
@@ -102,7 +102,7 @@ status = "built"
 [[box]]
 id = "rule"
 name = "Decision rule"
-sub = "AI must beat the script"
+sub = "model must beat script"
 icon = "Route"
 x = 1080
 y = 540

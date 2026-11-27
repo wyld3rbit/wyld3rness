@@ -13,9 +13,9 @@ storm's clock (seconds since the storm's scraper started), so the page can put
 the loop's steps on the same axis as what customers saw; a verdict's
 `recovered_at` is moved to that clock too.
 
-Why the console polls the loop container instead of the loop pushing: the loop
-container has no route to the console and needs none; a viewer that reads is
-one more reader of a log, never a dependency of the incident. A step shows up
+Why the console polls the loop container instead of the loop pushing its
+events: a viewer that reads is one more reader of a log, never a dependency of
+the incident. The loop reaches the console only to post a hand-off to its inbox. A step shows up
 at most one poll interval (`POLL_S`) after it happened.
 
 Why replay rebuilds events from the record and not from a recording of the

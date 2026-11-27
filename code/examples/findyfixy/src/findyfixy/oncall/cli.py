@@ -1,14 +1,15 @@
 """`make oncall`: FindyFixy runs seeded simprod storms through the harness's loop, with no person in it.
 
     for each storm: simprod.controls.live_storm (reset, warm, inject, DETECT_S)
-        ──► wyld3rness.loop.run_incident(SimprodEnv, ModelDecider) ──► resolved or the safe state
+        ──► POST /incident with the loop's token ──► the loop container runs wyld3rness.loop.run_incident
+            (SimprodEnv, the agent container's decider) ──► resolved or the safe state
         ──► the storm driver's own verdict, from the last try's action ──► one line, and the results file
 
 The storm driver is the one the controls use, so a loop run differs from a
 control run only in who acts. The driver's verdict (`recovered`) is computed
 again from the same scraped series, independently of the loop's, and the two
 must agree. Seed 3 by default: the pilot's storms, for exploratory runs; the
-held-out comparison (step 6) uses a seed never run here.
+held-out comparison (`make experiment`) uses a seed never run here.
 
 Results go to code/examples/simprod/results/oncall-<UTC>.json (git-ignored),
 rewritten after every storm.
@@ -43,7 +44,7 @@ JSON = dict[str, Any]
 ARM = "loop"
 EXPLORE_SEED, EXPLORE_STORMS = 3, 3  # one storm of each kind
 # Per incident, at the committed reference prices: about twice the worst case of 12
-# small-model calls of 2,000 input and 300 output tokens ($0.00264), from the Day 7 lesson.
+# small-model calls of 2,000 input and 300 output tokens ($0.00264), an early estimate.
 # The loop makes at most 6 (3 tries, 1 retry each); their worst case is about $0.002.
 LIMIT_USD = 0.005  # sent with each incident; the loop passes it to the agent's decider
 LOOP_URL = "http://127.0.0.1:8300"  # the loop container, published on loopback only

@@ -22,7 +22,7 @@ the loop stop retrying instead (`code/src/wyld3rness/loop/run.py`).
 
 Trust: the metrics text is written by services the agent's actions affect, and
 its key labels come from request data, so it is untrusted input to the model.
-The injection suite (Day 7, step 5) attacks this path. The model never reaches
+The injection suite (`findyfixy.oncall.attacks`) attacks this path. The model never reaches
 this module's HTTP calls: it proposes, the loop applies.
 """
 

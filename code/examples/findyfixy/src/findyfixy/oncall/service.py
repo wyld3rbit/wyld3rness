@@ -238,7 +238,8 @@ def _handle(
 def choose_decider(body: JSON, agent_url: str, incident: str, params: JSON) -> tuple[Decider, Callable[[], JSON]]:
     """The incident's decider and how to read its record afterwards. Raises ValueError for an unknown one.
 
-    The script makes no model call, so its record says so, measured: no calls and nothing spent.
+    The script makes no model call, so its record says so by construction: no calls and nothing
+    spent, with no budget kept for it.
     """
     kind = body.get("decider", "model")
     if kind == "model":
