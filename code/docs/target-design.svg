@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="-60 -234 1000 1180" width="1000" height="1180" role="img" aria-label="Target design. Solid is built. Dashed is planned.">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-60 -234 1000 1230" width="1000" height="1230" role="img" aria-label="Target design. Solid is built. Dashed is planned.">
 <style>
 .lane { fill: #0d1729; stroke: #2a3a5c; stroke-width: 1; }
 .lane.harness { stroke: #c084fc; stroke-opacity: .45; }
@@ -21,7 +21,7 @@
 text { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
 </style>
 <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,1 L10,5 L0,9 z" fill="#5b6f99"/></marker><marker id="arrow-tool" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,1 L10,5 L0,9 z" fill="#fbbf24"/></marker><marker id="arrow-planned" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,1 L10,5 L0,9 z" fill="#7f8fb0"/></marker></defs>
-<rect x="-60" y="-234" width="1000" height="1180" fill="#0b1220"/>
+<rect x="-60" y="-234" width="1000" height="1230" fill="#0b1220"/>
 <text class="caption" x="-46" y="-210">Target design. Solid is built. Dashed is planned.</text>
 <rect class="lane human" x="-54" y="-192" width="988" height="58" rx="10"/>
 <text class="lane-label human" x="-44" y="-174">Before runtime, a human sets</text>
@@ -29,10 +29,10 @@ text { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-se
 <text class="lane-label harness" x="-44" y="-106">Harness</text>
 <rect class="lane" x="-54" y="24" width="988" height="536" rx="10"/>
 <text class="lane-label" x="-20" y="44">FindyFixy</text>
-<rect class="lane harness" x="-54" y="576" width="988" height="236" rx="10"/>
+<rect class="lane harness" x="-54" y="576" width="988" height="286" rx="10"/>
 <text class="lane-label harness" x="-20" y="598">Harness: act, verify, undo. No human per action</text>
-<rect class="lane" x="-54" y="828" width="988" height="110" rx="10"/>
-<text class="lane-label" x="-20" y="848">Simulated production</text>
+<rect class="lane" x="-54" y="878" width="988" height="110" rx="10"/>
+<text class="lane-label" x="-20" y="898">Simulated production</text>
 <path id="e_eval_q" class="edge" d="M-28,-16 L-28,260 L10,260"/>
 <path id="e_rec_eval" class="edge" d="M845,228 L845,10 L70,10 L70,-16"/>
 <path id="e_q_inv" class="edge" d="M120,260 L142,260"/>
@@ -59,12 +59,13 @@ text { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-se
 <path id="p_script_policy" class="edge" d="M758,508 L840,508 L840,619"/>
 <path id="p_verify_score" class="edge planned" d="M357,684 L357,727"/>
 <path id="p_safe_score" class="edge planned" d="M21,684 L21,760 L291,760"/>
+<path id="p_safe_handoff" class="edge" d="M-10,684 L-10,812 L123,812"/>
 <path id="p_kill_policy" class="edge planned" d="M861,728 L861,685"/>
-<path id="p_act_services" class="edge" d="M525,684 L525,861"/>
-<path id="p_services_verify" class="edge" d="M470,862 L470,822 L436,822 L436,670 L423,670"/>
-<path id="p_services_alerts" class="edge planned" d="M460,894 L255,894"/>
-<path id="p_faults_services" class="edge planned" d="M796,894 L591,894"/>
-<path id="p_alerts_question" class="edge planned" d="M124,894 L-48,894 L-48,310 L30,310 L30,293"/>
+<path id="p_act_services" class="edge" d="M525,684 L525,911"/>
+<path id="p_services_verify" class="edge" d="M470,912 L470,872 L436,872 L436,670 L423,670"/>
+<path id="p_services_alerts" class="edge planned" d="M460,944 L255,944"/>
+<path id="p_faults_services" class="edge planned" d="M796,944 L591,944"/>
+<path id="p_alerts_question" class="edge planned" d="M124,944 L-48,944 L-48,310 L30,310 L30,293"/>
 <text class="edge-label" x="40" y="-149">the goal</text>
 <text class="edge-label" x="185" y="-149">the invariants</text>
 <text class="edge-label" x="370" y="-149">the kinds of action allowed</text>
@@ -81,8 +82,8 @@ text { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-se
 <text class="edge-label" x="186" y="732">no, and cannot be undone</text>
 <text class="edge-label" x="320" y="500">again, with what failed</text>
 <text class="edge-label" x="390" y="710">recovered</text>
-<text class="edge-label" x="388" y="824">real signals</text>
-<text class="edge-label" x="40" y="886">page</text>
+<text class="edge-label" x="388" y="874">real signals</text>
+<text class="edge-label" x="40" y="936">page</text>
 <g class="node" id="n_q" data-status="built">
         <rect x="10" y="228" width="110" height="64" rx="8"/>
         <path class="i" transform="translate(15 232) scale(.56)" d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path class="i" transform="translate(15 232) scale(.56)" d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>
@@ -155,6 +156,12 @@ text { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-se
         <path class="i" transform="translate(633 480) scale(.56)" d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
         <text class="t" x="693" y="502">Script</text>
         <text class="s" x="693" y="519">fixed fixes, no model</text>
+      </g>
+<g class="node" id="n_handoff" data-status="built">
+        <rect x="124" y="780" width="130" height="64" rx="8"/>
+        <path class="i" transform="translate(129 784) scale(.56)" d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path class="i" transform="translate(129 784) scale(.56)" d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>
+        <text class="t" x="189" y="806">Hand-off</text>
+        <text class="s" x="189" y="823">tell a person</text>
       </g>
 <g class="node" id="n_eval" data-status="built">
         <rect x="-44" y="-96" width="130" height="80" rx="8"/>
@@ -249,21 +256,21 @@ text { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-se
         <text class="s" x="861" y="772">stops every action</text>
       </g>
 <g class="node" data-status="planned">
-        <rect x="124" y="862" width="130" height="64" rx="8"/>
-        <path class="i" transform="translate(129 866) scale(.56)" d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path class="i" transform="translate(129 866) scale(.56)" d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>
-        <text class="t" x="189" y="888">Alerts</text>
-        <text class="s" x="189" y="906">error budget burn</text>
+        <rect x="124" y="912" width="130" height="64" rx="8"/>
+        <path class="i" transform="translate(129 916) scale(.56)" d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path class="i" transform="translate(129 916) scale(.56)" d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>
+        <text class="t" x="189" y="938">Alerts</text>
+        <text class="s" x="189" y="956">error budget burn</text>
       </g>
 <g class="node" id="n_services" data-status="built">
-        <rect x="460" y="862" width="130" height="64" rx="8"/>
-        <ellipse class="i" transform="translate(465 866) scale(.56)" cx="12" cy="5" rx="9" ry="3"/><path class="i" transform="translate(465 866) scale(.56)" d="M3 5V19A9 3 0 0 0 21 19V5"/><path class="i" transform="translate(465 866) scale(.56)" d="M3 12A9 3 0 0 0 21 12"/>
-        <text class="t" x="525" y="888">Services</text>
-        <text class="s" x="525" y="906">under real load</text>
+        <rect x="460" y="912" width="130" height="64" rx="8"/>
+        <ellipse class="i" transform="translate(465 916) scale(.56)" cx="12" cy="5" rx="9" ry="3"/><path class="i" transform="translate(465 916) scale(.56)" d="M3 5V19A9 3 0 0 0 21 19V5"/><path class="i" transform="translate(465 916) scale(.56)" d="M3 12A9 3 0 0 0 21 12"/>
+        <text class="t" x="525" y="938">Services</text>
+        <text class="s" x="525" y="956">under real load</text>
       </g>
 <g class="node" data-status="planned">
-        <rect x="796" y="862" width="130" height="64" rx="8"/>
-        <path class="i" transform="translate(801 866) scale(.56)" d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
-        <text class="t" x="861" y="888">Faults</text>
-        <text class="s" x="861" y="906">hidden from the agent</text>
+        <rect x="796" y="912" width="130" height="64" rx="8"/>
+        <path class="i" transform="translate(801 916) scale(.56)" d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+        <text class="t" x="861" y="938">Faults</text>
+        <text class="s" x="861" y="956">hidden from the agent</text>
       </g>
 </svg>

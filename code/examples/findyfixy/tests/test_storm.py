@@ -389,3 +389,20 @@ def test_customer_minutes_count_only_the_experiments_window() -> None:
     long = {**RECORD, "series": _series(20.0, 400.0, 400.0)}  # failing until 400 s
     window = finished(long)["customer_minutes"]
     assert window == pytest.approx(0.5 * 80 * 240 / 60 / 80, abs=0.03)  # half failing for 240 s, not 380 s
+
+
+def test_a_safe_state_replays_its_hand_off_before_the_end_and_the_verdict_says_who_was_told() -> None:
+    loop = {**RECORD["loop"], "ended": "safe state", "reason": "out of tries", "resolved": False, "kept": []}
+    alert = {"alerts": [{"annotations": {"summary": "Incident s9-01-abc ended in the safe state: out of tries"}}]}
+    handed = {
+        **RECORD,
+        "loop": loop,
+        "handoff": {"delivered": True, "to": "http://inbox", "detail": "HTTP 200", "alert": alert},
+    }
+    kinds = [kind for _, kind, _ in replay_events(handed)]
+    assert kinds.index("handoff") == kinds.index("incident_ended") - 1
+    shown = next(data for _, kind, data in replay_events(handed) if kind == "handoff")
+    assert shown["delivered"] is True and shown["summary"].startswith("Incident s9-01-abc")
+    assert finished(handed)["handoff"] == "delivered"
+    assert finished({**RECORD, "loop": loop})["handoff"] == "not recorded"  # saved before the hand-off existed
+    assert finished(RECORD)["handoff"] is None  # resolved: nobody needs telling

@@ -260,7 +260,7 @@
 
   <section class="panel" aria-label="Architecture schematic">
     <div class="schematic">
-    <svg viewBox="-60 -198 1000 1144" role="img" aria-labelledby="svgtitle">
+    <svg viewBox="-60 -198 1000 1194" role="img" aria-labelledby="svgtitle">
       <title id="svgtitle">Autonomous on-call, target and built. Before runtime a human sets the goal, the invariants, the allowed kinds of action and the budget. Built today: an eval gate, a gate at every commit with a CI recheck, and tracing in the harness, and FindyFixy's decision, which takes a question through recall, an optional tool step, a small model, validation and a route to a triage record, and the simulated production's services under real load. Planned: the record becomes one typed action that passes policy and identity, acts on a simulated production and is verified on real signals. A recovery is kept and scored with its cost. A failure that can be undone is undone and tried again, until the tries or the budget run out. Then, or when a failure cannot be undone, the system goes to a safe state.</title>
 
       <defs><marker id="arrow-planned" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,1 L10,5 L0,9 z" fill="#7f8fb0"/></marker></defs>
@@ -272,10 +272,10 @@
       <text class="lane-label harness" x="-44" y="-106">Harness</text>
       <rect class="lane" x="-54" y="24" width="988" height="536" rx="10"/>
       <text class="lane-label" x="-20" y="44">FindyFixy</text>
-      <rect class="lane harness" x="-54" y="576" width="988" height="236" rx="10"/>
+      <rect class="lane harness" x="-54" y="576" width="988" height="286" rx="10"/>
       <text class="lane-label harness" x="-20" y="598">Harness: act, verify, undo. No human per action</text>
-      <rect class="lane" x="-54" y="828" width="988" height="110" rx="10"/>
-      <text class="lane-label" x="-20" y="848">Simulated production</text>
+      <rect class="lane" x="-54" y="878" width="988" height="110" rx="10"/>
+      <text class="lane-label" x="-20" y="898">Simulated production</text>
       <text class="edge-label" x="40" y="-149">the goal</text>
       <text class="edge-label" x="185" y="-149">the invariants</text>
       <text class="edge-label" x="370" y="-149">the kinds of action allowed</text>
@@ -322,19 +322,20 @@
       <path id="p_script_policy" class="edge" d="M758,508 L840,508 L840,619"/>
       <path id="p_verify_score" class="edge planned" d="M357,684 L357,727"/>
       <path id="p_safe_score" class="edge planned" d="M21,684 L21,760 L291,760"/>
+      <path id="p_safe_handoff" class="edge" d="M-10,684 L-10,812 L123,812"/>
       <path id="p_kill_policy" class="edge planned" d="M861,728 L861,685"/>
-      <path id="p_act_services" class="edge" d="M525,684 L525,861"/>
-      <path id="p_services_verify" class="edge" d="M470,862 L470,822 L436,822 L436,670 L423,670"/>
-      <path id="p_services_alerts" class="edge planned" d="M460,894 L255,894"/>
-      <path id="p_faults_services" class="edge planned" d="M796,894 L591,894"/>
-      <path id="p_alerts_question" class="edge planned" d="M124,894 L-48,894 L-48,310 L30,310 L30,293"/>
+      <path id="p_act_services" class="edge" d="M525,684 L525,911"/>
+      <path id="p_services_verify" class="edge" d="M470,912 L470,872 L436,872 L436,670 L423,670"/>
+      <path id="p_services_alerts" class="edge planned" d="M460,944 L255,944"/>
+      <path id="p_faults_services" class="edge planned" d="M796,944 L591,944"/>
+      <path id="p_alerts_question" class="edge planned" d="M124,944 L-48,944 L-48,310 L30,310 L30,293"/>
       <text class="edge-label" x="273" y="643">no</text>
       <text class="edge-label" x="112" y="704">out of tries or budget</text>
       <text class="edge-label" x="186" y="732">no, and cannot be undone</text>
       <text class="edge-label" x="320" y="500">again, with what failed</text>
       <text class="edge-label" x="390" y="710">recovered</text>
-      <text class="edge-label" x="388" y="824">real signals</text>
-      <text class="edge-label" x="40" y="886">page</text>
+      <text class="edge-label" x="388" y="874">real signals</text>
+      <text class="edge-label" x="40" y="936">page</text>
 
       <!-- app nodes: data-code names the graph node or module that implements each box -->
       <g class="node" id="n_q" data-status="built" data-code="graph:__start__">
@@ -424,6 +425,14 @@
       </g>
 
       <!-- harness nodes: one edit per build day flips data-status to built -->
+      <g class="node" id="n_handoff" data-status="built" data-layer="harness" data-code="wyld3rness/loop/handoff.py">
+        <title>In: An incident that ended in the safe state: what was tried, what was undone, why it stopped.&#10;Out: An alert to the on-call person, in the format on-call tools take (an Alertmanager webhook); delivered or not goes into the incident's record.&#10;Logic: Sent after every change is undone. A failed send is recorded and never changes the outcome.</title>
+        <rect x="124" y="780" width="130" height="64" rx="8"/>
+        <path class="i" transform="translate(129 784) scale(.56)" d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path class="i" transform="translate(129 784) scale(.56)" d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>
+        <text class="t" x="189" y="806">Hand-off</text>
+        <text class="s" x="189" y="823">tell a person</text>
+      </g>
+
       <g class="node" id="n_eval" data-status="built" data-layer="harness" data-code="wyld3rness/eval/runner.py">
         <title>In: An app's golden cases, through one interface (SystemUnderTest: describe, answer, summarise). FindyFixy plugs in with an adapter: 30 cases, each with a reference severity, cause and fix.&#10;Out: Scores per metric with confidence intervals, a saved report, and a pass or fail gate.&#10;Logic: The harness package (code/src/wyld3rness/eval) never imports the app. A judge model from an older generation of the same vendor scores faithfulness, context recall, action quality and response relevancy; labels such as severity are matched exactly. The gate fails if a score drops below its frozen floor (baseline mean minus 0.05), regresses outside its 95% interval, or the judge failure rate passes 0.15. Moving it into the harness changed no score: the frozen baseline still reproduces byte for byte.&#10;Watch it: choose Eval run above. Each case goes into the app lane, the answer comes back, and the metrics are scored here. The console is a viewer: it writes no report and no baseline, and it applies the gate only when every golden case ran.</title>
         <rect x="-44" y="-96" width="130" height="80" rx="8"/>
@@ -533,24 +542,24 @@
       </g>
       <g class="node" data-status="planned" data-code="none">
         <title>Planned. Not built, no behavior yet.&#10;Pages the agent when a service burns its error budget.</title>
-        <rect x="124" y="862" width="130" height="64" rx="8"/>
-        <path class="i" transform="translate(129 866) scale(.56)" d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path class="i" transform="translate(129 866) scale(.56)" d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>
-        <text class="t" x="189" y="888">Alerts</text>
-        <text class="s" x="189" y="906">error budget burn</text>
+        <rect x="124" y="912" width="130" height="64" rx="8"/>
+        <path class="i" transform="translate(129 916) scale(.56)" d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path class="i" transform="translate(129 916) scale(.56)" d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>
+        <text class="t" x="189" y="938">Alerts</text>
+        <text class="s" x="189" y="956">error budget burn</text>
       </g>
       <g class="node" id="n_services" data-status="built" data-code="simprod/gateway.py">
         <title>In: Synthetic customers paying, from an open-loop load generator: Poisson arrivals at a fixed rate, each sent on time whatever the gateway does.&#10;Out: Real signals for anyone to read through the edge proxy on 127.0.0.1:8100: health, Prometheus-text metrics, an OpenAPI spec per service, and JSON logs in docker compose logs. The service that executes an action logs it with its actor.&#10;Logic: A gateway writes each payment to a ledger of 4 shards with fixed capacity, retrying failures, then notifies. Standard-library Python in hardened containers on a Docker network with no route out; the edge forwards an allow-list and never a fault control. Three typed actions: retry backoff and a per-key rate cap, each with an undo, and a restart with none.&#10;Trust: Simulated, and labeled so. Sleeps stand in for database work, so the capacity is a parameter and the faults reproduce on any machine. Research log entry 006 measures whether the VM can serve it.</title>
-        <rect x="460" y="862" width="130" height="64" rx="8"/>
-        <ellipse class="i" transform="translate(465 866) scale(.56)" cx="12" cy="5" rx="9" ry="3"/><path class="i" transform="translate(465 866) scale(.56)" d="M3 5V19A9 3 0 0 0 21 19V5"/><path class="i" transform="translate(465 866) scale(.56)" d="M3 12A9 3 0 0 0 21 12"/>
-        <text class="t" x="525" y="888">Services</text>
-        <text class="s" x="525" y="906">under real load</text>
+        <rect x="460" y="912" width="130" height="64" rx="8"/>
+        <ellipse class="i" transform="translate(465 916) scale(.56)" cx="12" cy="5" rx="9" ry="3"/><path class="i" transform="translate(465 916) scale(.56)" d="M3 5V19A9 3 0 0 0 21 19V5"/><path class="i" transform="translate(465 916) scale(.56)" d="M3 12A9 3 0 0 0 21 12"/>
+        <text class="t" x="525" y="938">Services</text>
+        <text class="s" x="525" y="956">under real load</text>
       </g>
       <g class="node" data-status="planned" data-code="none">
         <title>Planned. Not built, no behavior yet.&#10;Injected on a schedule the agent cannot read or control.</title>
-        <rect x="796" y="862" width="130" height="64" rx="8"/>
-        <path class="i" transform="translate(801 866) scale(.56)" d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
-        <text class="t" x="861" y="888">Faults</text>
-        <text class="s" x="861" y="906">hidden from the agent</text>
+        <rect x="796" y="912" width="130" height="64" rx="8"/>
+        <path class="i" transform="translate(801 916) scale(.56)" d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+        <text class="t" x="861" y="938">Faults</text>
+        <text class="s" x="861" y="956">hidden from the agent</text>
       </g>
 
       <circle id="dot" r="7" cx="0" cy="0"/>
@@ -740,6 +749,52 @@
 <g class="dg-box"><rect x="440" y="210" width="150" height="64" rx="8"/><g transform="translate(445 214) scale(.56)"><path class="i" d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path class="i" d="m9 12 2 2 4-4"/></g><text class="dg-t" x="525" y="236">Loop container</text><text class="dg-s" x="525" y="254">one incident at a time</text></g>
 <g class="dg-box planned"><rect x="440" y="370" width="150" height="64" rx="8"/><g transform="translate(445 374) scale(.56)"><path class="i" d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></g><text class="dg-t" x="525" y="396">Watch</text><text class="dg-s" x="525" y="414">an event per step</text></g>
 <g class="dg-box"><rect x="990" y="370" width="150" height="64" rx="8"/><g transform="translate(995 374) scale(.56)"><rect class="i" width="16" height="16" x="4" y="4" rx="2"/><rect class="i" width="6" height="6" x="9" y="9" rx="1"/><path class="i" d="M15 2v2"/><path class="i" d="M15 20v2"/><path class="i" d="M2 15h2"/><path class="i" d="M2 9h2"/><path class="i" d="M20 15h2"/><path class="i" d="M20 9h2"/><path class="i" d="M9 2v2"/><path class="i" d="M9 20v2"/></g><text class="dg-t" x="1075" y="396">Model or script</text><text class="dg-s" x="1075" y="414">proposes</text></g>
+</svg>
+<!-- /diagram -->
+    </details>
+    <details class="where-it-runs">
+      <summary>Who is told when the agent stops</summary>
+<!-- diagram 0009-step0-handoff -->
+<svg class="dg" xmlns="http://www.w3.org/2000/svg" viewBox="0 -36 1180 336" width="1180" height="336" role="img" aria-label="Day 8, step 0: a safe state hands the incident to a person. Solid is built, dashed is planned.">
+<style>
+.dg-zone { fill: #0d1729; stroke: #2a3a5c; stroke-width: 1; }
+.dg-zone.harness { stroke: #c084fc; stroke-opacity: .45; }
+.dg-zone.human { stroke: #e07a5f; stroke-opacity: .6; }
+.dg-zone-label { fill: #8da2c8; font-size: 12px; font-weight: 600; letter-spacing: .04em; }
+.dg-zone-label.harness { fill: #c084fc; }
+.dg-zone-label.human { fill: #e07a5f; }
+.dg-box rect { fill: #0b1220; stroke: #5cc8ff; stroke-width: 1.5; }
+.dg-box .dg-t { fill: #dbe6ff; font-size: 14px; font-weight: 600; text-anchor: middle; }
+.dg-box .dg-s { fill: #8da2c8; font-size: 11px; text-anchor: middle; }
+.dg-box.planned rect { stroke: #7f8fb0; stroke-dasharray: 5 4; }
+.dg-box.planned .dg-t, .dg-box.planned .dg-s { fill: #7f8fb0; }
+.dg-box .i { fill: none; stroke: #e07a5f; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.dg-box.planned .i { stroke: #7f8fb0; }
+.dg-edge { fill: none; stroke: #5b6f99; stroke-width: 2; marker-end: url(#dg-arrow); }
+.dg-edge.planned { stroke: #7f8fb0; stroke-width: 1.5; stroke-dasharray: 5 5; marker-end: url(#dg-arrow-planned); }
+.dg-edge-label { fill: #8da2c8; font-size: 11px; }  /* each label sets its own text-anchor */
+.dg-caption { fill: #dbe6ff; font-size: 14px; font-weight: 600; }
+.dg text { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+</style>
+<defs><marker id="dg-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,1 L10,5 L0,9 z" fill="#5b6f99"/></marker><marker id="dg-arrow-planned" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,1 L10,5 L0,9 z" fill="#7f8fb0"/></marker></defs>
+<rect x="0" y="-36" width="1180" height="336" fill="#0b1220"/>
+<text class="dg-caption" x="14" y="-12">Day 8, step 0: a safe state hands the incident to a person. Solid is built, dashed is planned.</text>
+<rect class="dg-zone harness" x="10" y="0" width="560" height="130" rx="10"/>
+<text class="dg-zone-label harness" x="22" y="18">Harness</text>
+<rect class="dg-zone human" x="610" y="0" width="560" height="130" rx="10"/>
+<text class="dg-zone-label human" x="622" y="18">The on-call person</text>
+<path class="dg-edge" d="M190,72 L380,72"/>
+<text class="dg-edge-label" x="285" y="66" text-anchor="middle">ended unfixed</text>
+<path class="dg-edge" d="M530,72 L640,72"/>
+<text class="dg-edge-label" x="585" y="66" text-anchor="middle">webhook</text>
+<path class="dg-edge planned" d="M790,72 L990,72"/>
+<text class="dg-edge-label" x="890" y="66" text-anchor="middle">later</text>
+<path class="dg-edge" d="M455,104 L455,190"/>
+<g class="dg-box"><rect x="40" y="40" width="150" height="64" rx="8"/><g transform="translate(45 44) scale(.56)"><path class="i" d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path class="i" d="m9 12 2 2 4-4"/></g><text class="dg-t" x="125" y="66">Safe state</text><text class="dg-s" x="125" y="84">every change undone</text></g>
+<g class="dg-box"><rect x="380" y="40" width="150" height="64" rx="8"/><g transform="translate(385 44) scale(.56)"><path class="i" d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path class="i" d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></g><text class="dg-t" x="465" y="66">Hand-off</text><text class="dg-s" x="465" y="84">alert from the record</text></g>
+<g class="dg-box"><rect x="640" y="40" width="150" height="64" rx="8"/><g transform="translate(645 44) scale(.56)"><path class="i" d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path class="i" d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></g><text class="dg-t" x="725" y="66">On-call inbox</text><text class="dg-s" x="725" y="84">the console, for now</text></g>
+<g class="dg-box planned"><rect x="990" y="40" width="150" height="64" rx="8"/><g transform="translate(995 44) scale(.56)"><path class="i" d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path class="i" d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></g><text class="dg-t" x="1075" y="66">Pager</text><text class="dg-s" x="1075" y="84">any that takes the format</text></g>
+<g class="dg-box"><rect x="380" y="190" width="150" height="64" rx="8"/><g transform="translate(385 194) scale(.56)"><path class="i" d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path class="i" d="M9 18h6"/><path class="i" d="M10 22h4"/></g><text class="dg-t" x="465" y="216">Incident record</text><text class="dg-s" x="465" y="234">delivered or not</text></g>
 </svg>
 <!-- /diagram -->
     </details>

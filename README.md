@@ -14,7 +14,7 @@ wyld3rness is a harness for AI agents that run on-call with no person approving 
 | May this action run? | A policy per kind of action, and a one-time signed pass | Built |
 | Did it work? | A recovery check on what customers saw | Built |
 | What if it was wrong? | Undo and retry, else a safe state | Built |
-| Who is told when it stops? | A hand-off to the on-call person | Planned |
+| Who is told when it stops? | A hand-off to the on-call person | Built |
 | Is the AI worth it? | The AI against a script with no model, same boundary | Built: [the script won](code/docs/research-log.md) |
 | How much may it do alone? | Approval once per kind of action, kept by evidence | Planned |
 

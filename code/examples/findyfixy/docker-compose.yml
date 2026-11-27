@@ -112,6 +112,10 @@ services:
       # infra/langfuse/.env; without it tracing is off and the loop runs the same.
       # The agent gets no keys: it reports its model calls to the loop instead.
       LANGFUSE_HOST: http://host.docker.internal:3000
+      # Safe-state incidents are handed to the on-call person: by default the console's
+      # inbox on the host (`make console`). With nothing listening there, a hand-off is
+      # recorded as not delivered. Set HANDOFF_URL to send it elsewhere.
+      HANDOFF_URL: ${HANDOFF_URL:-http://host.docker.internal:8765/handoff}
     env_file:
       - path: .oncall-trace.env
         required: false

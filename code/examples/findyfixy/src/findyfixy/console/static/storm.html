@@ -153,7 +153,8 @@
         <span class="step" id="s_act">Act<small>on simprod</small></span><span class="arrow">&rsaquo;</span>
         <span class="step" id="s_verify">Verify<small>customers</small></span><span class="arrow">&rsaquo;</span>
         <span class="step" id="s_undo">Undo<small>then retry</small></span><span class="arrow">&rsaquo;</span>
-        <span class="step" id="s_safe">Safe state<small>stop</small></span>
+        <span class="step" id="s_safe">Safe state<small>stop</small></span><span class="arrow">&rsaquo;</span>
+        <span class="step" id="s_handoff">Hand-off<small>tell a person</small></span>
       </div>
     </div>
     <aside class="panel verdict" aria-label="Verdict">
@@ -201,6 +202,7 @@ const DESCRIBE = {
     applied: (d) => `${d.undo_of ? "undo " + d.undo_of + ": " : ""}${d.action} ${d.ok ? "carried out" : "NOT carried out: " + clip(d.detail, 80)}`,
     waiting: (d) => `waiting ${d.seconds} s, then checking what customers see`,
     verdict: (d) => `try ${d.try}: ${d.verdict}${d.recovered_at != null ? `, recovered at ${d.recovered_at.toFixed(1)} s` : ""}`,
+    handoff: (d) => `handed to the on-call person: ${d.delivered ? "delivered" : "NOT delivered"}${d.to ? " to " + d.to : ""}`,
     incident_ended: (d) => `incident ${d.ended}: ${d.reason}${d.kept.length ? "; kept " + d.kept.join(", ") : ""}`,
     storm_finished: (d) => `host verdict: ${d.recovered ? "recovered" : "not recovered"}${d.customer_minutes != null ? `, ${d.customer_minutes.toFixed(3)} customer minutes` : ""}${d.spent_usd != null ? `, $${d.spent_usd.toFixed(6)}` : ""}`,
     storm_failed: (d) => d.reason === "stopped" ? "replay stopped" : `storm failed: ${clip(d.error, 140)}`,
@@ -220,10 +222,10 @@ function summarize(ev) {
 function say(text) { $("msg").textContent = text; }
 
 // ---- the storm in view, on the storm's clock ----
-const storm = { t: [], fail: [], marks: [], tries: {}, horizon: 300, info: null, spent: null };
+const storm = { t: [], fail: [], marks: [], tries: {}, horizon: 300, info: null, spent: null, handoff: null };
 
 function resetStorm(info) {
-  Object.assign(storm, { t: [], fail: [], marks: [], tries: {}, horizon: 300, info, spent: null });
+  Object.assign(storm, { t: [], fail: [], marks: [], tries: {}, horizon: 300, info, spent: null, handoff: null });
   $("title").textContent = info ? `${kindText(info.kind)}, ${deciderText(info)}${info.replay ? ", replay of a saved run" : ""}` : "";
   $("note").textContent = "";
   $("tries").tBodies[0].replaceChildren();
@@ -278,7 +280,7 @@ function drawStorm() {
 }
 
 function light(ids, cls) {
-  for (const id of ["decide", "policy", "sign", "act", "verify", "undo", "safe"]) {
+  for (const id of ["decide", "policy", "sign", "act", "verify", "undo", "safe", "handoff"]) {
     $("s_" + id).classList.remove("active", "calling", "ok", "bad", "warn");
   }
   for (const id of ids) if (cls) $("s_" + id).classList.add(cls);
@@ -324,6 +326,7 @@ function showVerdict(d) {
       ["Customers", d.recovered ? "recovered and held" : "not recovered", d.recovered ? "ok" : "bad"],
       ["Loop says", d.resolved ? "resolved" : "not resolved", d.agree === false ? "bad" : ""],
       ["Minutes lost", d.customer_minutes == null ? "not measured" : `${d.customer_minutes.toFixed(3)} in ${d.window_s} s after the fault`, ""],
+      ...(d.handoff ? [["Person told", { delivered: "yes, the on-call inbox received it", "not delivered": "no: the hand-off was not delivered", "not recorded": "not recorded: saved before the hand-off existed" }[d.handoff] || d.handoff, d.handoff === "delivered" ? "ok" : "bad"]] : []),
       ["Settings put back", d.restored == null ? "not checked" : (d.restored ? "yes" : "no, a change is still in force"), d.restored === false && !d.resolved ? "bad" : ""],
       ...(d.unjudged && d.unjudged.length ? [["Judged", `no: ${d.unjudged.join("; ")}`, "bad"]] : []),
       ...(d.trace_id ? [["Trace", d.trace_id, ""]] : []),
@@ -407,9 +410,16 @@ async function animate(ev) {
       drawStorm();
       break;
     }
+    case "handoff":
+      storm.handoff = d;
+      light(["handoff"], d.delivered ? "ok" : "bad");
+      $("note").textContent = `Handed to the on-call person${d.delivered ? "" : " (NOT delivered)"}: ${d.summary || ""}`;
+      break;
     case "incident_ended":
-      light(d.ended === "resolved" ? [] : ["safe"], "warn");
-      $("note").textContent = `Incident ${d.ended}: ${d.reason}.${d.kept.length ? " Kept in force: " + d.kept.join(", ") + "." : ""}`;
+      if (d.ended === "resolved") light([], "");
+      else if (!storm.handoff) light(["safe"], "warn");   // a hand-off already lit its step; keep it lit
+      $("note").textContent = `Incident ${d.ended}: ${d.reason}.${d.kept.length ? " Kept in force: " + d.kept.join(", ") + "." : ""}`
+        + (storm.handoff ? (storm.handoff.delivered ? " Handed to the on-call person." : " The hand-off was NOT delivered.") : "");
       break;
     case "storm_finished":
       storm.horizon = Math.max(...storm.t, storm.horizon);

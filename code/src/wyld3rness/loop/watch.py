@@ -58,6 +58,7 @@ LoopEventKind = Literal[
     "applied",
     "waiting",
     "verdict",
+    "handoff",
     "incident_ended",
     "storm_finished",
     "storm_failed",
@@ -129,10 +130,15 @@ class Watch:
             self.emit("verdict", **try_json(t))
         self._said = max(self._said, len(tries))
 
-    def finish(self, outcome: Outcome) -> None:
-        """The last verdicts and `incident_ended`. Call once, after `run_incident` returns."""
+    def finish(self, outcome: Outcome, handoff: dict[str, Any] | None = None) -> None:
+        """The last verdicts, the hand-off when there was one, then `incident_ended`. Call once, after `run_incident`.
+
+        `handoff` is what a viewer shows of it (`wyld3rness.loop.handoff.summary`).
+        """
         self._to_apply = 0
         self.verdicts(outcome.tries)
+        if handoff is not None:
+            self.emit("handoff", **handoff)
         self.emit(
             "incident_ended",
             ended=outcome.ended,

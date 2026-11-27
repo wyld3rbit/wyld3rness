@@ -2,7 +2,7 @@
 
 The harness. It gates releases on measured answers, traces every run, and runs each incident through a boundary the agent cannot get around. It knows nothing about any one app; FindyFixy is its first.
 
-![The harness: what people set before runtime; the eval gate, the CI check and tracing at every commit and model call; and for every incident, the policy, a one-time pass, the action, the recovery check, keep or undo, and the safe state, with the hand-off to a person planned. Proposers, a script or the app's model behind a budget, feed the policy; the app's environment port applies actions and reports what customers saw.](../../docs/img/harness.svg)
+![The harness: what people set before runtime; the eval gate, the CI check and tracing at every commit and model call; and for every incident, the policy, a one-time pass, the action, the recovery check, keep or undo, the safe state, and the hand-off to a person. Proposers, a script or the app's model behind a budget, feed the policy; the app's environment port applies actions and reports what customers saw.](../../docs/img/harness.svg)
 
 ## Plug in an app
 
@@ -16,14 +16,14 @@ An app implements these ports. FindyFixy's implementation of each is linked.
 | `Decider` (`code/src/wyld3rness/loop/run.py`) | `decide(observation, history)`: 1 or 2 typed actions | `code/examples/findyfixy/src/findyfixy/oncall/decide.py` |
 | `Policy` of `Rule`s (`code/src/wyld3rness/loop/policy.py`) | each allowed kind: alone or not, a precondition read from live state | `code/examples/findyfixy/src/findyfixy/oncall/policy.py` |
 
-The harness supplies the rest: the loop (`run_incident`), the one-time pass (`Signer`, signed in OpenBao), the budget, the recovery verdict, the script baseline, the attack suite, the experiment's statistics, and wrappers that trace and stream every step. `code/src/wyld3rness/testing.py` has fakes for all of it, so an app's tests run with no model.
+The harness supplies the rest: the loop (`run_incident`), the one-time pass (`Signer`, signed in OpenBao), the hand-off to a person (`Handoff`, an Alertmanager webhook), the budget, the recovery verdict, the script baseline, the attack suite, the experiment's statistics, and wrappers that trace and stream every step. `code/src/wyld3rness/testing.py` has fakes for all of it, so an app's tests run with no model.
 
 ## The loop in one picture
 
 ```
 observe ─► decide ─► policy ─► pass ─► apply ─► wait ─► customers recovered and held? ─► keep
                                                           no ─► undo ─► next try, told what failed
-out of tries, budget, an error, or an action with no undo ─► safe state: undo all, stop
+out of tries, budget, an error, or an action with no undo ─► safe state: undo all, stop ─► hand off to a person
 ```
 
 ## Add a control

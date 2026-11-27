@@ -59,16 +59,17 @@ FIRST_BUILT = {
     "Eval gate": 5, "CI gate": 5,
     "Tracing": 6,
     "Services": 7, "Decide": 7, "Script": 7, "Act": 7, "Verify": 7, "Undo": 7, "Safe state": 7, "Policy": 7, "Budget": 7, "Identity": 7,
+    "Hand-off": 8,
 }
-PHASES = range(1, 8)
+PHASES = range(1, 9)
 # The phase being built, whose ADR is written when it closes. Until then the
 # newest ADR shows the phase before it. Set to None when the day's ADR lands.
-OPEN_PHASE: int | None = None
+OPEN_PHASE: int | None = 8
 
 # ADR number -> the phase its picture shows. Usually the same number. Day 5 was
 # rebuilt after ADR 0005 was accepted, so ADR 0006 records the rebuilt phase 5
 # and ADR 0005 keeps the picture it was accepted with.
-RECORDS: dict[int, int] = {1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 5, 7: 6, 8: 6}
+RECORDS: dict[int, int] = {1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 5, 7: 6, 8: 6, 9: 7}
 
 # ADR number -> the phase its Outcome shows, for a record whose own picture is
 # frozen as accepted (a direction drawn before its day was built). Its Outcome
@@ -93,7 +94,9 @@ FROZEN = {
 
 # Planned nodes added to the page after a phase closed. They are drawn only from
 # the phase they were added in, so a picture keeps the plan it was drawn with.
-ADDED_IN: dict[str, int] = {}
+ADDED_IN: dict[str, int] = {"Hand-off": 8}
+# Paths added to the page after a phase closed, by the phase they were added in, kept out of older pictures the same way.
+PATHS_ADDED_IN: dict[str, int] = {"p_safe_handoff": 8}
 
 # Each edge in the page: (from node, to node). Edges the page uses only for
 # animation (the tool step's return path, the bypass shown when it is off) are
@@ -201,6 +204,11 @@ def _number(value: float) -> str:
     return f"{value:g}"
 
 
+def _path_id(path: str) -> str:
+    """A path element's id."""
+    return re.search(r'id="(\w+)"', path).group(1)
+
+
 def planned_paths(page: str) -> list[str]:
     """The page's planned paths (`p_` ids): the loop that is drawn before it is built."""
     return re.findall(r'<path id="p_\w+"[^>]*/>', _svg(page))
@@ -238,8 +246,8 @@ def snapshot(phase: int, page: str, caption: str | None = None) -> str:
         for edge_id, (a, b) in EDGES.items()
         if a in built and b in built
     ]
-    if phase == max(PHASES):  # an older phase keeps no plan made after it
-        drawn += planned_paths(page)
+    if phase == max(PHASES) or phase in AT_CLOSE.values():  # the latest phase, or a day's close, keeps its plan
+        drawn += [p for p in planned_paths(page) if phase >= PATHS_ADDED_IN.get(_path_id(p), 0)]
     text = [f'<text class="edge-label"{attrs}>{t}</text>' for attrs, t in labels
             if all(n in built for n in LABELS.get(t, set()))]
     x, y, w, h = view_box(page)

@@ -8,7 +8,8 @@ app that is not FindyFixy. Nothing on an eval path imports this module.
 
 `FakeWorld` and `FakeDecider` drive the loop (`wyld3rness.loop.run`) on a
 clock that moves only when the loop waits, so a 3-try incident with 30 s
-windows runs in milliseconds and every path is deterministic.
+windows runs in milliseconds and every path is deterministic. `FakeHandoff`
+keeps what a safe state would have sent to a person.
 """
 
 from __future__ import annotations
@@ -26,6 +27,7 @@ from wyld3rness.eval.metrics import ActionRating, Claims, Questions, Verdict
 from wyld3rness.eval.runner import run_eval
 from wyld3rness.eval.sut import Answer
 from wyld3rness.loop.env import Action, Applied
+from wyld3rness.loop.handoff import Delivery
 from wyld3rness.loop.policy import Policy, Rule
 from wyld3rness.loop.run import Try
 from wyld3rness.loop.verdict import Second
@@ -255,3 +257,16 @@ class FakeSigner:
             raise ConnectionError(f"vault refused {action.name}")
         self.signed.append(action.label())
         return f"signed:{action.label()}"
+
+
+class FakeHandoff:
+    """A hand-off that keeps what it was sent: delivered, or refused when `delivered` is False."""
+
+    def __init__(self, delivered: bool = True) -> None:
+        self.delivered = delivered
+        self.sent: list[dict[str, Any]] = []
+
+    def send(self, alert: dict[str, Any]) -> Delivery:
+        """Keep `alert` and answer as a receiver that took it, or refused it."""
+        self.sent.append(alert)
+        return Delivery(self.delivered, "fake://on-call", "HTTP 200" if self.delivered else "refused")
