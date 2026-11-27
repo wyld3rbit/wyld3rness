@@ -327,7 +327,9 @@ function showVerdict(d) {
       ["Loop says", d.resolved ? "resolved" : "not resolved", d.agree === false ? "bad" : ""],
       ["Minutes lost", d.customer_minutes == null ? "not measured" : `${d.customer_minutes.toFixed(3)} in ${d.window_s} s after the fault`, ""],
       ...(d.handoff ? [["Person told", { delivered: "yes, the on-call inbox received it", "not delivered": "no: the hand-off was not delivered", "not recorded": "not recorded: saved before the hand-off existed" }[d.handoff] || d.handoff, d.handoff === "delivered" ? "ok" : "bad"]] : []),
-      ["Settings put back", d.restored == null ? "not checked" : (d.restored ? "yes" : "no, a change is still in force"), d.restored === false && !d.resolved ? "bad" : ""],
+      d.resolved
+        ? ["Fix", "kept in force", "ok"]   // a resolved incident keeps its fix: nothing is put back, by design
+        : ["Settings put back", d.restored == null ? "not checked" : (d.restored ? "yes" : "no, a change is still in force"), d.restored === false ? "bad" : ""],
       ...(d.unjudged && d.unjudged.length ? [["Judged", `no: ${d.unjudged.join("; ")}`, "bad"]] : []),
       ...(d.trace_id ? [["Trace", d.trace_id, ""]] : []),
     ] : []),
@@ -412,7 +414,8 @@ async function animate(ev) {
     }
     case "handoff":
       storm.handoff = d;
-      light(["handoff"], d.delivered ? "ok" : "bad");
+      light(["safe"], "warn");   // the safe state came first; the hand-off follows it
+      $("s_handoff").classList.add(d.delivered ? "ok" : "bad");
       $("note").textContent = `Handed to the on-call person${d.delivered ? "" : " (NOT delivered)"}: ${d.summary || ""}`;
       break;
     case "incident_ended":
