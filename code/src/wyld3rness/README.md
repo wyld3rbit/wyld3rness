@@ -1,8 +1,8 @@
 # wyld3rness
 
-The harness. It gates releases on measured answers, traces every run, and runs each incident through a boundary the agent cannot get around. It knows nothing about any one app; FindyFixy is its first.
+The harness. It gates releases on measured answers, traces each run it wraps, and runs each incident through a boundary the agent cannot get around. It knows nothing about any one app; FindyFixy is its first.
 
-![The harness: what people set before runtime; the eval gate, the CI check and tracing at every commit and model call; and for every incident, the policy, a one-time pass, the action, the recovery check, keep or undo, the safe state, and the hand-off to a person. Proposers, a script or the app's model behind a budget, feed the policy; the app's environment port applies actions and reports what customers saw.](../../docs/img/harness.svg)
+![The harness: what people set before runtime; the eval gate and the CI check at every commit, and tracing in each traced run; and for every incident, the policy, a one-time pass, the action, the recovery check, keep or undo, the safe state, and the hand-off to a person. Proposers, a script or the app's model behind a budget, feed the policy; the app's environment port applies actions and reports what customers saw.](../../docs/img/harness.svg)
 
 ## Plug in an app
 
@@ -42,6 +42,6 @@ A new control is a port in this package, never code inside an app. Give it a fak
 |---|---|
 | `code/src/wyld3rness/eval/` | runner, judge and metrics, report and gate, attestation, gate at commit, score reuse |
 | `code/src/wyld3rness/trace/` | OpenTelemetry tracing, spans, scores, prices |
-| `code/src/wyld3rness/loop/` | the incident loop, policy, pass, budget, verdict, remote decider, agent edge, boundary probe, script, attack suite, experiment statistics, traced and watched wrappers |
+| `code/src/wyld3rness/loop/` | the incident loop, policy, pass, budget, verdict, hand-off, remote decider, agent edge, boundary probe, script, attack suite, experiment statistics, traced and watched wrappers |
 
 Each module's docstring gives its trade-offs and failure modes. Tests: `code/tests/` (`code/tests/README.md`).

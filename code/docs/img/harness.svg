@@ -25,7 +25,7 @@
 <rect class="dg-zone human" x="10" y="0" width="1240" height="104" rx="10"/>
 <text class="dg-zone-label human" x="22" y="18">Set by people, before runtime</text>
 <rect class="dg-zone harness" x="10" y="124" width="1240" height="104" rx="10"/>
-<text class="dg-zone-label harness" x="22" y="142">Harness, at every commit and every model call</text>
+<text class="dg-zone-label harness" x="22" y="142">Harness, at every commit and in each traced run</text>
 <rect class="dg-zone harness" x="10" y="248" width="1240" height="232" rx="10"/>
 <text class="dg-zone-label harness" x="22" y="266">Harness, every incident. No person approves each action</text>
 <rect class="dg-zone" x="10" y="500" width="540" height="120" rx="10"/>

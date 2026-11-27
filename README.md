@@ -8,7 +8,7 @@ wyld3rness is a harness for LLM agents that run on-call with no person approving
 
 | Question | Control | Status |
 |---|---|---|
-| May this change ship? | Eval gate at every commit, checked again in CI | Built |
+| May this change ship? | Eval gate at every commit, checked again in CI | Partly built: it covers triage's answers, not the on-call proposer or its policy |
 | What happened, at what cost? | A trace per run, with cost | Built |
 | What may an incident spend? | A budget checked before each of the on-call agent's model calls | Partly built: one gateway for every model call is planned |
 | May this action run? | A policy per kind of action, and a one-time signed pass | Built |
@@ -25,7 +25,7 @@ wyld3rness is a harness for LLM agents that run on-call with no person approving
 - [The harness](code/src/wyld3rness/README.md): its parts and what an app plugs in.
 - [Design and strategy](code/docs/design.md): the whole picture, and how a proposer earns its place.
 - [Decision records](code/docs/adr/README.md): one per phase, with the options rejected.
-- [Research log](code/docs/research-log.md): every test, its protocol written before the run.
+- [Research log](code/docs/research-log.md): the measurements; each protocol written before its run, exploratory runs marked, corrections appended.
 
 ## Run it
 

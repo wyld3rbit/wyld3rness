@@ -4,7 +4,7 @@
 # published on quay.io and ghcr.io. Scanned with Grype v0.120.1 before first use:
 # 1 Critical (zlib) and 21 High. 2.7.3 was inside the 7-day cooldown and fixes only
 # one of them (klauspost/compress); its security fixes cover multi-node forwarding
-# and auth-mount aliases, which a single dev-mode node with token auth does not use.
+# and auth-mount aliases, which a single node with token auth does not use.
 # The RUN below installs the Alpine fixes at pinned versions: zlib 1.4-r0 (built
 # 2026-11-06) and OpenSSL 3.5.9-r1 (built 2026-11-18). What stays is named in the
 # changelog: OpenSSL advisories with no fix yet, and Go modules compiled into

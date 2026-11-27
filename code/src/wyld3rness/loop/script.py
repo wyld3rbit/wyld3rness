@@ -13,8 +13,9 @@ would credit the model for what the retries did.
 Each step of the plan reads the observation, so a set can name what it acts on
 (the busiest key now) without knowing the answer. The app writes the steps; the
 order is the caller's (an experiment draws it per incident, so no order is
-favoured). It runs through the same loop, policy, signer and budget as a model
-decider, so the two differ only in who proposes. Standard library only.
+favoured). It runs through the same loop, policy and signer as a model
+decider, so the two differ only in who proposes. It makes no model call, so it
+has no budget. Standard library only.
 """
 
 from __future__ import annotations

@@ -23,8 +23,7 @@ One-time ids live in this process's memory, so a restart forgets them; a token
 then still expires within MAX_TTL_S. That includes the restart action itself: the
 token that restarted a service is accepted once more by the fresh process, and
 could restart it again until it expires (60 s), if someone who captured it sent it
-again. Day 8 moves the ids to a shared store that survives a restart, when several
-agents act at once.
+again. A shared store of used ids that survives a restart is not built.
 """
 
 from __future__ import annotations

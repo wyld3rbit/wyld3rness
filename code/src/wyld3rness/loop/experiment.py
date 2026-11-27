@@ -24,7 +24,8 @@ Why power by simulation: the differences are a mixture (which kind of storm,
 which order the script tried), so no closed formula fits. The app supplies a
 function that draws one storm's difference under the effect it wants to
 detect; this module repeats whole experiments and counts how often the interval
-excludes zero. Standard library only.
+lies entirely below zero (the arm under test loses fewer minutes). Standard
+library only.
 """
 
 from __future__ import annotations
