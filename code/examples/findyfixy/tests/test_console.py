@@ -1124,28 +1124,53 @@ def test_a_subset_result_is_never_gated(tmp_path):
     assert verdict(EvalResult(report={}, subset=True), tmp_path / "missing.json") is None
 
 
-def test_the_on_call_inbox_keeps_a_hand_off_from_the_loop_container(server):
-    _, port = server
+HANDOFF = "handoff-tok"  # a placeholder: the inbox compares whatever its file holds
+
+
+@pytest.fixture
+def inbox(tmp_path) -> Iterator[int]:
+    """A console whose inbox reads its hand-off token from a file holding HANDOFF; yields its port."""
+    token = tmp_path / "handoff-token"
+    token.write_text(HANDOFF + "\n")
+    hub = RunHub(live_models=None, sleep=lambda s: None, fake_delay=0)
+    srv = serve(hub, port=0, handoff_token=token)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    yield srv.server_address[1]
+    srv.shutdown()
+    srv.server_close()
+
+
+def test_the_on_call_inbox_keeps_a_hand_off_from_the_loop_container(inbox):
+    port = inbox
     alert = {"version": "4", "alerts": [{"labels": {"incident": "i7"}}]}
-    headers = {"Content-Type": "application/json", "Host": f"host.docker.internal:{port}"}
+    headers = {
+        "Content-Type": "application/json",
+        "Host": f"host.docker.internal:{port}",
+        "Authorization": f"Bearer {HANDOFF}",
+    }
     status, data = call(port, "POST", "/handoff", json.dumps(alert), headers)
     assert (status, json.loads(data)) == (200, {"received": True})
     status, data = call(port, "GET", "/handoffs")
     assert status == 200 and [h["alert"] for h in json.loads(data)["handoffs"]] == [alert]
 
 
+JSON_WITH_TOKEN = {"Content-Type": "application/json", "Authorization": f"Bearer {HANDOFF}"}
+
+
 @pytest.mark.parametrize(
     ("body", "headers", "want"),
     [
-        ('{"alerts": []}', {"Content-Type": "application/json", "Origin": "http://evil.example"}, 403),
-        ('{"alerts": []}', {"Content-Type": "application/json", "Host": "evil.example:80"}, 403),
-        ('{"alerts": []}', {"Content-Type": "text/plain"}, 415),
-        ("not json", {"Content-Type": "application/json"}, 400),
-        ('{"no": "alerts"}', {"Content-Type": "application/json"}, 422),
+        ('{"alerts": []}', {**JSON_WITH_TOKEN, "Origin": "http://evil.example"}, 403),
+        ('{"alerts": []}', {**JSON_WITH_TOKEN, "Host": "evil.example:80"}, 403),
+        ('{"alerts": []}', {"Content-Type": "application/json"}, 401),  # a right Host, no token: the agent's old way in
+        ('{"alerts": []}', {"Content-Type": "application/json", "Authorization": "Bearer wrong"}, 401),
+        ('{"alerts": []}', {**JSON_WITH_TOKEN, "Content-Type": "text/plain"}, 415),
+        ("not json", JSON_WITH_TOKEN, 400),
+        ('{"no": "alerts"}', JSON_WITH_TOKEN, 422),
     ],
 )
-def test_the_inbox_refuses_browsers_other_hosts_and_anything_but_an_alert(server, body, headers, want):
-    _, port = server
+def test_the_inbox_refuses_browsers_other_hosts_strangers_and_anything_but_an_alert(inbox, body, headers, want):
+    port = inbox
     status, _ = call(port, "POST", "/handoff", body, headers)
     assert status == want
     assert json.loads(call(port, "GET", "/handoffs")[1])["handoffs"] == []

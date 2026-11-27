@@ -92,16 +92,27 @@ controls:
 oncall:
 	$(RUN) findyfixy-oncall
 
-# oncall-up: build and start the on-call agent and loop containers (profile
+# oncall-up: build and start the on-call agent, its edge and the loop (profile
 # "oncall" in examples/findyfixy/docker-compose.yml), after `make sim-up`; `make up` runs both. The
 # image's requirements are exported from uv.lock with hashes, without the
 # `triage` extra. The loop runs as your user id so it can read the sign pass, and
 # gets the local Langfuse project keys in a private file, so its incidents are traced.
+# Two tokens are written once (0600): the loop's, read only by the loop and the host, and
+# the hand-off token, read only by the loop and the console's inbox. The agent sits on an
+# internal network behind the agent edge; the boundary probe then runs inside it, and if
+# any way out is open it stops the three on-call containers and fails (ADR 0009, step 0b).
 oncall-up:
 	@test -f examples/simprod/.bao/sign.token || { echo "no sign pass yet: run make sim-up first"; exit 1; }
 	uv export --frozen --package findyfixy --no-dev --no-emit-workspace --format requirements-txt -o $(APP_DIR)/.oncall-requirements.txt > /dev/null
 	@umask 077; if [ -f infra/langfuse/.env ]; then sed -nE 's/^LANGFUSE_INIT_PROJECT_(PUBLIC_KEY|SECRET_KEY)=/LANGFUSE_\1=/p; s/^LANGFUSE_INIT_PROJECT_ID=/LANGFUSE_PROJECT_ID=/p' infra/langfuse/.env > $(APP_DIR)/.oncall-trace.env; else : > $(APP_DIR)/.oncall-trace.env; fi; chmod 600 $(APP_DIR)/.oncall-trace.env
-	HOST_UID=$$(id -u) docker compose -f $(APP_COMPOSE) --profile oncall up -d --build --wait agent loop
+	@umask 077; for t in $(APP_DIR)/.oncall-loop.token $(APP_DIR)/.oncall-handoff.token; do \
+	  if [ -d $$t ]; then echo "$$t is a directory (left by an older compose run): delete it, then run this again"; exit 1; fi; \
+	  [ -s $$t ] || $(RUN) python -c "import secrets; print(secrets.token_urlsafe(32))" > $$t; \
+	done
+	HOST_UID=$$(id -u) docker compose -f $(APP_COMPOSE) --profile oncall up -d --build --wait agent agent-edge loop
+	@docker compose -f $(APP_COMPOSE) --profile oncall exec -T agent python -m findyfixy.oncall.probe || { \
+	  echo "the boundary probe found a way out: stopping the on-call containers"; \
+	  docker compose -f $(APP_COMPOSE) --profile oncall stop agent agent-edge loop; exit 1; }
 
 # injection: research log entry 017. Captures one storm of each kind, plants the
 # 20 attacks in its metrics, and runs them through a fully fooled fake and the
@@ -297,6 +308,10 @@ obs-secrets:
 obs-up:
 	@test -f infra/langfuse/.env || { echo "no infra/langfuse/.env: run make obs-secrets first"; exit 2; }
 	docker compose -f $(LANGFUSE) --env-file infra/langfuse/.env up -d --wait
+	@# --wait ends when the web container runs, not when it serves: it has no health check, and a
+	@# fresh start runs its migrations first. Wait for its health route, so obs-prices finds it.
+	@for i in $$(seq 90); do curl -sf -m 2 -o /dev/null http://127.0.0.1:3000/api/public/health && break; \
+	  [ $$i -lt 90 ] || { echo "Langfuse did not answer on 127.0.0.1:3000 within 3 minutes"; exit 1; }; sleep 2; done
 	@echo "Langfuse: http://127.0.0.1:3000  (login and password: infra/langfuse/.env)"
 
 obs-down:

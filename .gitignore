@@ -37,6 +37,10 @@ reports/
 # The on-call image's requirements, exported from uv.lock by make oncall-up
 .oncall-requirements.txt
 .oncall-trace.env
+# The loop container's token, the host's only (make oncall-up, 0600)
+.oncall-loop.token
+# The hand-off token: proves to the console's inbox that the loop sent it (make oncall-up, 0600)
+.oncall-handoff.token
 
 # The vault's root token and passes for simprod (code/examples/simprod/src/simprod/vault.py)
 .bao/
