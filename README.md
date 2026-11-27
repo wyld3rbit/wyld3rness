@@ -1,6 +1,6 @@
 # Autonomous on-call, safe and affordable to be wrong
 
-wyld3rness is a harness for LLM agents that run on-call with no person approving each action. People set the rules and the budget. Code decides what may run, checks whether customers recovered, undoes what did not work, and stops when tries or money run out. It is tested on FindyFixy, an AI agent that diagnoses and fixes incidents, acting only on [simprod](code/examples/simprod/README.md), a simulated payment system under real load.
+wyld3rness is a harness for LLM agents that run on-call with no person approving each action. People set the rules and the budget. Code decides what may run, checks whether customers recovered, undoes what did not work, and stops when tries or money run out. It is tested on FindyFixy, an LLM agent that diagnoses and fixes incidents, acting only on [simprod](code/examples/simprod/README.md), a simulated payment system under real load.
 
 ![The console replaying a saved storm: customers' failures each second, every action and undo marked, the loop's steps, and the agent's three tries, each undone, ending in the safe state](code/docs/demo.gif)
 
@@ -10,7 +10,7 @@ wyld3rness is a harness for LLM agents that run on-call with no person approving
 |---|---|---|
 | May this change ship? | Eval gate at every commit, checked again in CI | Built |
 | What happened, at what cost? | A trace per run, with cost | Built |
-| What may an incident spend? | A budget checked before each model call | Built |
+| What may an incident spend? | A budget checked before each of the on-call agent's model calls | Partly built: one gateway for every model call is planned |
 | May this action run? | A policy per kind of action, and a one-time signed pass | Built |
 | Did it work? | A recovery check on what customers saw | Built |
 | What if it was wrong? | Undo and retry, else a safe state | Built |
