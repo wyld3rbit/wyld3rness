@@ -406,3 +406,9 @@ def test_a_safe_state_replays_its_hand_off_before_the_end_and_the_verdict_says_w
     assert finished(handed)["handoff"] == "delivered"
     assert finished({**RECORD, "loop": loop})["handoff"] == "not recorded"  # saved before the hand-off existed
     assert finished(RECORD)["handoff"] is None  # resolved: nobody needs telling
+
+
+def test_a_run_that_ends_before_the_window_is_labelled_with_what_was_measured() -> None:
+    short = {**RECORD, "series": _series(20.0, 80.0, 120.0)}  # ends 100 s after the fault
+    assert finished(short)["window_s"] == 100.0
+    assert finished(RECORD)["window_s"] == 140.0  # the shared record ends 140 s after the fault too

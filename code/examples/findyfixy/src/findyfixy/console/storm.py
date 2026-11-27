@@ -250,6 +250,8 @@ def finished(record: Mapping[str, Any]) -> JSON:
         if series and "t_fault" in record and "rate" in record
         else None
     )
+    # A run saved by `make oncall` can end before the window does; then the minutes cover only what was measured.
+    window = min(HORIZON_S, series[-1].t - record["t_fault"]) if series and "t_fault" in record else HORIZON_S
     return {
         "recovered": record.get("recovered"),
         "resolved": loop.get("resolved"),
@@ -260,7 +262,7 @@ def finished(record: Mapping[str, Any]) -> JSON:
         "unjudged": list(record.get("invalid") or []),
         "restored": record.get("restored"),
         "handoff": handoff_status(record),
-        "window_s": HORIZON_S,  # the customer minutes are counted over this many seconds after the fault
+        "window_s": round(window, 1),  # the customer minutes are counted over this many seconds after the fault
     }
 
 
