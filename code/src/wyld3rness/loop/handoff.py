@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 import http.client
 import json
+from pathlib import Path
 from typing import Any, Protocol
 import urllib.error
 import urllib.request
@@ -101,29 +102,42 @@ def alert(incident: str, outcome: Outcome, *, at: datetime | None = None, trace_
     }
 
 
-Post = Callable[[str, bytes, float], tuple[int, str]]
+Post = Callable[[str, bytes, float, Mapping[str, str]], tuple[int, str]]
 
 
-def _post(url: str, body: bytes, timeout_s: float) -> tuple[int, str]:
-    """POST `body` as JSON to `url` and return the status and the start of the answer. Raises on a network error."""
-    request = urllib.request.Request(url, body, {"Content-Type": "application/json"}, method="POST")
+def _post(url: str, body: bytes, timeout_s: float, headers: Mapping[str, str]) -> tuple[int, str]:
+    """POST `body` as JSON to `url` with `headers` and return the status and the start of the answer.
+
+    Raises on a network error.
+    """
+    request = urllib.request.Request(url, body, {"Content-Type": "application/json", **headers}, method="POST")
     with urllib.request.urlopen(request, timeout=timeout_s) as response:
         return response.status, response.read(200).decode(errors="replace")
 
 
 class WebhookHandoff:
-    """Posts the alert to one URL, as Alertmanager's webhook receiver would. Delivered means a 2xx answer."""
+    """Posts the alert to one URL, as Alertmanager's webhook receiver would. Delivered means a 2xx answer.
 
-    def __init__(self, url: str, *, timeout_s: float = TIMEOUT_S, post: Post = _post) -> None:
+    With `token_file`, each send carries `Authorization: Bearer <its contents>`, as
+    Alertmanager's `http_config.authorization` does, so the receiver can refuse a
+    hand-off from anyone else (ADR 0009, step 0b). The file is read per send: a
+    rewritten token needs no restart, and an unreadable one is "not delivered".
+    """
+
+    def __init__(
+        self, url: str, *, token_file: Path | None = None, timeout_s: float = TIMEOUT_S, post: Post = _post
+    ) -> None:
         """`post` is injectable so tests need no server."""
         self.url = url
+        self.token_file = token_file
         self.timeout_s = timeout_s
         self._post = post
 
     def send(self, alert: JSON) -> Delivery:
         """Send `alert`. Every failure (refused, timed out, a non-2xx answer) is `delivered` False with the reason."""
         try:
-            status, answer = self._post(self.url, json.dumps(alert).encode(), self.timeout_s)
+            headers = {"Authorization": f"Bearer {self.token_file.read_text().strip()}"} if self.token_file else {}
+            status, answer = self._post(self.url, json.dumps(alert).encode(), self.timeout_s, headers)
         except urllib.error.HTTPError as exc:
             return Delivery(False, self.url, f"HTTP {exc.code}")
         # URLError and timeouts are OSError, a malformed URL is ValueError, and a receiver that is not

@@ -6,7 +6,7 @@
 
 ## The idea
 
-An agent will sometimes be wrong with full confidence, and the text it reads can be hostile. So the design makes it **safe and affordable to be wrong**: a wrong action is limited before it runs, detected on what customers saw, undone, and paid for from a budget that cannot be exceeded.
+An agent will sometimes be wrong with full confidence, and the text it reads can be hostile. So the design makes it **safe and affordable to be wrong**: a wrong action is limited before it runs, detected on what customers saw, undone, and paid for from a budget checked before each call. Today the budget covers only the on-call proposer's model calls.
 
 | Who | Decides | When |
 |---|---|---|
@@ -19,7 +19,7 @@ A proposer can change none of the first two rows.
 
 ## The harness
 
-![The harness: what people set before runtime; the eval gate, the CI check and tracing at every commit and model call; and for every incident, the policy, a one-time pass, the action, the recovery check, keep or undo, the safe state, and the hand-off to a person. Proposers, a script or the app's model behind a budget, feed the policy; the app's environment port applies actions and reports what customers saw.](img/harness.svg)
+![The harness: what people set before runtime; the eval gate and the CI check at every commit, and tracing in each traced run; and for every incident, the policy, a one-time pass, the action, the recovery check, keep or undo, the safe state, and the hand-off to a person. Proposers, a script or the app's model behind a budget, feed the policy; the app's environment port applies actions and reports what customers saw.](img/harness.svg)
 
 The harness never imports the app: each control is a port the app implements or calls. The ports and how to plug in an app are in the [harness README](../src/wyld3rness/README.md). Where each part runs, and what each container cannot reach, is drawn in [ADR 0008](adr/0008-autonomous-operation-with-cost-as-an-invariant.md#step-4-the-trust-boundary-and-the-budget-written-in-the-plan-before-the-code).
 
@@ -40,16 +40,16 @@ A control counts as built only when a check fails if someone goes around it.
 
 | Invariant | Status |
 |---|---|
-| No change that can alter an answer ships without a passing, attested eval | built |
-| Every run, model call and decision is a trace, with its cost | built |
+| No change that can alter an answer ships without a passing, attested eval | partly built: triage's answers only; the on-call proposer, its prompt, its policy and the harness's loop are outside the gate |
+| Every run, model call and decision is a trace, with its cost | partly built: triage, eval cases and on-call incidents; the injection suite's model calls are not traced, and direct and MCP tool runs carry no cost |
 | The harness never imports the app | built |
-| No action runs unless its kind is allowed and its preconditions hold when it runs | built |
-| No credential outlives one action | built |
-| Outside text is data, never instructions | built |
-| Nothing is called fixed until customers recover and stay recovered | built |
-| Every incident ends resolved or in a safe state | built |
-| No incident spends past its budget | partly built: the on-call proposer's calls only |
-| A safe state hands the incident to a person | built |
+| No action runs unless its kind is allowed and its preconditions hold when it runs | partly built: the whole decision is checked once, before its first action applies, so a second action's precondition is not read again; undos are not checked |
+| No credential outlives one action | partly built: each action and undo has its own short-lived credential, but used ids live in each service's memory, so a restarted service accepts the restart's own credential once more until it expires; the loop's signing pass lasts 30 days |
+| Outside text is data, never instructions | partly built: outside text reaches the prompt with nothing separating it; what holds is that the answer can only be a typed action the policy checks, tested through one channel (the account key) |
+| Nothing is called fixed until customers recover and stay recovered | built, for the hold window: after it the loop stops watching |
+| Every incident ends resolved or in a safe state | partly built: within one loop process; its state is in memory, so a crash mid-incident leaves actions in force with no record |
+| No incident spends past its budget | partly built: the on-call proposer's calls only, and only while the model server honours the output cap |
+| A safe state hands the incident to a person | partly built: FindyFixy's loop sends it when its URL is set; no check fails if an app skips it |
 | No model call bypasses one gateway | planned |
 | Autonomy of each kind of action follows its evidence | planned |
 
@@ -57,7 +57,7 @@ A control counts as built only when a check fails if someone goes around it.
 
 ![The experiment: a protocol committed first; held-out storms, each through four options in random order (nobody, the script, the model with one try, the model with up to three); every option that acts goes through the same boundary; customers are measured by the host; customer minutes lost per run feed a paired analysis with repeats for noise; the decision rule written in advance is applied.](img/experiment.svg)
 
-Every proposer meets the same storms, unseen while it was built, in random order, through the same boundary. What counts is the customer minutes lost in a fixed window after the fault, measured outside the loop. The prediction and the decision rule are committed before the run. If the model does not beat the script, the script keeps those incidents. Protocol and results: [research log](research-log.md), entries 019 and 020.
+Every proposer meets the same storms, unseen while it was built, in random order, through the same boundary. What counts is the customer minutes lost in a fixed window after the fault, measured outside the loop. The prediction and the decision rule are committed before the run. The rule says that if the model does not beat the script, the script keeps those incidents. No code routes incidents to the script yet: the loop's default proposer is still the model. Protocol and results: [research log](research-log.md), entries 019 and 020, corrected by 021 and 023.
 
 ## Autonomy as policy
 
@@ -86,7 +86,8 @@ code/
 ├── src/wyld3rness/          the harness: never imports an app
 │   ├── eval/                eval gate, judge, attestation
 │   ├── trace/               spans, scores, cost
-│   └── loop/                the incident loop, policy, pass, budget, verdict, script, experiment
+│   └── loop/                the incident loop, policy, pass, budget, verdict, hand-off, remote proposer,
+│                            agent edge, boundary probe, script, attack suite, experiment, traced and watched
 ├── examples/findyfixy/      the agent under test: triage, on-call proposer, console
 ├── examples/simprod/        the simulated production it acts on
 ├── infra/                   self-hosted services
@@ -102,7 +103,7 @@ tools/                       public checks: docs drift, privacy scan, pictures
 | Incident memory | Postgres with pgvector | PostgreSQL |
 | Tracing | OpenTelemetry into self-hosted Langfuse | Apache 2.0, MIT |
 | Signing | OpenBao Transit | MPL 2.0 |
-| Simulated production | Python standard library, Docker Compose | PSF |
+| Simulated production | Python standard library, Docker Compose | PSF, Apache 2.0 |
 
 ## Next
 

@@ -9,26 +9,31 @@
               arguments, an expiry `ttl_s` from now (Unix seconds), and a one-time id
 
 Why one action and not a session: a token that is stolen, logged or replayed can
-do exactly one thing, once, within a minute. Why the signer is outside the
+do exactly one thing, once, before it expires: `TTL_S` after signing, and a
+service refuses any token valid for longer than its own maximum (simprod's is
+120 s). "Once" holds per service process: used ids live in its memory, so a
+restart forgets them. Why the signer is outside the
 agent: the agent never holds anything that can make a token, so a fully fooled
 model cannot authorise itself. Why the service checks it and not the harness:
 the check must sit where the action runs, after anything that could change the
-request on the way (Day 7 lesson, step 4).
+request on the way (ADR 0008, step 4).
 
 The format is a protocol between two codebases: this module writes it and the
 service that checks it (simprod's `credentials.py`, standard library only, in a
 container that has no harness) reads it. simprod's tests round-trip a token
 made here through its check, so the two sides cannot drift apart unnoticed.
 
-Day 8 revisits the lifetime and the one-time ids when several agents act at
-once: a shared store of used ids replaces each service's memory.
+Not built: a shared store of used ids that survives a restart and serves
+several agents acting at once.
 """
 
 from __future__ import annotations
 
 import base64
 from collections.abc import Callable
+import hmac
 import json
+from pathlib import Path
 import time
 from typing import Protocol
 import urllib.request
@@ -102,3 +107,29 @@ class TransitSigner:
         if not isinstance(signature, str) or not signature:
             raise RuntimeError("the vault returned no signature")
         return token(signed, signature)
+
+
+def authorized(header: str | None, token: str) -> bool:
+    """Whether an Authorization header carries `Bearer <token>` (ADR 0009, step 0b). Pure.
+
+    For the tokens that say which process is calling (the loop's, the hand-off's),
+    not for actions: those carry a signed one-time token above. Compared in
+    constant time, so the time to answer leaks nothing about how much of a guess
+    was right. An empty token never matches: a server started without one refuses
+    every caller instead of accepting any.
+    """
+    if not token or not header or not header.startswith("Bearer "):
+        return False
+    return hmac.compare_digest(header.removeprefix("Bearer ").encode(), token.encode())
+
+
+def presents_token(header: str | None, token_file: Path) -> bool:
+    """`authorized` against the token in `token_file` now. Read per call, so a rewritten token needs no restart.
+
+    A file that cannot be read refuses every caller.
+    """
+    try:
+        token = token_file.read_text().strip()
+    except OSError:
+        return False
+    return authorized(header, token)

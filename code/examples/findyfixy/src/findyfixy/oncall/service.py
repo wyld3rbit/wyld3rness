@@ -1,15 +1,21 @@
 """The on-call agent and loop as services, each in its own container (ADR 0008, step 4).
 
-    host: experiment runner ── POST /incident ──► loop container (findyfixy-loop)
+    host: experiment runner ── POST /incident + the loop's token ──► loop container (findyfixy-loop)
                                                   │ scraper of what customers saw, policy, signer, edge
                                                   └─ POST /decide ──► agent container (findyfixy-agent)
                                                                        │ the model call and its budget
                                                                        └─► Ollama on the host
 
-    agent: no Docker socket, no keys, no route to simprod; it gets the metrics as text, returns a proposal
-    loop:  no Docker socket; a pass that may only sign; reaches the edge and the vault
+    agent: no Docker socket, no keys, no pass, no token; it gets the metrics as text, returns a proposal.
+           Its network is internal (no route out): its peers are the loop, which answers it 401, and
+           the agent edge, which forwards its one model route to Ollama. The boundary probe
+           (`findyfixy.oncall.probe`, run by `make oncall-up`) shows every other route closed
+    loop:  no Docker socket; a pass that may only sign; the loop token and the hand-off token;
+           reaches simprod's edge and vault, Langfuse and the console's inbox
+    edge:  the agent edge (`wyld3rness.loop.edge`): model door 11434 ──► Ollama POST /api/chat;
+           agent door 8001 (host 127.0.0.1:8301) ──► the agent's /decide, /record, /healthz
 
-    loop, safe state ── POST HANDOFF_URL (an Alertmanager webhook) ──► the on-call person (the console's inbox)
+    loop, safe state ── POST HANDOFF_URL + the hand-off token (an Alertmanager webhook) ──► the console's inbox
 
 Why the loop runs one incident per request: the host keeps the storm (reset,
 inject, clear) because that needs the Docker socket, and asks the loop to handle
@@ -26,9 +32,10 @@ so a viewer (the console) can show a try as it happens. Only the latest
 `KEEP_INCIDENTS` are kept, in memory: this is a view, the answer is the record.
 
 Configuration comes from the environment, read in `main`: AGENT_URL, SIMPROD_EDGE,
-BAO_ADDR, BAO_SIGN_FILE and HANDOFF_URL (optional) for the loop; OLLAMA_HOST (read by the model client)
-for the agent. The model, the budget and the wait come with each incident from
-the host, so the agent decides with what this run asked for.
+BAO_ADDR, BAO_SIGN_FILE, LOOP_TOKEN_FILE, HANDOFF_URL and HANDOFF_TOKEN_FILE (both optional) for the
+loop; OLLAMA_HOST (read by the model client) for the agent; OLLAMA_UPSTREAM and AGENT_URL for
+the edge. The model, the budget and the wait come with each incident from the host, so the
+agent decides with what this run asked for.
 """
 
 from __future__ import annotations
@@ -55,7 +62,8 @@ from findyfixy.paths import PRICES
 from findyfixy.settings import read_tracing
 from simprod.checker import Scraper
 from wyld3rness.loop.budget import Budget
-from wyld3rness.loop.credential import TransitSigner
+from wyld3rness.loop.credential import TransitSigner, presents_token
+from wyld3rness.loop.edge import Door, serve
 from wyld3rness.loop.handoff import Handoff, WebhookHandoff, hand_off
 from wyld3rness.loop.handoff import summary as handoff_summary
 from wyld3rness.loop.policy import Policy
@@ -69,6 +77,8 @@ from wyld3rness.trace.tracing import Tracing
 
 JSON = dict[str, Any]
 PORT = 8000
+MODEL_DOOR = 11434  # the agent edge's port for the agent's model calls: Ollama's own, so OLLAMA_HOST reads naturally
+AGENT_DOOR = 8001  # the agent edge's port for the host's calls to the agent, published on 127.0.0.1:8301
 KEEP_INCIDENTS = 8  # events kept for this many latest incidents; a viewer reads them while they run
 
 
@@ -94,6 +104,21 @@ class Incidents:
         """The log of `incident`, or None when it is unknown or was dropped."""
         with self._lock:
             return self._logs.get(incident)
+
+
+def edge_doors(ollama: str, agent: str) -> dict[int, tuple[Door, ...]]:
+    """The agent edge's two doors, by port (ADR 0009, step 0b). Pure.
+
+    The model door is the agent's one way out: the single Ollama route the model
+    client calls (`langchain_ollama` streams `POST /api/chat`). The agent door is
+    the host's way in, published on loopback for the injection suite: the agent's
+    own three routes. A second model route the client starts to call shows as a
+    403 in the edge's log; it is one more entry here.
+    """
+    return {
+        MODEL_DOOR: (Door("POST", "/api/chat", ollama),),
+        AGENT_DOOR: tuple(Door(m, p, agent) for m, p in (("POST", "/decide"), ("GET", "/record"), ("GET", "/healthz"))),
+    }
 
 
 def ask_decision(model: str, prompt: str, max_output_tokens: int) -> str:
@@ -213,7 +238,8 @@ def _handle(
 def choose_decider(body: JSON, agent_url: str, incident: str, params: JSON) -> tuple[Decider, Callable[[], JSON]]:
     """The incident's decider and how to read its record afterwards. Raises ValueError for an unknown one.
 
-    The script makes no model call, so its record says so, measured: no calls and nothing spent.
+    The script makes no model call, so its record says so by construction: no calls and nothing
+    spent, with no budget kept for it.
     """
     kind = body.get("decider", "model")
     if kind == "model":
@@ -248,10 +274,26 @@ def events_answer(incidents: Incidents, path: str) -> tuple[int, JSON]:
     return 200, {"incident": incident, "events": events, "done": done}
 
 
-def serve_loop(agent_url: str, edge: str, vault: str, sign_file: Path) -> None:
-    """POST /incident runs one incident; GET /healthz answers ok. One incident at a time is what the runner sends.
+def serve_loop(agent_url: str, edge: str, vault: str, sign_file: Path, token_file: Path) -> None:
+    """Serve the loop on PORT until the container stops (`loop_server`)."""
+    loop_server(agent_url, edge, vault, sign_file, token_file).serve_forever()
+
+
+def loop_server(
+    agent_url: str, edge: str, vault: str, sign_file: Path, token_file: Path, host: str = "0.0.0.0", port: int = PORT
+) -> ThreadingHTTPServer:
+    """The loop's HTTP server, not yet serving: POST /incident runs one incident; GET /healthz answers ok.
+
+    One incident at a time is what the runner sends.
 
     GET /incident/events serves the steps of the latest incidents as they happen (`events_answer`).
+
+    Both incident routes need the loop's token, which only the host holds: the
+    agent's container shares a network with this one and must not be able to start
+    an incident or choose its settings (ADR 0009, step 0b). /healthz stays open for
+    the health checks and tells nothing. The token file is read for every request,
+    as the sign pass is, so a token rewritten by `make oncall-up` needs no restart;
+    a file that cannot be read refuses every caller.
 
     The sign pass is read for every incident, so passes renewed by `make sim-up`
     need no restart of this container. Tracing starts once, from the environment
@@ -263,7 +305,10 @@ def serve_loop(agent_url: str, edge: str, vault: str, sign_file: Path) -> None:
     tracing = Tracing.start(config) if config is not None else None
     incidents = Incidents()
     url = os.environ.get("HANDOFF_URL", "")
-    handoff = WebhookHandoff(url) if url else None  # unset: safe states are recorded, and nobody is told
+    # The hand-off token proves to the receiver that the loop sent it; it is not the loop's own token,
+    # so a hand-off sent to another receiver never carries a credential for the loop.
+    token = Path(t) if (t := os.environ.get("HANDOFF_TOKEN_FILE")) else None
+    handoff = WebhookHandoff(url, token_file=token) if url else None  # unset: recorded, and nobody is told
     print(json.dumps({"tracing": config.host if config else "off"}), flush=True)
 
     class Handler(BaseHTTPRequestHandler):
@@ -278,11 +323,17 @@ def serve_loop(agent_url: str, edge: str, vault: str, sign_file: Path) -> None:
             self.end_headers()
             self.wfile.write(data)
 
+        def _authorized(self) -> bool:
+            """Whether this request carries the token in the file now; False when the file cannot be read."""
+            return presents_token(self.headers.get("Authorization"), token_file)
+
         def do_GET(self) -> None:
             """GET /healthz, or GET /incident/events."""
             if self.path == "/healthz":
                 self._send(200, {"status": "ok"})
             elif urlparse(self.path).path == "/incident/events":
+                if not self._authorized():
+                    return self._send(401, {"error": "the loop's token is required"})
                 self._send(*events_answer(incidents, self.path))
             else:
                 self._send(404, {"error": "not found"})
@@ -291,6 +342,8 @@ def serve_loop(agent_url: str, edge: str, vault: str, sign_file: Path) -> None:
             """POST /incident: run one incident and answer with its record."""
             if self.path != "/incident":
                 return self._send(404, {"error": "not found"})
+            if not self._authorized():  # checked before the body is read
+                return self._send(401, {"error": "the loop's token is required"})
             try:
                 body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)))
                 signer = TransitSigner(vault, sign_file.read_text().strip())
@@ -307,15 +360,18 @@ def serve_loop(agent_url: str, edge: str, vault: str, sign_file: Path) -> None:
         def log_message(self, format: str, *args: object) -> None:
             """Quiet: the runner keeps the record."""
 
-    ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
+    return ThreadingHTTPServer((host, port), Handler)
 
 
 def main(argv: list[str] | None = None) -> int:
-    """`agent` or `loop`, configured from the environment (see the module docstring)."""
+    """`agent`, `loop` or `edge`, configured from the environment (see the module docstring)."""
     parser = argparse.ArgumentParser(prog="findyfixy-oncall-service", description=__doc__.splitlines()[0])
-    parser.add_argument("role", choices=["agent", "loop"])
+    parser.add_argument("role", choices=["agent", "loop", "edge"])
     args = parser.parse_args(argv)
-    if args.role == "agent":
+    if args.role == "edge":
+        print(json.dumps({"service": "edge", "doors": [MODEL_DOOR, AGENT_DOOR]}), flush=True)
+        serve(edge_doors(os.environ["OLLAMA_UPSTREAM"], os.environ["AGENT_URL"]))
+    elif args.role == "agent":
         print(json.dumps({"service": "agent"}), flush=True)
         serve_decider(
             lambda incident, p: make_agent(
@@ -331,6 +387,7 @@ def main(argv: list[str] | None = None) -> int:
             os.environ["SIMPROD_EDGE"],
             os.environ["BAO_ADDR"],
             Path(os.environ["BAO_SIGN_FILE"]),
+            Path(os.environ["LOOP_TOKEN_FILE"]),  # read per request; unreadable: every caller is refused
         )
     return 0
 

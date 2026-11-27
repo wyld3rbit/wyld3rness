@@ -1,8 +1,8 @@
 # wyld3rness
 
-The harness. It gates releases on measured answers, traces every run, and runs each incident through a boundary the agent cannot get around. It knows nothing about any one app; FindyFixy is its first.
+The harness. It gates releases on measured answers, traces each run it wraps, and runs each incident through a boundary the agent cannot get around. It knows nothing about any one app; FindyFixy is its first.
 
-![The harness: what people set before runtime; the eval gate, the CI check and tracing at every commit and model call; and for every incident, the policy, a one-time pass, the action, the recovery check, keep or undo, the safe state, and the hand-off to a person. Proposers, a script or the app's model behind a budget, feed the policy; the app's environment port applies actions and reports what customers saw.](../../docs/img/harness.svg)
+![The harness: what people set before runtime; the eval gate and the CI check at every commit, and tracing in each traced run; and for every incident, the policy, a one-time pass, the action, the recovery check, keep or undo, the safe state, and the hand-off to a person. Proposers, a script or the app's model behind a budget, feed the policy; the app's environment port applies actions and reports what customers saw.](../../docs/img/harness.svg)
 
 ## Plug in an app
 
@@ -16,7 +16,7 @@ An app implements these ports. FindyFixy's implementation of each is linked.
 | `Decider` (`code/src/wyld3rness/loop/run.py`) | `decide(observation, history)`: 1 or 2 typed actions | `code/examples/findyfixy/src/findyfixy/oncall/decide.py` |
 | `Policy` of `Rule`s (`code/src/wyld3rness/loop/policy.py`) | each allowed kind: alone or not, a precondition read from live state | `code/examples/findyfixy/src/findyfixy/oncall/policy.py` |
 
-The harness supplies the rest: the loop (`run_incident`), the one-time pass (`Signer`, signed in OpenBao), the hand-off to a person (`Handoff`, an Alertmanager webhook), the budget, the recovery verdict, the script baseline, the attack suite, the experiment's statistics, and wrappers that trace and stream every step. `code/src/wyld3rness/testing.py` has fakes for all of it, so an app's tests run with no model.
+The harness supplies the rest: the loop (`run_incident`), the one-time pass (`Signer`, signed in OpenBao), the hand-off to a person (`Handoff`, an Alertmanager webhook, with an optional bearer token), the agent edge (`code/src/wyld3rness/loop/edge.py`: an allow-list forwarder for an agent on an internal network; the app lists its `Door`s), the boundary probe (`code/src/wyld3rness/loop/probe.py`: what an agent's container can reach; the app lists its routes and ports), the budget, the recovery verdict, the script baseline, the attack suite, the experiment's statistics, and wrappers that trace and stream every step. `code/src/wyld3rness/testing.py` has fakes for all of it, so an app's tests run with no model.
 
 ## The loop in one picture
 
@@ -42,6 +42,6 @@ A new control is a port in this package, never code inside an app. Give it a fak
 |---|---|
 | `code/src/wyld3rness/eval/` | runner, judge and metrics, report and gate, attestation, gate at commit, score reuse |
 | `code/src/wyld3rness/trace/` | OpenTelemetry tracing, spans, scores, prices |
-| `code/src/wyld3rness/loop/` | the incident loop, policy, pass, budget, verdict, remote decider, script, attack suite, experiment statistics, traced and watched wrappers |
+| `code/src/wyld3rness/loop/` | the incident loop, policy, pass, budget, verdict, hand-off, remote decider, agent edge, boundary probe, script, attack suite, experiment statistics, traced and watched wrappers |
 
 Each module's docstring gives its trade-offs and failure modes. Tests: `code/tests/` (`code/tests/README.md`).

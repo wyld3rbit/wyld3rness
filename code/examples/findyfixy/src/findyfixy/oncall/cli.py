@@ -1,14 +1,15 @@
 """`make oncall`: FindyFixy runs seeded simprod storms through the harness's loop, with no person in it.
 
     for each storm: simprod.controls.live_storm (reset, warm, inject, DETECT_S)
-        ──► wyld3rness.loop.run_incident(SimprodEnv, ModelDecider) ──► resolved or the safe state
+        ──► POST /incident with the loop's token ──► the loop container runs wyld3rness.loop.run_incident
+            (SimprodEnv, the agent container's decider) ──► resolved or the safe state
         ──► the storm driver's own verdict, from the last try's action ──► one line, and the results file
 
 The storm driver is the one the controls use, so a loop run differs from a
 control run only in who acts. The driver's verdict (`recovered`) is computed
 again from the same scraped series, independently of the loop's, and the two
 must agree. Seed 3 by default: the pilot's storms, for exploratory runs; the
-held-out comparison (step 6) uses a seed never run here.
+held-out comparison (`make experiment`) uses a seed never run here.
 
 Results go to code/examples/simprod/results/oncall-<UTC>.json (git-ignored),
 rewritten after every storm.
@@ -24,12 +25,13 @@ from datetime import UTC, datetime
 import json
 import sys
 from typing import Any
+import urllib.error
 import urllib.request
 import uuid
 
 from findyfixy.llm import ANSWER_TIMEOUT_S
 from findyfixy.oncall.decide import MAX_OUTPUT_TOKENS, MAX_RETRIES, PROMPT_BYTES_BOUND
-from findyfixy.paths import PRICES
+from findyfixy.paths import LOOP_TOKEN, PRICES
 from findyfixy.settings import MissingEnvironment, load_env, read_models
 from simprod import controls, loadtest, vault
 from simprod.faults import Storm, storms
@@ -42,10 +44,27 @@ JSON = dict[str, Any]
 ARM = "loop"
 EXPLORE_SEED, EXPLORE_STORMS = 3, 3  # one storm of each kind
 # Per incident, at the committed reference prices: about twice the worst case of 12
-# small-model calls of 2,000 input and 300 output tokens ($0.00264), from the Day 7 lesson.
+# small-model calls of 2,000 input and 300 output tokens ($0.00264), an early estimate.
 # The loop makes at most 6 (3 tries, 1 retry each); their worst case is about $0.002.
-LIMIT_USD = 0.005  # also the agent container's BUDGET_USD (examples/findyfixy/docker-compose.yml)
+LIMIT_USD = 0.005  # sent with each incident; the loop passes it to the agent's decider
 LOOP_URL = "http://127.0.0.1:8300"  # the loop container, published on loopback only
+
+
+def loop_request(path: str, data: bytes | None = None) -> urllib.request.Request:
+    """A request to the loop container with the host's token (ADR 0009, step 0b).
+
+    The loop answers 401 without it, so the agent's container, which shares a
+    network with the loop and holds no token, cannot start an incident. Raises
+    FileNotFoundError, naming the fix, when `make oncall-up` has not written it.
+    """
+    try:
+        token = LOOP_TOKEN.read_text().strip()
+    except FileNotFoundError:
+        raise FileNotFoundError(f"no loop token at {LOOP_TOKEN.name}: run `make oncall-up`") from None
+    headers = {"Authorization": f"Bearer {token}"}
+    if data is not None:
+        headers["Content-Type"] = "application/json"
+    return urllib.request.Request(f"{LOOP_URL}{path}", data, headers)
 
 
 def last_action_at(tries: Sequence[Try]) -> float | None:
@@ -155,9 +174,7 @@ def post_incident(incident: str, config: LoopConfig, model: str, script: Sequenc
     }
     if script:
         body.update(decider="script", order=list(script))
-    req = urllib.request.Request(
-        f"{LOOP_URL}/incident", json.dumps(body).encode(), {"Content-Type": "application/json"}
-    )
+    req = loop_request("/incident", json.dumps(body).encode())
     with urllib.request.urlopen(req, timeout=incident_timeout_s(config)) as r:
         answer: JSON = json.load(r)
         return answer
@@ -167,9 +184,20 @@ def services_ready() -> str | None:
     """Why the loop container cannot take an incident, checked before any storm; None when it can."""
     try:
         with urllib.request.urlopen(f"{LOOP_URL}/healthz", timeout=5):
-            return None
+            pass
     except OSError as exc:
         return f"the loop container does not answer on {LOOP_URL} ({type(exc).__name__}): run `make oncall-up`"
+    try:  # an incident no one opened: 404 is the one answer that proves the token works
+        with urllib.request.urlopen(loop_request("/incident/events?incident=readiness&from=0"), timeout=5) as r:
+            return f"the loop container answered {r.status} for an incident it never opened"
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return None
+        if e.code == 401:
+            return "the loop container refused the host's token: run `make oncall-up`"
+        return f"the loop container answered {e.code} to the host's token check"
+    except OSError as exc:
+        return f"{type(exc).__name__}: {exc}"
 
 
 def budget_refusal(model: str, prices: list[ModelPrice], config: LoopConfig) -> str | None:

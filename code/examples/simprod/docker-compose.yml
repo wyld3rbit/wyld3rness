@@ -5,9 +5,11 @@
 #                                └─ outside network (publishes the port)    └─ loadgen (profile "load")
 #
 # Network. `prod` is internal: its containers cannot reach the internet, and
-# Docker will not publish a port from them. Only `edge` joins both networks, and
-# it forwards an allow-list (src/simprod/edge.py). The fault controls listen on
-# port 9000 of each service, which nothing publishes and the edge never forwards.
+# Docker will not publish a port from them. Only `edge` and `openbao` join both
+# networks: the edge forwards an allow-list (src/simprod/edge.py), and OpenBao
+# signs and verifies only for a caller with a pass (src/simprod/vault.py).
+# The fault controls listen on port 9000 of each service, which nothing
+# publishes and the edge never forwards.
 #
 # Hardening, the same for every service: read-only root filesystem, no Linux
 # capabilities, no privilege escalation, a non-root user (Dockerfile), and an init
@@ -25,8 +27,10 @@
 name: simprod
 
 x-service: &service
-  build: .
+  # One image for every service, built once, by the ledger below. Were each service to build it,
+  # compose without the buildx plugin would build them in parallel and fail tagging the same name.
   image: simprod:local
+  pull_policy: never
   init: true
   read_only: true
   cap_drop: [ALL]
@@ -50,6 +54,7 @@ x-service: &service
 services:
   ledger:
     <<: *service
+    build: .  # builds simprod:local for all of them
     command: ["python", "-m", "simprod.ledger"]
     environment:
       # Capacity per shard = LEDGER_WORKERS / LEDGER_SERVICE_MS. The load test sets

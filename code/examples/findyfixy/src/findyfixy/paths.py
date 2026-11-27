@@ -31,3 +31,5 @@ REPORTS = ROOT / "reports"  # generated evaluation reports (git-ignored)
 PRICES = ROOT / "config" / "prices.toml"  # committed reference prices per token (make obs-prices)
 PAGE = PACKAGE / "console" / "static" / "architecture.html"  # the page the console serves
 LANGFUSE_ENV = WORKSPACE / "infra" / "langfuse" / ".env"  # the local trace backend's secrets (git-ignored)
+LOOP_TOKEN = ROOT / ".oncall-loop.token"  # the loop's token, the host's only (git-ignored, 0600, make oncall-up)
+HANDOFF_TOKEN = ROOT / ".oncall-handoff.token"  # proves a hand-off came from the loop (git-ignored, 0600)

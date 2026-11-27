@@ -13,7 +13,8 @@ storm no key sends 5% of R, so both sets with a cap are refused and cost a try
 each, but no time.
 
 Runs in the loop container, which builds it from the order the experiment sends
-(`plan`). Standard library and the harness only.
+(`plan`). It imports FindyFixy's own metric readers (`findyfixy.oncall.policy`,
+which imports simprod's edge address) and the harness, nothing with a model.
 """
 
 from __future__ import annotations
@@ -32,8 +33,8 @@ STEPS = ("backoff", "cap", "both")
 def busiest_cap(observation: str) -> list[Action]:
     """A cap at R / 20 on the busiest key in the observation; nothing when the key or R is not there. Pure.
 
-    An empty proposal is a decider failure in the loop, so a missing gauge ends
-    the incident in the safe state instead of capping a guessed key.
+    The loop refuses a decision with no actions, so a missing gauge ends the
+    incident in the safe state instead of capping a guessed key.
     """
     top, rate = top_keys(observation), customer_rate(observation)
     if not top or not rate:

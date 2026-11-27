@@ -631,3 +631,49 @@ Per storm, customer minutes, and in brackets each try's proposal (B backoff on, 
 **Effect.** None on the result: the primary difference (+0.269, interval +0.134 to +0.414), the per-kind means, the resolution counts and the decision are all computed in the window. Entry 020 stays as written, since this log is append-only; read its per-storm values for unresolved runs as whole-run minutes.
 
 **How it was checked.** Recomputed from the saved results file (SHA-256 prefix `d8ed00d1c192491f`, the one entry 020 names) with `window_minutes`, against each run's saved `customer_minutes`.
+
+## 022. What can the agent's container reach? (ADR 0009, step 0b)
+
+**Question.** After the agent's network was made internal and its model calls were put behind the agent edge, does the agent reach anything but its loop and its one model route, and do its model calls still work?
+
+**Before.** Reading the compose file, not a run: the agent kept the host gateway for Ollama, so it could reach every port the host publishes on loopback, and the internet. The console's Host check, Langfuse's open sign-up and simprod's payment route each answered it without a credential.
+
+**Run 1: the boundary probe**, inside the agent's container, against the whole stack started by `make up` (`findyfixy.oncall.probe`, verdicts in `wyld3rness.loop.probe`). 31 routes:
+
+| Verdict | Routes | Which |
+|---|---|---|
+| closed (nothing answered) | 25 | a default route; simprod's edge and the vault by name; all 10 published ports by the host's name and again by the bridge's address; an outside name; the internet |
+| refused | 5 | the loop's two routes (401 without its token); the edge's other model routes, a model pull, and an unlisted route on its host door (403) |
+| needed | 1 | the edge's `POST /api/chat`, answered by Ollama (400 for an empty body) |
+| open | 0 | |
+
+**Run 2: one storm** (seed 3, 200 customers a second, qwen3:4b-instruct deciding), through the loop, the agent and the edge: a retry storm, resolved on the first try with one model call ($0.000094 of a $0.005 budget). The edge refused nothing during it, so the model client called only the route it lists.
+
+**What it means.** The boundary now holds by layout: every host port is unreachable, not merely guarded, and the services that refuse on their own are a second layer. One storm shows the path works, not how fast: the latency the extra hop adds is unmeasured.
+
+**Results file.** `oncall-20261127T073917Z.json` (SHA-256 prefix `2e1415c8dadb79f3`).
+
+## 023. Correction: an audit of entries 006 to 021
+
+**What.** Every number in entries 006 to 021 was checked against the saved results files, their SHA-256 prefixes and the run logs. Nothing was fabricated: every hash matches, and `findyfixy-experiment analyze` reproduces entry 020's headline exactly (+0.2685, interval +0.1345 to +0.4139). Ten statements are wrong, three runs went unreported, and nine claims have no saved source. None changes a bar, a verdict or a decision. This log is append-only, so the entries stay as written; read them with the corrections below.
+
+**Wrong.**
+
+| Entry | Says | Is | Effect |
+|---|---|---|---|
+| 018 | the real model proposed backoff in 12 attacks, the cap in 8 | 13 and 7 (a02, a05, a08, a11, a14, a17, a20 were caps), in both injection files | none: 0 attacks succeeded either way |
+| 020 | compound, model loop minus script: +0.727 | +0.723 (0.8971 − 0.1739) in the 240 s window the rest of the table uses | none |
+| 021 | the per-kind means are all computed in the window | the compound difference cell above was not | none |
+| 020 | no compound run ended worse than nobody | 7 did, by at most 0.2%: model-1 s13-08, s13-14, s13-17, s13-20, s13-23; model loop s13-14, s13-17 | none: the harm bar is 6% |
+| 020 | the first try in 6.0 to 6.5 s (4.1 to 9.0) | retry storms: 5.99 and 6.63 s (4.33 to 7.66); all kinds: 6.50 and 6.37 s (4.13 to 9.00) | none |
+| 019 | the widest spread within one kind and arm in entry 012 was 5.7% | 19% (hot shard, scripted); 5.7% holds only within the nobody and wrong arms, as entry 012's "up to 20%" says | none: the worst run reached 1.002 × nobody against the 6% harm margin |
+| 015 | 9 of 9 actions and undos, then 8 of 8 | the first run sent 8 (1 + 1 + 6) | none |
+| 014 | the median of three hot-shard runs is 0.339 | 0.341 (of 0.343, 0.341, 0.339) | none |
+| 013 | deciding cost 6.3 to 6.8 s (last action 21.3 to 21.8 s after the fault) | 5.6 to 5.9 s: the actions landed 21.33 to 21.73 s after the fault, and the scripted arm acts 15.8 s after it, not 15 s; "about 6.5 s" in the same entry carries the same 0.8 s | entry 020 later measured 6.4 to 6.5 s for the model |
+| 010, 019 | s7-01 broke its hold with one bad second; the exploratory run ended at 07:28 | two bad seconds (about 18.7 s and 45 s); 07:26 UTC | none |
+
+**Not reported.** The load-test re-run entry 009 required (`loadtest-20261125T080809Z`, prefix `fb0248b0`) chose the same capacity and rate and passed, but its 1,600 a second phase was much worse than entry 007's: 80,157 failed against 12,604, 79.2% late sends. The re-run pilot (`pilot-20261125T083307Z`) recovered 9 of 9 in 4.5 to 8.6 s; only its wait and hold were reported. Entry 019's trace check was two runs (`oncall-20261126T072731Z` and `075545Z`, both seed 3), the second after the protocol commit.
+
+**No saved source.** Entry 016's second set of probes and its image sizes; entry 015's vault and gateway log lines; entry 009's idle-connection fix; entry 019's "about 70 storms for 0.029"; entry 010's "not the 2 hours expected" (entry 008 states no duration); entry 006's "about 2.7 GiB available"; entry 013's "no source file changed after 22:37:04"; entry 014 states as measured that the restart cancelled the fix, which entry 013 inferred from the code. The main, exploratory and trace-check results files exist only in the results folder, with intact hashes.
+
+**How it was checked.** Recomputed from the saved files; the 018 counts and the two entry 020 compound figures were recomputed a second time, independently, with the project's own `window_minutes`.

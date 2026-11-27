@@ -1,0 +1,144 @@
+# Day 8, step 0b: the agent's boundary (ADR 0009). Drawn by tools/diagram.py; edit this file, not the picture.
+# A box is solid when its code exists, dashed when it is planned.
+caption = "Day 8, step 0b: the agent has no route out. The loop wants a token; the edge forwards one model route. Solid is built."
+width = 1180
+height = 540
+
+[[zone]]
+label = "The host: every port on 127.0.0.1"
+kind = "human"
+x = 10
+y = 0
+w = 1160
+h = 130
+
+[[zone]]
+label = "Agent network: internal, no route out"
+kind = "harness"
+x = 10
+y = 190
+w = 720
+h = 330
+
+[[zone]]
+label = "On both networks"
+kind = "harness"
+x = 900
+y = 190
+w = 270
+h = 180
+
+[[box]]
+id = "runner"
+name = "Runner"
+sub = "holds the loop token"
+icon = "Faults"
+x = 40
+y = 40
+status = "built"
+
+[[box]]
+id = "console"
+name = "Console inbox"
+sub = "needs its token"
+icon = "Alerts"
+x = 420
+y = 40
+status = "built"
+
+[[box]]
+id = "injection"
+name = "Injection suite"
+sub = "127.0.0.1:8301"
+icon = "Validate"
+x = 700
+y = 40
+status = "built"
+
+[[box]]
+id = "ollama"
+name = "Ollama"
+sub = "127.0.0.1:11434"
+icon = "Large model"
+x = 980
+y = 40
+status = "built"
+
+[[box]]
+id = "loop"
+name = "Loop"
+sub = "401 without the token"
+icon = "Policy"
+x = 60
+y = 250
+status = "built"
+
+[[box]]
+id = "agent"
+name = "Agent"
+sub = "no keys, no token"
+icon = "Small model"
+x = 440
+y = 250
+status = "built"
+
+[[box]]
+id = "probe"
+name = "Boundary probe"
+sub = "every way out: closed?"
+icon = "Verify"
+x = 440
+y = 420
+status = "built"
+
+[[box]]
+id = "edge"
+name = "Agent edge"
+sub = "listed routes only"
+icon = "CI gate"
+x = 920
+y = 250
+status = "built"
+
+[[edge]]
+from = "runner"
+to = "loop"
+label = "incident + token"
+status = "built"
+
+[[edge]]
+from = "loop"
+to = "console"
+label = "hand-off + its token"
+status = "built"
+
+[[edge]]
+from = "loop"
+to = "agent"
+label = "decide"
+status = "built"
+
+[[edge]]
+from = "agent"
+to = "edge"
+label = "model call"
+status = "built"
+
+[[edge]]
+from = "edge"
+to = "ollama"
+label = "POST /api/chat only"
+status = "built"
+
+[[edge]]
+from = "injection"
+to = "edge"
+label = "to the agent"
+status = "built"
+
+[[edge]]
+from = "probe"
+to = "loop"
+label = "no token: 401"
+via = [[135, 452]]
+status = "built"

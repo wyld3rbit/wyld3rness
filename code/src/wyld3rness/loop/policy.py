@@ -11,14 +11,14 @@ that cannot run is not a pass.
 
 The whole decision is checked before its first action is applied, so a refused
 decision changes nothing. The window between this check and the apply is the
-time to send the first request, milliseconds here; the credential (Day 7,
-step 4b) is checked again by the service that executes the action. Undos are
+time to send the first request, milliseconds here; the credential
+(`wyld3rness.loop.credential`) is checked again by the service that executes the action. Undos are
 not checked: they put back the state from before an action this policy allowed.
 
 Why data and plain Python and not a policy engine (Cedar, OPA): three rules, all
 of them tested with fakes, do not justify a new language or a container. The
 table can move to an engine behind the same `check` when policies need review
-by people who do not read Python (ADR 0008, Day 7 decisions).
+by people who do not read Python (ADR 0008, step 4).
 """
 
 from __future__ import annotations

@@ -2,6 +2,7 @@
 
 from itertools import permutations
 import json
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -67,8 +68,11 @@ def test_the_loop_service_builds_the_script_with_a_measured_zero_cost() -> None:
         choose_decider({"decider": "oracle"}, "http://agent", "i1", {"budget_usd": 0.005})
 
 
-def test_the_host_sends_the_script_order_and_the_tries(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_the_host_sends_the_script_order_and_the_tries(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     sent: dict[str, Any] = {}
+    token = tmp_path / "loop-token"
+    token.write_text("placeholder")
+    monkeypatch.setattr(cli, "LOOP_TOKEN", token)  # every request to the loop carries the host's token
 
     class Answer:
         def __enter__(self) -> "Answer":
