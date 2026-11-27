@@ -1,6 +1,6 @@
 """The load test: does simprod fit in the container VM, and at what rate does it run?
 
-    make load-test          (from code/; needs `make up` and `make sim-up`)
+    make load-test          (from code/; needs `make up`)
 
 Research log entry 006 is the protocol; the constants below are its numbers, so
 the entry and the code cannot disagree. Two parts:

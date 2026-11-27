@@ -12,10 +12,9 @@
 
 .PHONY: audit hooks scan up down sim-up load-test controls-pilot controls oncall oncall-up injection experiment experiment-power experiment-analyze setup ingest console triage test test-harness lint eval-retrieval eval eval-gate eval-baseline eval-freeze eval-compare eval-negative case golden verify-attestation obs-secrets obs-up obs-down obs-prices
 
-# Memory for the Colima VM, in GB. 6 on most days, 8 on Langfuse days:
-#   make up COLIMA_MEMORY=8
+# Memory for the Colima VM, in GB: 8, because `make up` starts Langfuse too.
 # Changing it needs the VM to restart, so run `make down` first.
-COLIMA_MEMORY ?= 6
+COLIMA_MEMORY ?= 8
 
 # The example app's folder, its database services and its settings file.
 APP_DIR := examples/findyfixy
@@ -26,22 +25,35 @@ SIM_COMPOSE := examples/simprod/docker-compose.yml
 # Every workspace member installed: the harness and the example app.
 RUN := uv run --all-packages --all-extras
 
-# up: start the container runtime if it is off, then the services, and wait
-# until they are ready. Safe to run twice. `--wait` blocks until the database
-# healthcheck passes, so the next command never meets a database that is still
-# starting.
+# up: start everything the project runs on, except Ollama, which you start in
+# its own terminal so its log stays in view: the container VM, the database,
+# Langfuse with its prices, the simulated production with its vault, and the
+# on-call containers. Each part waits until it is healthy (`--wait`), so the next
+# command never meets a service that is still starting; a part already up is
+# left as it is, so it is safe to run twice. A VM already running with less
+# memory is refused, because resizing it means a restart, and only `make down`
+# stops it. Ollama not answering is reported, not fatal: it may be started after.
 up:
-	@colima status >/dev/null 2>&1 || colima start --memory $(COLIMA_MEMORY)
+	@if colima status >/dev/null 2>&1; then \
+	  have=$$(colima list -j | grep '"name":"default"' | sed -nE 's/.*"memory":([0-9]+).*/\1/p'); \
+	  if [ "$${have:-0}" -lt $$(( $(COLIMA_MEMORY) * 1073741824 )) ]; then \
+	    echo "The VM runs with $$(( $${have:-0} / 1073741824 )) GB and needs $(COLIMA_MEMORY): run make down, then make up"; exit 1; fi; \
+	else colima start --memory $(COLIMA_MEMORY); fi
 	docker compose -f $(APP_COMPOSE) up -d --wait
+	@test -f infra/langfuse/.env || $(MAKE) obs-secrets
+	$(MAKE) obs-up obs-prices sim-up oncall-up
+	@if curl -sf -m 2 http://127.0.0.1:11434/api/version >/dev/null; then echo "Everything is up, and Ollama answers."; \
+	else echo "Everything is up. Ollama is not answering on 127.0.0.1:11434: start it in a terminal with OLLAMA_NO_CLOUD=1 ollama serve"; fi
 
 # down: stop the services, then the VM, and check that the VM really stopped.
 # Colima has no idle timeout and closing the terminal does not stop it, so it
-# keeps its RAM until told otherwise. Data survives: it lives in the `pgdata`
-# volume, which only `docker compose down -v` deletes. Safe to run twice.
+# keeps its RAM until told otherwise. Data survives: it lives in the volumes
+# (the database's `pgdata` and Langfuse's), which only `docker compose down -v`
+# deletes. Ollama is yours and is left running. Safe to run twice.
 # The compose step runs only while the VM is up. If it fails then, the make
 # stops there, so a half-stopped system is never reported as clean.
 down:
-	@if colima status >/dev/null 2>&1; then docker compose -f $(SIM_COMPOSE) --profile load --profile storm --profile chaos down && docker compose -f $(APP_COMPOSE) --profile oncall down; fi
+	@if colima status >/dev/null 2>&1; then docker compose -f $(SIM_COMPOSE) --profile load --profile storm --profile chaos down && docker compose -f $(APP_COMPOSE) --profile oncall down && { [ ! -f infra/langfuse/.env ] || docker compose -f $(LANGFUSE) --env-file infra/langfuse/.env down; }; fi
 	colima stop
 	@if colima status >/dev/null 2>&1; then echo "FAILED: Colima is still running"; exit 1; fi
 	@echo "Colima is stopped."
@@ -49,8 +61,8 @@ down:
 # sim-up: build and start the simulated production (gateway, ledger,
 # notifications, edge, and OpenBao with the actions' signing key) and wait until
 # every service is healthy. The vault steps write its root token and two passes
-# to the git-ignored examples/simprod/.bao/ and print none of them. Separate from
-# `up` because it costs VM memory only the step 2 to 6 runs need. Inspect it on
+# to the git-ignored examples/simprod/.bao/ and print none of them. `make up`
+# runs it; alone, it restarts only the simulated production. Inspect it on
 # 127.0.0.1:8100 (examples/simprod/README.md). `make down` stops it too.
 sim-up:
 	$(RUN) simprod-vault init
@@ -58,7 +70,7 @@ sim-up:
 	$(RUN) simprod-vault setup
 
 # load-test: research log entry 006. A rate ramp, then three soaks at the chosen
-# rate, about 25 minutes. Needs `make up` and `make sim-up`. Prints the verdict and
+# rate, about 25 minutes. Needs `make up`. Prints the verdict and
 # writes examples/simprod/results/loadtest-<UTC>.json.
 load-test:
 	$(RUN) simprod-loadtest
@@ -66,7 +78,7 @@ load-test:
 # controls-pilot / controls: research log entry 008. The pilot (about 45 minutes)
 # measures recovery times and sets WAIT and HOLD; the controls (about 2 hours) run
 # 21 storms x 3 arms (nobody, scripted fix, wrong fix undone) against their bars.
-# Need `make up` and `make sim-up`. Results in examples/simprod/results/.
+# Need `make up`. Results in examples/simprod/results/.
 controls-pilot:
 	$(RUN) simprod-controls pilot
 
@@ -76,12 +88,12 @@ controls:
 # oncall: FindyFixy runs seeded storms through the harness's loop (decide, act,
 # wait, verify, hold, keep or undo and retry, or the safe state), with no person
 # in it. 3 storms from seed 3 by default, about 3 minutes each; SMALL_MODEL decides.
-# Needs `make up`, `make sim-up` and Ollama. Results in examples/simprod/results/.
+# Needs `make up` and Ollama. Results in examples/simprod/results/.
 oncall:
 	$(RUN) findyfixy-oncall
 
 # oncall-up: build and start the on-call agent and loop containers (profile
-# "oncall" in examples/findyfixy/docker-compose.yml), after `make sim-up`. The
+# "oncall" in examples/findyfixy/docker-compose.yml), after `make sim-up`; `make up` runs both. The
 # image's requirements are exported from uv.lock with hashes, without the
 # `triage` extra. The loop runs as your user id so it can read the sign pass, and
 # gets the local Langfuse project keys in a private file, so its incidents are traced.
@@ -148,8 +160,8 @@ scan:
 	uv run --no-project python ../tools/scan_private.py --history
 
 # setup: once per clone. Installs the locked packages into .venv, pulls the models
-# named in examples/findyfixy/.env (answering models and the judge, each once), starts the database
-# and loads the incidents. It stops early, and says why, if .env is missing or
+# named in examples/findyfixy/.env (answering models and the judge, each once), starts every
+# service (`make up`) and loads the incidents. It stops early, and says why, if .env is missing or
 # does not name both models. It never writes .env: that file is yours. Every step is safe to run again: uv sync and
 # ollama pull skip what is current, and ingest writes 0 when nothing changed.
 setup:
@@ -272,8 +284,8 @@ eval-freeze:
 	$(RUN) findyfixy-eval --baseline-from $(REPORT)
 
 # obs-*: the local Langfuse v4 stack that receives traces (infra/langfuse/).
-# It needs Colima at 8 GB: COLIMA_MEMORY=8 make up, or restart Colima with
-# --memory 8. obs-secrets writes infra/langfuse/.env once (random secrets,
+# `make up` runs obs-secrets (when its file is missing), obs-up and obs-prices;
+# the stack needs the VM at 8 GB, `make up`'s default. obs-secrets writes infra/langfuse/.env once (random secrets,
 # mode 0600, never overwritten: the volumes keep the first passwords).
 # obs-up refuses to start without it. obs-down stops the stack and keeps
 # its data; `docker compose -f $(LANGFUSE) down -v` deletes the data too.

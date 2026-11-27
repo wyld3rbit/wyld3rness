@@ -33,8 +33,9 @@ You need [uv](https://docs.astral.sh/uv/), Docker Compose with a runtime and [Ol
 
 ```bash
 cp code/examples/findyfixy/.env.example code/examples/findyfixy/.env    # model names
-make setup        # once: packages, models, database, incidents
-make up           # start the database
+OLLAMA_NO_CLOUD=1 ollama serve   # in its own terminal, local models only
+make setup        # once: packages, models, every service, incidents
+make up           # start every service: database, Langfuse, simulated production, on-call containers
 make console      # open http://127.0.0.1:8765
 make help         # everything else
 ```

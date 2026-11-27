@@ -49,6 +49,7 @@ Notable changes to wyld3rness and its example app. The format follows [Keep a Ch
 
 ### Tooling and security
 
+- **One command starts everything.** `make up` starts the container VM at 8 GB, the database, Langfuse (its secrets created only when missing, its prices loaded), the simulated production with its vault, and the on-call containers, each waiting until healthy; a part already up is left as it is. A VM already running with less memory is refused with the fix, since resizing needs `make down`. Ollama stays outside: it is started by hand in its own terminal, and `make up` only reports whether it answers. `make down` now stops Langfuse too. Measured: 15 containers healthy, 2.0 GB of container memory at rest.
 - **The on-call image.** `findyfixy-oncall:local` builds on simprod's pinned and patched Python base and installs 47 locked packages with hashes. Grype v0.120.1: 0 Critical, 82 High, every one in Debian base packages with no fix available (55 Debian will not fix, 27 OpenSSL with no fix released), none in a Python package.
 
 - **The privacy scanner catches this computer's names.** It reads the host name, and on macOS the computer and local host names, at every run, so a renamed computer is caught on the next commit; nothing about the machine is stored. Comments that described the development machine now state the project's memory requirement.
