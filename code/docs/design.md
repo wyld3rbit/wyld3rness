@@ -1,6 +1,6 @@
 # Design and strategy
 
-**wyld3rness is a harness for AI agents that run on-call with no person approving each action, inside a budget.** It is tested on FindyFixy, which acts only on a simulated production. Each phase's choices, with the options rejected, are in the [decision records](adr/README.md); every measurement is in the [research log](research-log.md).
+**wyld3rness is a harness for LLM agents that run on-call with no person approving each action, inside a budget.** It is tested on FindyFixy, which acts only on a simulated production. Each phase's choices, with the options rejected, are in the [decision records](adr/README.md); every measurement is in the [research log](research-log.md).
 
 ![The target design: what people set before runtime, the harness, the triage agent, the two proposers (a model that reads the metrics and a script with no model), the act, verify and undo loop, and the simulated production. Solid is built, dashed is planned.](target-design.svg)
 
