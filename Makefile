@@ -52,14 +52,15 @@ adr-snapshot:
 # check: the documentation drift check, the repository tools' tests and the
 # privacy scan of the tree.
 #
-# uv tries its local cache first (--offline) and goes online only on a cache
-# miss (exit 2), so a flaky connection never refuses a commit that has nothing
-# wrong with it. Exit 1 from the tool itself is a real failure and is passed through.
+# The test tools come from uv's local cache (--offline), so a flaky connection
+# never refuses a commit with nothing wrong in it. A probe fetches them online
+# only when the cache lacks them (a fresh clone or machine); the tests then run
+# once and their exit code passes through unchanged.
 UV_TOOLS = uv run --no-project
 check:
 	python3 tools/check_docs.py
-	@$(UV_TOOLS) --offline --with pytest pytest tools -q; rc=$$?; \
-	  if [ $$rc -eq 2 ]; then echo "(cache miss, retrying online)"; $(UV_TOOLS) --with pytest pytest tools -q; else exit $$rc; fi
+	@$(UV_TOOLS) --offline --with pytest true 2>/dev/null || { echo "(test tools not cached, fetching them online)"; $(UV_TOOLS) --with pytest true; }
+	@$(UV_TOOLS) --offline --with pytest pytest tools -q
 	python3 tools/scan_private.py --tree
 
 obs-secrets obs-up obs-down obs-prices:
