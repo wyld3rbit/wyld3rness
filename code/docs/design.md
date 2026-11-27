@@ -106,9 +106,9 @@ tools/                       public checks: docs drift, privacy scan, pictures
 
 ## Next
 
-1. **One gateway** for every model call, metered and bounded, and the cheapest option that passes chosen per kind of incident.
-2. **Operation and approval:** roll back and forward, scheduled evaluation, approval per kind of action on game-day evidence.
-3. **Autonomy as policy:** an unattended night, its postmortems and its full cost.
+1. **Stop the bleeding fast:** a runbook acts at once on known signatures while the agent diagnoses; fixes go to a small slice first; the model has a decision deadline; check windows are sized to traffic; every model call goes through one gateway that enforces the budget.
+2. **Every human fix recorded:** the agent reads everything and changes only through typed actions; people act through the same recorded tools; each resolved incident becomes a replayable storm and an incident-memory case.
+3. **Autonomy earned by evidence:** a new kind of change, found by a person or proposed by the agent, is tested on its replayed storm, approved once, and kept or removed by evidence; faults outside the runbook's catalogue test whether the model earns its place.
 
 ## Limits
 
