@@ -11,7 +11,7 @@
 
 help:
 	@echo "First time:       make setup"
-	@echo "Start / stop:     make up   make down"
+	@echo "Start / stop:     make up (everything but Ollama)   make down"
 	@echo "Simulated prod:   make sim-up   make load-test   make controls-pilot   make controls   (inspect on 127.0.0.1:8100)"
 	@echo "On call:          make oncall-up   make oncall   (agent and loop in containers; storms, no person in it)   make injection   make experiment"
 	@echo "Run the product:  make console   make triage   make ingest"

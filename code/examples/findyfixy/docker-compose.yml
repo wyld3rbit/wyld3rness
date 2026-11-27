@@ -62,7 +62,8 @@ services:
         condition: service_healthy
 
   # On call (ADR 0008, step 4): the agent and the loop, each in its own container,
-  # profile "oncall" so `make up` does not start them; `make oncall-up` does.
+  # profile "oncall" so a plain `docker compose up` does not start them;
+  # `make oncall-up` does, and `make up` runs it.
   # The agent reaches only Ollama on the host: no Docker socket, no keys, and no
   # network shared with simprod. The loop reaches simprod's edge and vault on
   # simprod's outside network, holds the sign-only pass and the trace keys, and takes

@@ -23,7 +23,7 @@ The services: standard library only, one image ([Dockerfile](Dockerfile)). OpenB
 
 ## Inspect it yourself
 
-Start it with `make sim-up` from `code/` (after `make up`). Every allowed endpoint is in `http://127.0.0.1:8100/openapi.json` (Postman can import it).
+`make up` from `code/` starts it (`make sim-up` restarts it alone). Every allowed endpoint is in `http://127.0.0.1:8100/openapi.json` (Postman can import it).
 
 | Check | Command |
 |---|---|
