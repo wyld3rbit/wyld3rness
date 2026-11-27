@@ -149,7 +149,7 @@ sub = "to the on-call person"
 icon = "Alerts"
 x = 1080
 y = 390
-status = "planned"
+status = "built"
 [[box]]
 id = "script"
 name = "Script"
@@ -215,7 +215,7 @@ status = "built"
 [[edge]]
 from = "safe"
 to = "handoff"
-status = "planned"
+status = "built"
 [[edge]]
 from = "script"
 to = "policy"

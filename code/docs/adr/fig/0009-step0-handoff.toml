@@ -1,0 +1,89 @@
+# Day 8, step 0: the hand-off (ADR 0009). Drawn by tools/diagram.py; edit this file, not the picture.
+# A box is solid when its code exists, dashed when it is planned.
+caption = "Day 8, step 0: a safe state hands the incident to a person. Solid is built, dashed is planned."
+width = 1180
+height = 300
+
+[[zone]]
+label = "Harness"
+kind = "harness"
+x = 10
+y = 0
+w = 560
+h = 130
+
+[[zone]]
+label = "The on-call person"
+kind = "human"
+x = 610
+y = 0
+w = 560
+h = 130
+
+[[box]]
+id = "safe"
+name = "Safe state"
+sub = "every change undone"
+icon = "Safe state"
+x = 40
+y = 40
+status = "built"
+
+[[box]]
+id = "handoff"
+name = "Hand-off"
+sub = "alert from the record"
+icon = "Alerts"
+x = 380
+y = 40
+status = "built"
+
+[[box]]
+id = "inbox"
+name = "On-call inbox"
+sub = "the console, for now"
+icon = "Question"
+x = 640
+y = 40
+status = "built"
+
+[[box]]
+id = "pager"
+name = "Pager"
+sub = "any that takes the format"
+icon = "Alerts"
+x = 990
+y = 40
+status = "planned"
+
+[[box]]
+id = "record"
+name = "Incident record"
+sub = "delivered or not"
+icon = "Triage record"
+x = 380
+y = 190
+status = "built"
+
+[[edge]]
+from = "safe"
+to = "handoff"
+label = "ended unfixed"
+status = "built"
+
+[[edge]]
+from = "handoff"
+to = "inbox"
+label = "webhook"
+status = "built"
+
+[[edge]]
+from = "inbox"
+to = "pager"
+label = "later"
+status = "planned"
+
+[[edge]]
+from = "handoff"
+to = "record"
+status = "built"

@@ -123,6 +123,7 @@ def run_one(
             agent_record_error=agent.get("record_error"),
             loop_scrape_errors=answer.get("scrape_errors"),
             trace_id=answer.get("trace_id"),  # the incident's trace in Langfuse, None with tracing off
+            handoff=answer.get("handoff"),  # what the on-call person was sent, None when resolved or not configured
             settings_after=controls.read_settings(),
         )
         live.record["restored"] = live.record["settings_after"] == live.before

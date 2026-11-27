@@ -1122,3 +1122,30 @@ def test_a_subset_result_is_never_gated(tmp_path):
     from findyfixy.console.eval_run import EvalResult, verdict
 
     assert verdict(EvalResult(report={}, subset=True), tmp_path / "missing.json") is None
+
+
+def test_the_on_call_inbox_keeps_a_hand_off_from_the_loop_container(server):
+    _, port = server
+    alert = {"version": "4", "alerts": [{"labels": {"incident": "i7"}}]}
+    headers = {"Content-Type": "application/json", "Host": f"host.docker.internal:{port}"}
+    status, data = call(port, "POST", "/handoff", json.dumps(alert), headers)
+    assert (status, json.loads(data)) == (200, {"received": True})
+    status, data = call(port, "GET", "/handoffs")
+    assert status == 200 and [h["alert"] for h in json.loads(data)["handoffs"]] == [alert]
+
+
+@pytest.mark.parametrize(
+    ("body", "headers", "want"),
+    [
+        ('{"alerts": []}', {"Content-Type": "application/json", "Origin": "http://evil.example"}, 403),
+        ('{"alerts": []}', {"Content-Type": "application/json", "Host": "evil.example:80"}, 403),
+        ('{"alerts": []}', {"Content-Type": "text/plain"}, 415),
+        ("not json", {"Content-Type": "application/json"}, 400),
+        ('{"no": "alerts"}', {"Content-Type": "application/json"}, 422),
+    ],
+)
+def test_the_inbox_refuses_browsers_other_hosts_and_anything_but_an_alert(server, body, headers, want):
+    _, port = server
+    status, _ = call(port, "POST", "/handoff", body, headers)
+    assert status == want
+    assert json.loads(call(port, "GET", "/handoffs")[1])["handoffs"] == []

@@ -54,6 +54,7 @@ from findyfixy.oncall.script import STEPS
 from simprod import controls, loadtest
 from simprod.faults import KINDS, Storm, storms
 from wyld3rness.loop.env import Action
+from wyld3rness.loop.handoff import summary as handoff_summary
 from wyld3rness.loop.run import HOLD_MARGIN_S, TRIES, LoopConfig
 from wyld3rness.loop.verdict import Second, customer_minutes
 from wyld3rness.loop.watch import LoopEventKind
@@ -258,11 +259,25 @@ def finished(record: Mapping[str, Any]) -> JSON:
         "trace_id": record.get("trace_id"),
         "unjudged": list(record.get("invalid") or []),
         "restored": record.get("restored"),
+        "handoff": handoff_status(record),
         "window_s": HORIZON_S,  # the customer minutes are counted over this many seconds after the fault
     }
 
 
 # ---- replay ------------------------------------------------------------------
+
+
+def handoff_status(record: Mapping[str, Any]) -> str | None:
+    """Whether a person was told: None when resolved, "delivered", "not delivered", or "not recorded". Pure.
+
+    "not recorded" is a run saved before the hand-off existed, or with no on-call URL set.
+    """
+    if (record.get("loop") or {}).get("resolved", True):
+        return None
+    handed = record.get("handoff")
+    if not handed:
+        return "not recorded"
+    return "delivered" if handed.get("delivered") else "not delivered"
 
 
 def _label(data: Mapping[str, Any]) -> str:
@@ -307,6 +322,8 @@ def replay_events(record: Mapping[str, Any]) -> list[tuple[float, str, JSON]]:
         steps = list(_tries(loop, offset, wait_s, hold_s, charges, reasons))
         out += steps
         end = max([at for at, _, _ in steps] or [offset])
+        if record.get("handoff"):  # sent before incident_ended, as the loop emits it
+            out.append((end, "handoff", handoff_summary(record["handoff"])))
         out.append(
             (
                 end,

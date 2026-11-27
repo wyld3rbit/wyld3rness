@@ -9,6 +9,8 @@
     agent: no Docker socket, no keys, no route to simprod; it gets the metrics as text, returns a proposal
     loop:  no Docker socket; a pass that may only sign; reaches the edge and the vault
 
+    loop, safe state ── POST HANDOFF_URL (an Alertmanager webhook) ──► the on-call person (the console's inbox)
+
 Why the loop runs one incident per request: the host keeps the storm (reset,
 inject, clear) because that needs the Docker socket, and asks the loop to handle
 the incident from the moment the fault is detected. The loop scrapes what
@@ -24,7 +26,7 @@ so a viewer (the console) can show a try as it happens. Only the latest
 `KEEP_INCIDENTS` are kept, in memory: this is a view, the answer is the record.
 
 Configuration comes from the environment, read in `main`: AGENT_URL, SIMPROD_EDGE,
-BAO_ADDR and BAO_SIGN_FILE for the loop; OLLAMA_HOST (read by the model client)
+BAO_ADDR, BAO_SIGN_FILE and HANDOFF_URL (optional) for the loop; OLLAMA_HOST (read by the model client)
 for the agent. The model, the budget and the wait come with each incident from
 the host, so the agent decides with what this run asked for.
 """
@@ -54,6 +56,8 @@ from findyfixy.settings import read_tracing
 from simprod.checker import Scraper
 from wyld3rness.loop.budget import Budget
 from wyld3rness.loop.credential import TransitSigner
+from wyld3rness.loop.handoff import Handoff, WebhookHandoff, hand_off
+from wyld3rness.loop.handoff import summary as handoff_summary
 from wyld3rness.loop.policy import Policy
 from wyld3rness.loop.remote import RemoteDecider, serve_decider
 from wyld3rness.loop.run import TRIES, Decider, LoopConfig, Outcome, run_incident
@@ -119,6 +123,7 @@ def handle_incident(
     signer: TransitSigner,
     tracing: Tracing | None = None,
     log: EventLog | None = None,
+    handoff: Handoff | None = None,
 ) -> JSON:
     """Run one incident (`_handle`); its event log is closed however it ends, a refused request included.
 
@@ -126,7 +131,7 @@ def handle_incident(
     would be read for ever.
     """
     try:
-        return _handle(body, agent_url=agent_url, edge=edge, signer=signer, tracing=tracing, log=log)
+        return _handle(body, agent_url=agent_url, edge=edge, signer=signer, tracing=tracing, log=log, handoff=handoff)
     finally:
         if log is not None:
             log.close()
@@ -140,6 +145,7 @@ def _handle(
     signer: TransitSigner,
     tracing: Tracing | None = None,
     log: EventLog | None = None,
+    handoff: Handoff | None = None,
 ) -> JSON:
     """Run one incident through the loop, measured by this process's own scraper, and report it.
 
@@ -152,6 +158,8 @@ def _handle(
     every observation, decision (and its model calls), policy check, signature,
     action and wait (`wyld3rness.loop.traced`); its id goes back in the answer.
     With `log`, every step is also an event in it (`wyld3rness.loop.watch`).
+    With `handoff`, an incident that ends in the safe state is handed to a person
+    (`wyld3rness.loop.handoff`); whether it arrived goes into the answer and the events.
     """
     incident = str(body["incident"])
     tries = int(body.get("tries", TRIES))
@@ -181,6 +189,9 @@ def _handle(
             watch = Watch(log.emit if log is not None else lambda kind, t, data: None)
             ports = traced(trace.tracer, *watch.ports(env, decider, Policy(rules(edge=edge)), signer))
             outcome = run_incident(ports[0], ports[1], config, ports[2], ports[3])
+            handed = hand_off(handoff, incident, outcome) if handoff is not None else None
+            if handed is not None:  # before incident_ended, so a viewer shows who was told before the end
+                watch.handed_off(handoff_summary(handed))
             watch.finish(outcome)
         finally:
             stop.set()
@@ -197,6 +208,7 @@ def _handle(
         "agent": agent,
         "scrape_errors": scraper.errors,
         "trace_id": trace.trace_id,
+        "handoff": handed,
     }
 
 
@@ -252,6 +264,8 @@ def serve_loop(agent_url: str, edge: str, vault: str, sign_file: Path) -> None:
     config = read_tracing()
     tracing = Tracing.start(config) if config is not None else None
     incidents = Incidents()
+    url = os.environ.get("HANDOFF_URL", "")
+    handoff = WebhookHandoff(url) if url else None  # unset: safe states are recorded, and nobody is told
     print(json.dumps({"tracing": config.host if config else "off"}), flush=True)
 
     class Handler(BaseHTTPRequestHandler):
@@ -283,7 +297,9 @@ def serve_loop(agent_url: str, edge: str, vault: str, sign_file: Path) -> None:
                 body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)))
                 signer = TransitSigner(vault, sign_file.read_text().strip())
                 log = incidents.open(str(body["incident"]))  # a body with no id is a 400, as before
-                answer = handle_incident(body, agent_url=agent_url, edge=edge, signer=signer, tracing=tracing, log=log)
+                answer = handle_incident(
+                    body, agent_url=agent_url, edge=edge, signer=signer, tracing=tracing, log=log, handoff=handoff
+                )
                 return self._send(200, answer)
             except (KeyError, TypeError, ValueError) as exc:
                 return self._send(400, {"error": f"bad request: {exc}"})

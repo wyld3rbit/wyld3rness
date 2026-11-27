@@ -18,3 +18,4 @@ Day 5 was rebuilt after ADR 0005 was accepted, so ADR 0006 records the rebuilt p
 | [0006](0006-eval-gate-as-harness-component-attested-in-ci.md) | Day 5, rebuilt | The eval gate is a harness component, attested in CI | `6f9e3ee` |
 | [0007](0007-every-run-is-a-trace-in-a-self-hosted-backend.md) | Day 6 | Every run is an OpenTelemetry trace in a self-hosted backend | the commit that adds it |
 | [0008](0008-autonomous-operation-with-cost-as-an-invariant.md) | Day 7 | Autonomous operation, with cost as an invariant | the commit that merges Day 7 (Outcome) |
+| [0009](0009-day-8.md) | Day 8 | Open: begun with the hand-off to a person | open |

@@ -18,6 +18,9 @@ What it does
         POST /eval     start one eval run: {"mode", "cases": 1..N}, N the set's size
         POST /storm    drive one storm on simprod: {"kind", "decider"} (console/storm.py)
         POST /replay   replay a saved storm run: {"file", "run", "speed"}
+        POST /handoff  the on-call inbox: an Alertmanager webhook from the loop when an
+                       incident ends in the safe state (wyld3rness/loop/handoff.py)
+        GET  /handoffs the hand-offs received since the console started, newest first
         POST /stop     ask a hunt or an eval run to stop after its current run or
                        case, or a replay at once; answers {"stopping": false} when
                        nothing can stop (a live storm cannot be stopped here)
@@ -132,6 +135,33 @@ _MAX_QUESTION = 8000
 _KEEPALIVE_SECONDS = 10.0
 
 _FORCE_THRESHOLD = 1.01
+
+# The on-call inbox keeps the latest hand-offs in memory: it is a receiver for a demo,
+# not a pager. A real on-call tool takes the same webhook (ADR 0009, step 0).
+_INBOX_KEEP = 50
+# The loop container reaches the console through Docker's name for the host. Only the
+# inbox accepts that Host header; every other route keeps the loopback-only check.
+_INBOX_HOSTS = ("127.0.0.1", "localhost", "host.docker.internal")
+
+
+class Inbox:
+    """The latest hand-offs, newest first. Thread-safe: the server answers on many threads."""
+
+    def __init__(self, keep: int = _INBOX_KEEP) -> None:
+        self._items: list[dict[str, object]] = []
+        self._keep = keep
+        self._lock = threading.Lock()
+
+    def add(self, alert: dict[str, object]) -> None:
+        """Keep `alert` with the time it arrived; the oldest beyond `keep` is dropped."""
+        with self._lock:
+            self._items.insert(0, {"received": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "alert": alert})
+            del self._items[self._keep :]
+
+    def items(self) -> list[dict[str, object]]:
+        """A copy of what is kept, newest first."""
+        with self._lock:
+            return list(self._items)
 
 
 # A hunt repeats real model runs, so the cap is a cost and time bound. The
@@ -741,6 +771,7 @@ def make_handler(
     exposes no file information.
     """
     boot = time.time_ns()  # changes on every restart, even with no file change
+    inbox = Inbox()
 
     class Handler(BaseHTTPRequestHandler):
         """Routes, header checks and SSE framing. Logic stays in `RunHub`."""
@@ -861,12 +892,42 @@ def make_handler(
                 )
             if url.path == "/events":
                 return self._events(parse_qs(url.query))
+            if url.path == "/handoffs":
+                return self._json(HTTPStatus.OK, {"handoffs": inbox.items()})
             self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
+
+        def _handoff(self) -> None:
+            """POST /handoff: keep one Alertmanager webhook payload. Anything else is refused with the reason."""
+            assert isinstance(self.server, HTTPServer)
+            port = self.server.server_port
+            # No browser sends here: a page in a browser carries an Origin, and JSON forces a preflight
+            # this server never answers, so no web page can plant a hand-off.
+            if self.headers.get("Host") not in {f"{h}:{port}" for h in _INBOX_HOSTS} or self.headers.get("Origin"):
+                return self._json(HTTPStatus.FORBIDDEN, {"error": "bad host or origin"})
+            if not self.headers.get("Content-Type", "").startswith("application/json"):
+                return self._json(HTTPStatus.UNSUPPORTED_MEDIA_TYPE, {"error": "send JSON"})
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+            except ValueError:
+                length = -1
+            if not 0 < length <= _MAX_BODY:
+                return self._json(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, {"error": "bad body size"})
+            self.close_connection = False  # body is about to be read in full
+            try:
+                alert = json.loads(self.rfile.read(length))
+            except ValueError:
+                return self._json(HTTPStatus.BAD_REQUEST, {"error": "not JSON"})
+            if not isinstance(alert, dict) or not isinstance(alert.get("alerts"), list):
+                return self._json(HTTPStatus.UNPROCESSABLE_ENTITY, {"error": "not an Alertmanager webhook payload"})
+            inbox.add(alert)
+            self._json(HTTPStatus.OK, {"received": True})
 
         def _post(self) -> None:
             # Early rejects leave the body unread. Close the connection, or the
             # leftover bytes are parsed as the next request on a keep-alive socket.
             self.close_connection = True
+            if urlparse(self.path).path == "/handoff":
+                return self._handoff()
             if not self._host_ok() or not self._origin_ok():
                 return self._json(HTTPStatus.FORBIDDEN, {"error": "bad host or origin"})
             path = urlparse(self.path).path

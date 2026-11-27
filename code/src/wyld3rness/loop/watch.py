@@ -58,6 +58,7 @@ LoopEventKind = Literal[
     "applied",
     "waiting",
     "verdict",
+    "handoff",
     "incident_ended",
     "storm_finished",
     "storm_failed",
@@ -141,6 +142,10 @@ class Watch:
             safe_undos=[_label(a.action) for a in outcome.safe_undos],
             tries_used=len(outcome.tries),
         )
+
+    def handed_off(self, record: dict[str, Any]) -> None:
+        """`handoff`: what the person was sent and whether it arrived (`wyld3rness.loop.handoff.summary`)."""
+        self.emit("handoff", **record)
 
     def ports(
         self, env: Environment, decider: Decider, policy: Policy, signer: Signer

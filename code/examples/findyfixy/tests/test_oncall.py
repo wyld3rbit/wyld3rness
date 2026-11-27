@@ -584,3 +584,35 @@ def test_a_refused_incident_still_closes_its_event_log() -> None:
     with pytest.raises(ValueError, match="tries must be 1 to"):
         handle_incident(body, agent_url="http://127.0.0.1:1", edge="http://127.0.0.1:1", signer=None, log=log)
     assert log.since(0) == ([], True)
+
+
+@pytest.mark.parametrize(("ended", "handed_off"), [("safe state", True), ("resolved", False)])
+def test_the_loop_service_hands_a_safe_state_to_a_person_before_it_ends(monkeypatch, ended, handed_off) -> None:
+    """The hand-off's event comes before incident_ended, and its record goes back in the answer."""
+    from findyfixy.oncall import service
+    from wyld3rness.loop.run import Outcome
+    from wyld3rness.loop.watch import EventLog
+    from wyld3rness.testing import FakeHandoff
+
+    monkeypatch.setattr(
+        service, "run_incident", lambda *ports: Outcome(ended, "out of tries" if ended != "resolved" else "ok")
+    )
+    log, handoff = EventLog(), FakeHandoff()
+    body = {
+        "incident": "i9",
+        "wait_s": 30,
+        "hold_s": 30,
+        "model": "m",
+        "budget_usd": 0.005,
+        "decider": "script",
+        "order": ["backoff", "cap", "both"],
+    }
+    answer = service.handle_incident(
+        body, agent_url="http://127.0.0.1:1", edge="http://127.0.0.1:1", signer=None, log=log, handoff=handoff
+    )
+    kinds = [e["kind"] for e in log.since(0)[0]]
+    if handed_off:
+        assert answer["handoff"]["delivered"] is True and len(handoff.sent) == 1
+        assert kinds[-2:] == ["handoff", "incident_ended"]
+    else:
+        assert answer["handoff"] is None and handoff.sent == [] and "handoff" not in kinds
