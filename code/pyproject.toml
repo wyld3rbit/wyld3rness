@@ -32,7 +32,7 @@ build-backend = "uv_build"
 # installs the harness alone, which is how `make test-harness` proves it stands
 # without any app.
 [tool.uv.workspace]
-members = ["examples/findyfixy"]
+members = ["examples/findyfixy", "examples/simprod"]
 
 [tool.uv]
 # Release cooldown: ignore anything published after this date, because fresh
@@ -67,7 +67,7 @@ dev = [
 # Both packages are installed (editable) by `uv sync --all-packages`, so no
 # path tweak is needed: tests import `wyld3rness` and `findyfixy` as a user would.
 # tests/ is the harness's suite, examples/findyfixy/tests/ the example's.
-testpaths = ["tests", "examples/findyfixy/tests"]
+testpaths = ["tests", "examples/findyfixy/tests", "examples/simprod/tests"]
 # Tests that call real models are deselected by default. They need a running
 # Ollama and are slow and non-deterministic. Run them with:
 #   uv run pytest -m integration
@@ -98,13 +98,13 @@ select = ["E", "W", "F", "I", "B", "UP", "SIM", "RUF"]
 "examples/findyfixy/src/findyfixy/evals/queries.py" = ["E501"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["wyld3rness", "findyfixy"]
+known-first-party = ["wyld3rness", "findyfixy", "simprod"]
 # `import x` and `from x import y` sorted together by module name, as the code already is.
 force-sort-within-sections = true
 
 [tool.mypy]
 python_version = "3.13"
-files = ["src", "examples/findyfixy/src"]
+files = ["src", "examples/findyfixy/src", "examples/simprod/src"]
 warn_unused_ignores = true
 warn_redundant_casts = true
 check_untyped_defs = true
