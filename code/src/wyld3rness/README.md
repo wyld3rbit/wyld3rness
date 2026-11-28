@@ -1,47 +1,32 @@
 # wyld3rness
 
-The harness. It gates releases on measured answers, traces each run it wraps, and runs each incident through a boundary the agent cannot get around. It knows nothing about any one app; FindyFixy is its first.
+The `code/src/wyld3rness/` package is the harness: evaluation (`code/src/wyld3rness/eval/`) scores an LLM system's answers and gates a release on the scores, and tracing (`code/src/wyld3rness/trace/`) records every run as a trace. It knows nothing about any one application. FindyFixy is its first consumer.
 
-![The harness: what people set before runtime; the eval gate and the CI check at every commit, and tracing in each traced run; and for every incident, the policy, a one-time pass, the action, the recovery check, keep or undo, the safe state, and the hand-off to a person. Proposers, a script or the app's model behind a budget, feed the policy; the app's environment port applies actions and reports what customers saw.](../../docs/img/harness.svg)
+**The seam.** An application implements `SystemUnderTest` in `code/src/wyld3rness/eval/sut.py`: `describe()` returns the settings that shaped its answers, `answer(case)` returns an `Answer` (the text the judge scores, the contexts the model saw, the proposed action, the labels and app data), and `summarise(records)` returns any extra aggregates. Cases arrive as `Case` from `code/src/wyld3rness/eval/case.py`. FindyFixy's implementation is `code/examples/findyfixy/src/findyfixy/evals/adapter.py`.
 
-## Plug in an app
+**The dependency rule.** An application may import the harness. Nothing under `code/src/wyld3rness/` imports an application, and no harness module works out a path from its own location: the app passes in its golden set, reports folder, baseline and repository directory. `code/tests/test_harness_rules.py` enforces both.
 
-An app implements these ports. FindyFixy's implementation of each is linked.
+**Modules**
+- `code/src/wyld3rness/eval/case.py` and `code/src/wyld3rness/eval/sut.py`: the case and the seam.
+- `code/src/wyld3rness/eval/judge.py` and `code/src/wyld3rness/eval/metrics.py`: the judge over a local model, and the four metrics (faithfulness, response relevancy, context recall, action quality).
+- `code/src/wyld3rness/eval/stats.py`: bootstrap intervals and aggregation. Each expected label `L` is scored as `L_match`.
+- `code/src/wyld3rness/eval/provenance.py`: the stamp on every report. The app's `describe()` keys are merged in flat.
+- `code/src/wyld3rness/eval/report.py`: report and baseline files, the gate, the table, the case viewer, and the case-by-case comparison of two saved reports (`--compare`).
+- `code/src/wyld3rness/eval/events.py`: the harness's own event vocabulary, which the runner reports to an optional viewer while a run is in flight.
+- `code/src/wyld3rness/eval/runner.py`: runs every case through a system under test and builds the report, in two passes: every case is answered, then every answer is judged, so a machine that holds one model at a time loads each model about once. The report's `timing` has each pass (`answer_s`, `judge_s`) and the wall time.
+- `code/src/wyld3rness/eval/cli.py`: the command line an app's entry point calls with its own wiring. With an `AttestationSpec`, a passing `--gate` run also writes the attestation.
+- `code/src/wyld3rness/eval/attest.py`: the CI gate. It fingerprints every answer-affecting file, writes the attestation after a passing full run on a clean tree, and verifies it in CI. It also holds the traceability rules the baseline shares. It is the harness's leaf: standard library only and no harness imports, so CI runs it alone with plain `python3` and no install. Apps in a workspace declare their source roots (`code/src/` and `code/examples/findyfixy/src/` for FindyFixy), so the closure follows an app's imports into the harness and a harness change on the eval path needs a new run too.
 
-| Port | What the app supplies | FindyFixy |
-|---|---|---|
-| `SystemUnderTest` (`code/src/wyld3rness/eval/sut.py`) | `describe`, `answer(case)`, `summarise`: the eval gate runs the app through it | `code/examples/findyfixy/src/findyfixy/evals/adapter.py` |
-| Event adapter (`code/src/wyld3rness/trace/spans.py`) | opens and closes spans as the app's steps happen | `code/examples/findyfixy/src/findyfixy/observability/adapter.py` |
-| `Environment` (`code/src/wyld3rness/loop/env.py`) | `observe`, `apply(action, credential)` returning its undo, the customer series, the clock | `code/examples/findyfixy/src/findyfixy/oncall/env.py` |
-| `Decider` (`code/src/wyld3rness/loop/run.py`) | `decide(observation, history)`: 1 or 2 typed actions | `code/examples/findyfixy/src/findyfixy/oncall/decide.py` |
-| `Policy` of `Rule`s (`code/src/wyld3rness/loop/policy.py`) | each allowed kind: alone or not, a precondition read from live state | `code/examples/findyfixy/src/findyfixy/oncall/policy.py` |
+**The CI gate.** A live run needs a GPU, so it runs on the developer's machine and CI checks its attestation. The answer-affecting files are computed, not listed: the import closure of the app's eval entry modules, read from the source with `ast`, plus the data and lock files the app declares (a declared directory, such as `code/examples/findyfixy/data/` for FindyFixy, counts as every file in it). A file read at runtime is invisible to the closure, which is why the app declares those. State that no file shows, such as a database loaded from an older corpus, is the app's precondition: the gate checks it before the run and again before writing. The attestation is written only when the whole command exits 0. CI recomputes the hashes and fails when a file changed, was added or was removed since the attested run, and names each one. This is a process control, not a security control: CI trusts the local run, and anyone who can push can edit the attestation. Review and branch protection stop a dishonest change; the attestation stops an honest one from merging without a run.
 
-The harness supplies the rest: the loop (`run_incident`), the one-time pass (`Signer`, signed in OpenBao), the hand-off to a person (`Handoff`, an Alertmanager webhook, with an optional bearer token), the agent edge (`code/src/wyld3rness/loop/edge.py`: an allow-list forwarder for an agent on an internal network; the app lists its `Door`s), the boundary probe (`code/src/wyld3rness/loop/probe.py`: what an agent's container can reach; the app lists its routes and ports), the budget, the recovery verdict, the script baseline, the attack suite, the experiment's statistics, and wrappers that trace and stream every step. `code/src/wyld3rness/testing.py` has fakes for all of it, so an app's tests run with no model.
+**Tracing.** `code/src/wyld3rness/trace/` turns any app's run into an OpenTelemetry trace. `code/src/wyld3rness/trace/tracing.py` holds `TraceConfig` (which also builds a trace's link in the backend's web page, `trace_url`, and makes the one authenticated call to the backend's REST API that scores and prices use, `request`) and `Tracing`: one tracer provider with a batch exporter over OTLP/HTTP, so a slow or stopped backend never slows a run (spans queue in memory; a full queue drops, it never blocks). `code/src/wyld3rness/trace/spans.py` holds `SpanTree`: an app's adapter opens and closes spans as its events arrive, and the parent of each new span is the innermost one still open. Model calls carry the OpenTelemetry GenAI attributes (`gen_ai.request.model`, `gen_ai.usage.input_tokens`, ...); the few names Langfuse needs on top are defined there, in one place. FindyFixy's adapter is `code/examples/findyfixy/src/findyfixy/observability/adapter.py`.
 
-## The loop in one picture
+**Commands as traces.** `code/src/wyld3rness/trace/command.py` `CommandTrace` makes one command one trace: a top span that is current for the whole command, `step(...)` spans inside, and the output; without tracing it is a no-op. The provider puts `user.id` on every trace's top span (`TraceConfig.user_id`), so no call site can forget it. `code/src/wyld3rness/trace/spans.py` `generation(...)` records one model call outside an app's event stream (the judge's calls), and `open(..., current=True)` lets a strictly nested span (a graph node, a metric) parent spans made by other code.
 
-```
-observe ─► decide ─► policy ─► pass ─► apply ─► wait ─► customers recovered and held? ─► keep
-                                                          no ─► undo ─► next try, told what failed
-out of tries, budget, an error, or an action with no undo ─► safe state: undo all, stop ─► hand off to a person
-```
+**Eval cases as traces.** With tracing configured, the runner makes each golden case one trace: an "eval case" span that is current while the system answers (so an app's own spans nest under it), then a "judge" span with one child per metric. Each label match and each metric score is sent to the backend on that trace through `ScoreSink` (`code/src/wyld3rness/trace/scores.py`, Langfuse's score API, sent in the background, dropped never raised). A failed metric is an error on its span, never a score of 0. Records gain `trace_id`; `--compare` ignores it, and no number in the report changes.
 
-## Add a control
+**Cost on traces.** `code/src/wyld3rness/trace/prices.py` parses a price table (one price per input and output token per model, and the source of each price) and syncs it to Langfuse's model definitions, which then price every generation at ingestion. The backend computes the cost, so the hot path carries no pricing code; the trade-off is that a price change applies to new traces only. Only the project's own definitions are touched, never the backend's built-in ones. FindyFixy's table is `code/examples/findyfixy/config/prices.toml`, registered by `make obs-prices`.
 
-A new control is a port in this package, never code inside an app. Give it a fake in `code/src/wyld3rness/testing.py`, a test that fails when the control is bypassed, and a box on the console's architecture page.
+**Test doubles.** `code/src/wyld3rness/testing.py` ships a fake judge, embedder and system under test, so an app's own tests can drive the harness without a model. FindyFixy's adapter tests use them.
 
-## Rules the tests enforce
-
-- Nothing here imports an app, and no module works out a path from its own location (`code/tests/test_harness_rules.py`).
-- Only the dependencies in `code/pyproject.toml` are imported.
-- A change to the eval path needs a passing eval run and its attestation in the same commit (`code/src/wyld3rness/eval/attest.py`).
-
-## Modules
-
-| Folder | Holds |
-|---|---|
-| `code/src/wyld3rness/eval/` | runner, judge and metrics, report and gate, attestation, gate at commit, score reuse |
-| `code/src/wyld3rness/trace/` | OpenTelemetry tracing, spans, scores, prices |
-| `code/src/wyld3rness/loop/` | the incident loop, policy, pass, budget, verdict, hand-off, remote decider, agent edge, boundary probe, script, attack suite, experiment statistics, traced and watched wrappers |
-
-Each module's docstring gives its trade-offs and failure modes. Tests: `code/tests/` (`code/tests/README.md`).
+**Packaging.** The harness is the root project of the workspace, `code/pyproject.toml`, with only the dependencies it imports. `code/tests/test_harness_rules.py` keeps the import allowlist and that list in step. Its tests are in `code/tests/` (`code/tests/README.md`).

@@ -1,4 +1,4 @@
-"""A small-model-first router, with validated triage output.
+"""Day 1 router, Day 2 contract: small-model-first, with validated triage output.
 
 What it does
     1. The small model returns a `Triage` record (findyfixy/triage/record.py). An
@@ -17,8 +17,8 @@ Why this shape
 Why a graph, and not an if statement
     Two nodes would fit in an if statement. The graph pays off as the system
     grows. Each step is a named node with its own inputs and outputs. That
-    makes it easy to trace, test, retry, and pause for a human later.
-    A recall node sits before `small`, and a policy node can join the same way.
+    makes it easy to trace, test, retry, and pause for a human later (Day 9).
+    Day 4 adds a recall node before `small`. Day 7 adds a policy node.
     With a graph, those are new nodes. With an if statement, they are a rewrite.
 
 Why the graph is built by a function that takes `ask`
@@ -27,7 +27,7 @@ Why the graph is built by a function that takes `ask`
     `ollama_ask`. Tests pass a fake that returns a chosen confidence.
     This is dependency injection. It buys three things:
       - Routing can be tested in milliseconds with no model and no network.
-      - A gateway client can be swapped in without touching the graph.
+      - Day 8 can swap in a gateway client without touching the graph.
       - Importing this module does nothing. No client is built, no graph is
         compiled, no environment is read until `main()` or a test asks.
     The alternative, patching a module-level function in tests, couples tests
@@ -35,13 +35,10 @@ Why the graph is built by a function that takes `ask`
 
 Known weaknesses (read these before trusting the numbers)
     - Confidence is still self-reported. Validation now rejects values outside
-      0 to 1, so a reply of "75" retries and then escalates. It does not
+      0 to 1, so the Day 1 "75" case retries and then escalates. It does not
       make the number meaningful: a small model can write 0.9 and be wrong.
     - The large model gets the same retry. If it is still invalid, the run
-      raises `TriageError`. So does the small model when it is the only one
-      configured (both names alike): with no second tier, swallowing the
-      error would end the run with no triage and nothing to say why. There is
-      no third tier and no human: the caller records the typed failure.
+      raises `TriageError`. There is no third tier and no human yet.
     - No timeout. If Ollama is down, the run raises. Retries cover bad
       output, not infrastructure faults.
 
@@ -81,7 +78,7 @@ from findyfixy.triage.record import (
 Recall = Callable[[str], Sequence[Prior]]
 
 # The routing policy in one number. Treat it as a product decision, not a
-# constant of nature: it trades cost against quality. The cost comparison tunes it
+# constant of nature: it trades cost against quality. Day 8 tunes it
 # (0.6, 0.7, 0.8) and measures the effect on cost, latency and faithfulness.
 THRESHOLD = 0.7
 
@@ -262,10 +259,9 @@ def build_graph(
         """Build a node that asks `model` and writes the result into state.
 
         `small` and `large` differ only in which model they call and in what
-        happens when the model stays invalid after its retry. With a second
-        tier, `small` records `triage=None` so the router can escalate.
-        `large`, and `small` when it is the only model, have nowhere to
-        escalate to, so they let `TriageError` propagate. One factory means the
+        happens when the model stays invalid after its retry. `small` records
+        `triage=None` so the router can escalate. `large` has nowhere to
+        escalate to, so it lets `TriageError` propagate. One factory means the
         two cannot drift apart. The node returns a partial state update;
         LangGraph merges it. See `S` for the merge rule.
         """
@@ -339,8 +335,7 @@ def build_graph(
         return target
 
     g: StateGraph[S] = StateGraph(S)
-    # Swallowing an invalid answer is only safe when the router can escalate it.
-    g.add_node("small", make_node("small", small_model, tolerate_invalid=small_model != large_model))
+    g.add_node("small", make_node("small", small_model, tolerate_invalid=True))
     g.add_node("large", make_node("large", large_model, tolerate_invalid=False))
     # Steps before the cheap model, in order: recall, then investigate. Each is
     # optional, and the chain ends at `small`.
@@ -397,21 +392,10 @@ def main() -> None:
 
 
 def _triage_one(graph: TriageGraph, q: str, run: "AbstractContextManager[EventSpans | None]") -> None:
-    """Run one question, end its run trace (when tracing), print the triage and latency.
-
-    A model that stays invalid after its retry is a typed failure, printed
-    with its reason and recorded on the trace; the next question still runs.
-    """
+    """Run one question, end its run trace (when tracing), print the triage and latency."""
     with run as spans:
         start = time.perf_counter()
-        try:
-            result = graph.invoke({"question": q})
-        except TriageError as err:
-            if spans is not None:
-                spans.finish_run(error=f"TriageError: {err}")
-            print(f"Q: {q}")
-            print(f"A: failed, TriageError: {err} | latency: {time.perf_counter() - start:.1f}s\n")
-            return
+        result = graph.invoke({"question": q})
         latency = time.perf_counter() - start
         if spans is not None:
             spans.finish_run(output=result["triage"].model_dump(), model_used=result["model_used"])

@@ -38,7 +38,7 @@ Failure modes
     - A live run borrows the console's one `SharedRetrieval` (findyfixy/wiring.py),
       the same database connection, embedder and reranker its triage runs use.
       A second copy (about 1.3 GB) would not fit beside two answering models
-      and a judge within the 16 GB the project asks for.
+      and a judge on a 16 GB machine.
     - Cases run one at a time (`workers` 1), so events arrive in order and the
       page can follow one case at a time.
 """

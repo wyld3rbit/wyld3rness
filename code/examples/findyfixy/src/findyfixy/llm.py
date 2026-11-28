@@ -3,7 +3,7 @@
 Why a module of its own: the call and its settings are infrastructure, the triage
 record and its rules are domain. `findyfixy.triage.record` knows nothing about Ollama, so it
 can be tested and reused without it. Everything that builds an answering model
-(the router, the stress variants, the investigator, the on-call decider) takes its settings from here,
+(the router, the stress variants, the investigator) takes its settings from here,
 so a change to temperature or timeout is made once.
 
 Nothing runs at import time except importing the client library.
@@ -12,7 +12,6 @@ Nothing runs at import time except importing the client library.
 from typing import Any
 
 from langchain_ollama import ChatOllama
-from pydantic import BaseModel
 
 from findyfixy.triage.record import Reply, Triage
 
@@ -59,7 +58,7 @@ def ollama_ask(model: str, prompt: str) -> str:
 
     We build the client on every call. That is cheap because it is only a
     thin HTTP client. The expensive part is Ollama loading model weights into
-    memory. Within the 16 GB the project asks for, switching from the 1.5B to the 7B model can add a
+    memory. On a 16 GB Mac, switching from the 1.5B to the 7B model can add a
     load delay, so an escalated run pays for a model swap on top of two calls.
 
     The call is greedy (temperature 0) and has a read timeout; see
@@ -68,21 +67,7 @@ def ollama_ask(model: str, prompt: str) -> str:
     Fails when: Ollama is not running (connection error), the model is not
     pulled (404), or the server stalls past the timeout. Nothing here retries.
     """
-    return ollama_reply(model, prompt, Triage)
-
-
-def ollama_reply(model: str, prompt: str, schema: type[BaseModel], max_output_tokens: int | None = None) -> Reply:
-    """One greedy, constrained call: a reply shaped as `schema`'s JSON, not yet validated.
-
-    Shared by triage (`ollama_ask`) and the on-call decider
-    (`findyfixy.oncall.decide`), so every answering call has the same
-    temperature, thinking setting and timeout. Fails as `ollama_ask` does.
-    `max_output_tokens` caps the reply (Ollama's `num_predict`), which is what
-    lets the budget price a call before it runs; a reply cut at the cap is
-    invalid JSON and fails validation. None leaves triage as it was: no cap.
-    """
-    # None is ChatOllama's own default for num_predict, so triage's calls are unchanged.
-    llm = ChatOllama(model=model, format=schema.model_json_schema(), num_predict=max_output_tokens, **answer_options())
+    llm = ChatOllama(model=model, format=Triage.model_json_schema(), **answer_options())
     return reply_from(llm.invoke(prompt))
 
 

@@ -1,8 +1,0 @@
-# The build context is code/; send only what the image copies (Dockerfile next to this file).
-*
-!src/wyld3rness/
-!examples/simprod/src/simprod/
-!examples/findyfixy/src/findyfixy/
-!examples/findyfixy/config/prices.toml
-!examples/findyfixy/.oncall-requirements.txt
-**/__pycache__

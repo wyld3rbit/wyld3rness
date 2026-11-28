@@ -197,15 +197,12 @@ def test_page_is_served_and_never_uses_innerhtml(server):
     # Event data includes model output, which is untrusted. The page must set
     # it with textContent. This guards against someone "simplifying" it later.
     _, port = server
-    for route in ("/", "/architecture"):  # the storm page and the architecture page
-        status, data = call(port, "GET", route)
-        html = data.decode()
-        assert status == 200
-        assert "FindyFixy" in html
-        assert "innerHTML" not in html
-        assert "eval(" not in html
-    assert "Live storm" in call(port, "GET", "/")[1].decode()
-    assert "Eval run" in call(port, "GET", "/architecture")[1].decode()
+    status, data = call(port, "GET", "/")
+    html = data.decode()
+    assert status == 200
+    assert "FindyFixy" in html
+    assert "innerHTML" not in html
+    assert "eval(" not in html
 
 
 def test_force_escalation_sends_a_confident_answer_to_large(monkeypatch):
@@ -415,9 +412,8 @@ def test_page_keeps_the_hidden_attribute_working(server):
     # `.field { display: grid }` beats the browser's own `[hidden]` rule, so
     # Live and Fake controls both showed at once. This guards the override.
     _, port = server
-    for route in ("/", "/architecture"):  # both pages style `.field` as a grid
-        html = call(port, "GET", route)[1].decode()
-        assert "[hidden] { display: none !important; }" in html
+    html = call(port, "GET", "/")[1].decode()
+    assert "[hidden] { display: none !important; }" in html
 
 
 # ---- force retry: the first small reply is illegal, the retry is real -------
@@ -607,7 +603,7 @@ def test_config_says_whether_the_tool_step_is_available(server, monkeypatch):
 
 def test_page_has_the_tool_step_nodes_and_marks_empty_results_as_a_warning(server):
     _, port = server
-    html = call(port, "GET", "/architecture")[1].decode()
+    html = call(port, "GET", "/")[1].decode()
     for needle in ('id="n_inv"', 'id="n_tool"', 'id="e_inv_tool"', 'id="usetools"'):
         assert needle in html
     # An empty lookup is legal but suspicious (wrong window), so not green.
@@ -640,14 +636,14 @@ def test_fake_mode_says_the_served_model_is_not_reported(server):
 
 def test_page_shows_and_flags_the_served_model(server):
     _, port = server
-    html = call(port, "GET", "/architecture")[1].decode()
+    html = call(port, "GET", "/")[1].decode()
     for needle in ("served by", "MISMATCH", "Served by", "not reported"):
         assert needle in html
 
 
 def test_the_page_declares_an_inline_icon_so_browsers_do_not_ask_for_one(server):
     _, port = server
-    html = call(port, "GET", "/architecture")[1].decode()
+    html = call(port, "GET", "/")[1].decode()
     assert 'rel="icon"' in html and "data:image/svg+xml" in html
 
 
@@ -742,7 +738,7 @@ def test_config_lists_the_stresses_with_descriptions(server):
 
 def test_page_defaults_to_live_mode_and_has_the_stress_control(server):
     _, port = server
-    html = call(port, "GET", "/architecture")[1].decode()
+    html = call(port, "GET", "/")[1].decode()
     assert '<option value="live" selected>' in html
     assert html.index('<option value="live"') < html.index('<option value="fake"')
     assert 'id="stress"' in html
@@ -1122,55 +1118,3 @@ def test_a_subset_result_is_never_gated(tmp_path):
     from findyfixy.console.eval_run import EvalResult, verdict
 
     assert verdict(EvalResult(report={}, subset=True), tmp_path / "missing.json") is None
-
-
-HANDOFF = "handoff-tok"  # a placeholder: the inbox compares whatever its file holds
-
-
-@pytest.fixture
-def inbox(tmp_path) -> Iterator[int]:
-    """A console whose inbox reads its hand-off token from a file holding HANDOFF; yields its port."""
-    token = tmp_path / "handoff-token"
-    token.write_text(HANDOFF + "\n")
-    hub = RunHub(live_models=None, sleep=lambda s: None, fake_delay=0)
-    srv = serve(hub, port=0, handoff_token=token)
-    threading.Thread(target=srv.serve_forever, daemon=True).start()
-    yield srv.server_address[1]
-    srv.shutdown()
-    srv.server_close()
-
-
-def test_the_on_call_inbox_keeps_a_hand_off_from_the_loop_container(inbox):
-    port = inbox
-    alert = {"version": "4", "alerts": [{"labels": {"incident": "i7"}}]}
-    headers = {
-        "Content-Type": "application/json",
-        "Host": f"host.docker.internal:{port}",
-        "Authorization": f"Bearer {HANDOFF}",
-    }
-    status, data = call(port, "POST", "/handoff", json.dumps(alert), headers)
-    assert (status, json.loads(data)) == (200, {"received": True})
-    status, data = call(port, "GET", "/handoffs")
-    assert status == 200 and [h["alert"] for h in json.loads(data)["handoffs"]] == [alert]
-
-
-JSON_WITH_TOKEN = {"Content-Type": "application/json", "Authorization": f"Bearer {HANDOFF}"}
-
-
-@pytest.mark.parametrize(
-    ("body", "headers", "want"),
-    [
-        ('{"alerts": []}', {**JSON_WITH_TOKEN, "Origin": "http://evil.example"}, 403),
-        ('{"alerts": []}', {**JSON_WITH_TOKEN, "Host": "evil.example:80"}, 403),
-        ('{"alerts": []}', {"Content-Type": "application/json"}, 401),  # a right Host, no token: the agent's old way in
-        ('{"alerts": []}', {"Content-Type": "application/json", "Authorization": "Bearer wrong"}, 401),
-        ('{"alerts": []}', {**JSON_WITH_TOKEN, "Content-Type": "text/plain"}, 415),
-        ("not json", JSON_WITH_TOKEN, 400),
-        ('{"no": "alerts"}', JSON_WITH_TOKEN, 422),
-    ],
-)
-def test_the_inbox_refuses_browsers_other_hosts_strangers_and_anything_but_an_alert(inbox, body, headers, want):
-    port = inbox
-    status, _ = call(port, "POST", "/handoff", body, headers)
-    assert status == want
-    assert json.loads(call(port, "GET", "/handoffs")[1])["handoffs"] == []

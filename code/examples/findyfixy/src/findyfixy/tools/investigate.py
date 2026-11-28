@@ -1,4 +1,4 @@
-"""The tool-calling loop, as a LangGraph graph with a `ToolNode`.
+"""Day 2: the tool-calling loop, as a LangGraph graph with a `ToolNode`.
 
 What it does
     `build_investigator(model, tool)` returns a compiled graph with two
@@ -20,9 +20,9 @@ What it does
 Why a graph for a loop this small
     The loop alone is about 25 lines of plain Python, and an earlier version
     of this module was exactly that. The graph pays off because the tool step
-    becomes a named node: it can be traced, a policy check can sit between
-    the model's request and the execution, and an approval for a kind of
-    action can gate a risky tool. Inside a function, each of those
+    becomes a named node: it can be traced (Day 6), a policy check can sit
+    between the model's request and the execution (Day 7), and a human can
+    approve before a risky tool runs (Day 9). Inside a function, each of those
     is a rewrite. As nodes, each is one more node and one more edge.
 
 Why the turn budget is in the graph state

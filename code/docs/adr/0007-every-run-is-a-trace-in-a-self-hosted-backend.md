@@ -42,7 +42,7 @@ Scores and prices: built, thin. OpenTelemetry has no standard for scores or pric
 
 ## Staffing
 
-One engineer and one AI coding agent. The agent worked inside the build harness: a plan approved before each step, tests with fakes, each new test broken once on purpose, and an independent review before each commit. Reviews in this phase found real bugs before they shipped, among them nested tool spans that swapped results, scores lost when a sender thread died, local keys that could reach a remote host, and the test suite sending 48 traces to the live backend.
+No hire. One engineer and one AI coding agent. The agent worked inside the build harness: a plan approved before each step, tests with fakes, each new test broken once on purpose, and an independent review before each commit. Reviews in this phase found real bugs before they shipped, among them nested tool spans that swapped results, scores lost when a sender thread died, local keys that could reach a remote host, and the test suite sending 48 traces to the live backend.
 Add people when traces hold real user data: then retention, access control and redaction need an owner.
 
 ## What would change this

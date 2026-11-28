@@ -11,9 +11,6 @@
 #     and the worker publish nothing: only Langfuse's own containers use them,
 #     over the compose network, and Postgres would clash with FindyFixy's 5432.
 #   - Telemetry to Langfuse off.
-#   - ClickHouse's own profiler log and noisiest internal logs off, the query
-#     and part logs kept a day (clickhouse-logs.xml): left on, they grew to
-#     over 15 GB and held the VM at about 150% CPU.
 #   - No default secrets. Upstream falls back to "mysalt", "miniosecret" and so
 #     on; here a missing value stops `docker compose` with an error. The values
 #     live in code/infra/langfuse/.env (git-ignored), written once by
@@ -21,9 +18,6 @@
 #   - A headless first start (LANGFUSE_INIT_*): one org, one project with its
 #     API keys, one local user, so tracing works without clicking through a
 #     sign-up and copying keys by hand.
-#   - Sign-up off (AUTH_DISABLE_SIGNUP): the one user comes from .env, so nobody
-#     else, a process or a container on this machine included, can make an
-#     account (ADR 0009, step 0b).
 #
 # Upstream's header follows.
 #
@@ -164,7 +158,6 @@ services:
       LANGFUSE_MARKDOWN_RENDER_CHARACTER_LIMIT: ${LANGFUSE_MARKDOWN_RENDER_CHARACTER_LIMIT:-}
       LANGFUSE_TRUSTED_PROXY_COUNT: ${LANGFUSE_TRUSTED_PROXY_COUNT:-}
       LANGFUSE_DISABLE_SIGNUP_ONBOARDING: ${LANGFUSE_DISABLE_SIGNUP_ONBOARDING:-}
-      AUTH_DISABLE_SIGNUP: "true"
       # Hostnames allowed to reach the MCP endpoint, beyond NEXTAUTH_URL's own
       # host. Required when the worker uses LANGFUSE_MCP_BASE_URL.
       LANGFUSE_MCP_ALLOWED_HOSTS: ${LANGFUSE_MCP_ALLOWED_HOSTS:-}
@@ -183,7 +176,6 @@ services:
     volumes:
       - langfuse_clickhouse_data:/var/lib/clickhouse
       - langfuse_clickhouse_logs:/var/log/clickhouse-server
-      - ./clickhouse-logs.xml:/etc/clickhouse-server/config.d/logs.xml:ro
     healthcheck:
       test: wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1
       interval: 5s
