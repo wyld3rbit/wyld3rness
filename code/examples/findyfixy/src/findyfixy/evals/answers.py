@@ -86,7 +86,7 @@ ATTEST_ENTRY: tuple[str, ...] = ("findyfixy.evals.answers",)
 # Where first-party packages live, relative to the workspace root (code/): the
 # harness and this app. The closure follows imports across both, so a harness
 # change on the eval path needs a new run just like an app change.
-ATTEST_SOURCE_ROOTS: tuple[str, ...] = ("src", "examples/findyfixy/src")
+ATTEST_SOURCE_ROOTS: tuple[str, ...] = ("src", "examples/findyfixy/src", "examples/simprod/src")
 # What the eval path reads that no import shows, relative to the workspace root (code/).
 #
 # The whole data directory, not a hand-picked list: a file added there is

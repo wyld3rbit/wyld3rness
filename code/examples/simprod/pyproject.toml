@@ -1,0 +1,27 @@
+[project]
+name = "simprod"
+version = "0.1.0"
+description = "A small simulated production (gateway, ledger, notifications) with real load and seeded faults, for testing agents that operate it"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.13,<3.14"
+# The services run in containers on a network with no route out, and every line
+# of code in them is this folder's, standard library only: the image copies
+# src/simprod and installs nothing, so an inspector reads all of it and no
+# package can phone home or change under us. The one dependency is for the
+# host-side drivers only (the checker and the controls): the harness's verdict,
+# so the controls and the loop are judged by the same rule.
+dependencies = ["wyld3rness"]
+
+# Host-side drivers. `uv run <name>` from code/; the Makefile wraps them.
+[project.scripts]
+simprod-loadtest = "simprod.loadtest:main"
+simprod-controls = "simprod.controls:main"
+simprod-vault = "simprod.vault:main"
+
+[tool.uv.sources]
+wyld3rness = { workspace = true }
+
+[build-system]
+requires = ["uv_build>=0.13.1,<0.14"]
+build-backend = "uv_build"
