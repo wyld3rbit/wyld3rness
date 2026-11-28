@@ -2,7 +2,7 @@
 
 Pull requests are welcome. Changes to `main` go through a pull request, and `main` accepts a change only when both jobs of the `check` workflow pass: `attestation` and `check`. The maintainer's own pull requests merge automatically once they pass; others are merged by the maintainer.
 
-A change to an answer-affecting file (the eval path's code, `code/examples/findyfixy/data/`, the baseline, the lock file or the compose file) also needs a passing `make eval-gate` run and the `code/examples/findyfixy/evals/attestation.json` it writes, committed with the change. That run needs the local models.
+A change to an answer-affecting file (the eval path's code, `code/examples/findyfixy/data/`, the baseline, the lock file or the compose file) also needs a passing eval gate run and the `code/examples/findyfixy/evals/attestation.json` it writes, in the same commit. With the hooks installed (the `hooks` target in `code/Makefile`), the pre-commit hook does this on exactly the staged files and refuses the commit if the gate fails; without them, run `make eval-gate` on a clean tree and commit the attestation. Either way the run needs the local models.
 
 ## Before you open one
 

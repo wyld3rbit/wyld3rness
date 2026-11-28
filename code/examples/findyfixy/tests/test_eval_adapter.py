@@ -35,6 +35,9 @@ from wyld3rness.testing import NOW, PROV, FakeJudge, embed
 # The record keys every FindyFixy report has carried since Day 5, plus `labels`
 # (the label names, stored explicitly since 2026-11-09).
 RECORD_KEYS = {
+    "proposed_action",
+    "judge_key",
+    "scores_from",
     "id",
     "group",
     "source_id",
