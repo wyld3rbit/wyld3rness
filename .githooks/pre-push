@@ -1,8 +1,6 @@
 #!/bin/sh
 # Blocks a push whose commits contain PII or secrets, in files or in metadata,
-# or whose tree fails the project checks, or any of whose commits is not covered
-# by its own eval attestation. Catches a commit made with --no-verify, a merge,
-# a rebase or a cherry-pick, none of which runs the pre-commit gate.
+# or whose tree fails the project checks. Catches a commit made with --no-verify.
 # git passes the refs being pushed on stdin; the scanner reads them.
 # It also refuses any push whose commits add or change anything under internal/,
 # or a CLAUDE.md, which are local only. (Removing them, as was done once, is allowed.)
@@ -21,5 +19,4 @@ printf '%s\n' "$refs" | uv run --no-project python "$root/tools/scan_private.py"
 if [ -f "$root/Makefile" ]; then
     make -C "$root" --no-print-directory check
     make -C "$root" --no-print-directory test
-    printf '%s\n' "$refs" | make -C "$root" --no-print-directory gate-at-push
 fi

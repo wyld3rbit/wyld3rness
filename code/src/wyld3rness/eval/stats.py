@@ -57,11 +57,6 @@ CORE_RECORD_KEYS: tuple[str, ...] = (
     "contexts",
     "metrics",
     "run_error",
-    # Added with score reuse (wyld3rness/eval/reuse.py). Reports written before
-    # it lack them, and every reader treats a missing one as None.
-    "proposed_action",
-    "judge_key",
-    "scores_from",
 )
 
 

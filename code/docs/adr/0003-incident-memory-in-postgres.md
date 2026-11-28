@@ -38,7 +38,7 @@ Ingestion job and corpus generator: built.
 
 ## Staffing
 
-One engineer and one AI assistant built the phase.
+No hire. One engineer and one AI assistant built the phase.
 
 ## What would change this
 

@@ -187,7 +187,7 @@ def _trace_user(user_id: str) -> Any:
     In the provider, not at each call site, so no command can forget it.
     Langfuse reads `user.id` from the top span and groups traces by it
     (its Users view). The value comes from settings (`TRACE_USER`, default
-    "local") until a login names the authenticated engineer.
+    "local") until Day 7 knows the authenticated engineer.
     """
     from opentelemetry.sdk.trace import SpanProcessor
 

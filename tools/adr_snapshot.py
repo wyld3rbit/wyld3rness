@@ -16,10 +16,7 @@ in code, for pictures that must never change again. So those pictures are
 frozen instead: the committed files are the source, `FROZEN` holds the SHA-256
 of each, and `make adr-snapshot` checks them and leaves them alone. ADR 0005's
 picture is frozen too: it shows the eval gate as first built inside the app, and
-Day 5 was rebuilt after that ADR was accepted. ADR 0007's picture is frozen since the page
-gained the autonomous loop and the simulated production (ADR 0008). ADR 0008's picture
-is frozen as accepted: it records a plan, and a plan drawn from a later page would
-change with it. Pictures are keyed by ADR number
+Day 5 was rebuilt after that ADR was accepted. Pictures are keyed by ADR number
 (`RECORDS` maps each to the phase it shows), so ADR 0006 draws the rebuilt
 phase 5 from the page while 0005 keeps its own. ADR 0006's picture is frozen too: Day 6 relabelled the
 Tracing box it shows as planned. The root .gitattributes marks the pictures `-text`, so
@@ -27,12 +24,6 @@ no checkout converts line endings: the hash and a byte compare see the same
 bytes on every machine. Hashing normalised text instead would accept a copy
 that is no longer byte-identical to what the ADR was accepted with. If the page's layout changes again, or a phase is rebuilt
 after its ADR, freeze the older pictures the same way.
-
-The target design. code/docs/target-design.svg is the same page drawn with its
-planned paths, so the README, the design document and the console show one picture.
-
-A record frozen as a direction (0008) gets a second picture for its Outcome, the
-phase at its day's close (`AT_CLOSE`), drawn from the page like any other.
 
 The drift guard is a test (tools/test_adr_snapshot.py): the nodes the page marks
 built must equal the nodes of the latest phase here. Flip a node on the page
@@ -49,7 +40,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PAGE = ROOT / "code" / "examples" / "findyfixy" / "src" / "findyfixy" / "console" / "static" / "architecture.html"
 OUT = ROOT / "code" / "docs" / "adr" / "img"
-TARGET = ROOT / "code" / "docs" / "target-design.svg"
 
 # The phase in which each node first existed. A node absent here is planned.
 FIRST_BUILT = {
@@ -58,29 +48,17 @@ FIRST_BUILT = {
     "Recall": 4,
     "Eval gate": 5, "CI gate": 5,
     "Tracing": 6,
-    "Services": 7, "Decide": 7, "Script": 7, "Act": 7, "Verify": 7, "Undo": 7, "Safe state": 7, "Policy": 7, "Budget": 7, "Identity": 7,
-    "Hand-off": 8,
 }
-PHASES = range(1, 9)
-# The phase being built, whose ADR is written when it closes. Until then the
-# newest ADR shows the phase before it. Set to None when the day's ADR lands.
-OPEN_PHASE: int | None = 8
+PHASES = range(1, 7)
 
 # ADR number -> the phase its picture shows. Usually the same number. Day 5 was
 # rebuilt after ADR 0005 was accepted, so ADR 0006 records the rebuilt phase 5
 # and ADR 0005 keeps the picture it was accepted with.
-RECORDS: dict[int, int] = {1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 5, 7: 6, 8: 6, 9: 7}
-
-# ADR number -> the phase its Outcome shows, for a record whose own picture is
-# frozen as accepted (a direction drawn before its day was built). Its Outcome
-# gets a second picture, drawn from the page at the day's close.
-AT_CLOSE: dict[int, int] = {8: 7}
+RECORDS: dict[int, int] = {1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 5, 7: 6}
 
 # ADR pictures kept byte for byte, by ADR number (see the docstring). 1 to 4 were
 # drawn from the one-lane page; 5 is the in-app eval gate as first accepted.
 # 6 is frozen since Day 6 relabelled the Tracing box, which 6 shows as planned.
-# 7 is frozen since the page gained the autonomous loop (ADR 0008).
-# 8 is frozen as accepted: it records a plan.
 FROZEN = {
     1: "87c495615b5f14a3bc67bd4e33907c444fa58057731744e89eb3813d680cfcfb",
     2: "244bb1d66ecb89649da913d5178a8554d80b5a0312fcb5112a2dfe24ecdd1f53",
@@ -88,15 +66,11 @@ FROZEN = {
     4: "a387d05a9fbd9564d59fd59e0b69c195ecf0aba4fd7cf7fa940b1f94523d2912",
     5: "ca6999cfd79e413a76eb39e5f30a89374aa9c7fe10e2ccd7e0b899f5aee639a2",
     6: "b9ab084af8717aa7c4e2c4c3e853d5daaea4525aacf476fdc855104b10ef5f42",
-    7: "73f7e611aa70d5153c9d0cf064caa962a119ad6c05f3537e61692be75089eae7",
-    8: "b94f7d5129cc07f35d34e582036bca5aeefe859b82c47bb0a4c65ed3d882431d",
 }
 
 # Planned nodes added to the page after a phase closed. They are drawn only from
 # the phase they were added in, so a picture keeps the plan it was drawn with.
-ADDED_IN: dict[str, int] = {"Hand-off": 8}
-# Paths added to the page after a phase closed, by the phase they were added in, kept out of older pictures the same way.
-PATHS_ADDED_IN: dict[str, int] = {"p_safe_handoff": 8}
+ADDED_IN: dict[str, int] = {}
 
 # Each edge in the page: (from node, to node). Edges the page uses only for
 # animation (the tool step's return path, the bypass shown when it is off) are
@@ -122,9 +96,7 @@ DEFS = (
     '<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">'
     '<path d="M0,1 L10,5 L0,9 z" fill="#5b6f99"/></marker>'
     '<marker id="arrow-tool" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">'
-    '<path d="M0,1 L10,5 L0,9 z" fill="#fbbf24"/></marker>'
-    '<marker id="arrow-planned" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">'
-    '<path d="M0,1 L10,5 L0,9 z" fill="#7f8fb0"/></marker></defs>\n'
+    '<path d="M0,1 L10,5 L0,9 z" fill="#fbbf24"/></marker></defs>\n'
 )
 
 STYLE = """\
@@ -139,13 +111,8 @@ STYLE = """\
 .node[data-status=planned] rect { stroke: #7f8fb0; stroke-dasharray: 5 4; }
 .node[data-status=planned] .t, .node[data-status=planned] .s { fill: #7f8fb0; }
 .edge { fill: none; stroke: #5b6f99; stroke-width: 2; marker-end: url(#arrow); }
-.edge.tool { stroke: #fbbf24; marker-end: url(#arrow-tool); }
+.edge.tool { stroke-dasharray: 5 5; stroke: #fbbf24; marker-end: url(#arrow-tool); }
 .edge-label { fill: #8da2c8; font-size: 11px; text-anchor: middle; }
-.edge.planned { stroke: #7f8fb0; stroke-width: 1.5; stroke-dasharray: 5 5; marker-end: url(#arrow-planned); }
-.lane.human { stroke: #e07a5f; stroke-opacity: .6; }
-.lane-label.human { fill: #e07a5f; }
-.node .i.i.i { fill: none; stroke: #e07a5f; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.node[data-status=planned] .i.i.i { stroke: #7f8fb0; stroke-dasharray: none; }
 .caption { fill: #dbe6ff; font-size: 14px; font-weight: 600; }
 text { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
 </style>
@@ -204,22 +171,7 @@ def _number(value: float) -> str:
     return f"{value:g}"
 
 
-def _path_id(path: str) -> str:
-    """A path element's id."""
-    return re.search(r'id="(\w+)"', path).group(1)
-
-
-def planned_paths(page: str) -> list[str]:
-    """The page's planned paths (`p_` ids): the loop that is drawn before it is built."""
-    return re.findall(r'<path id="p_\w+"[^>]*/>', _svg(page))
-
-
-def target(page: str) -> str:
-    """The target design: the page as it is, what is built solid and the plan dashed."""
-    return snapshot(max(PHASES), page, "Target design. Solid is built. Dashed is planned.")
-
-
-def snapshot(phase: int, page: str, caption: str | None = None) -> str:
+def snapshot(phase: int, page: str) -> str:
     """A standalone SVG of the architecture at the close of `phase`, drawn from the page.
 
     Frozen ADR pictures are never drawn (see `render`); earlier pictures were drawn from a
@@ -246,14 +198,12 @@ def snapshot(phase: int, page: str, caption: str | None = None) -> str:
         for edge_id, (a, b) in EDGES.items()
         if a in built and b in built
     ]
-    if phase == max(PHASES) or phase in AT_CLOSE.values():  # the latest phase, or a day's close, keeps its plan
-        drawn += [p for p in planned_paths(page) if phase >= PATHS_ADDED_IN.get(_path_id(p), 0)]
     text = [f'<text class="edge-label"{attrs}>{t}</text>' for attrs, t in labels
             if all(n in built for n in LABELS.get(t, set()))]
     x, y, w, h = view_box(page)
     top, height = y - CAPTION_SPACE, h + CAPTION_SPACE
     box = f"{_number(x)} {_number(top)} {_number(w)} {_number(height)}"
-    caption = caption or f"Architecture at the close of Day {phase}. Solid is built. Dashed is planned."
+    caption = f"Architecture at the close of Day {phase}. Solid is built. Dashed is planned."
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{box}" width="{_number(w)}" height="{_number(height)}" '
         f'role="img" aria-label="{caption}">\n{STYLE}{DEFS}'
@@ -266,17 +216,6 @@ def snapshot(phase: int, page: str, caption: str | None = None) -> str:
 def image_path(record: int) -> Path:
     """Where the picture for ADR `record` lives."""
     return OUT / f"{record:04d}-architecture.svg"
-
-
-def close_path(record: int) -> Path:
-    """Where the picture of ADR `record`'s Outcome lives, for a record in `AT_CLOSE`."""
-    return OUT / f"{record:04d}-at-close.svg"
-
-
-def newest_phase() -> int:
-    """The phase the newest ADR shows: its Outcome's when it has one, else its own picture's."""
-    newest = max(RECORDS)
-    return AT_CLOSE.get(newest, RECORDS[newest])
 
 
 def render(record: int, page: str) -> str:
@@ -309,11 +248,6 @@ def main() -> int:
             continue
         path.write_text(render(record, page))
         print(f"wrote {path.relative_to(ROOT)}")
-    for record, phase in AT_CLOSE.items():
-        close_path(record).write_text(snapshot(phase, page))
-        print(f"wrote {close_path(record).relative_to(ROOT)}")
-    TARGET.write_text(target(page))
-    print(f"wrote {TARGET.relative_to(ROOT)}")
     return 0
 
 

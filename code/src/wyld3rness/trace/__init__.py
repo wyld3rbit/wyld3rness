@@ -15,7 +15,7 @@ Why this is the harness's and not the app's
     a tree of spans whose parent is the step in progress, and model-call
     attributes in a standard vocabulary. The app knows only its own events and
     maps them onto `SpanTree` calls (FindyFixy: findyfixy/observability/adapter.py). The
-    harness never imports an app (code/tests/test_harness_rules.py).
+    harness never imports an app (tests/test_architecture.py).
 
 Nothing is imported here, so importing the package costs nothing.
 """

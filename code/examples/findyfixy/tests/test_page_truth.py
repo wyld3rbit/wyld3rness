@@ -24,7 +24,6 @@ Why parse the page instead of running it in a browser
     covers behaviour, with a stub DOM, and needs Node (skipped without it).
 """
 
-import inspect
 import json
 import os
 from pathlib import Path
@@ -37,18 +36,15 @@ from typing import get_args
 import pytest
 
 from findyfixy.console.fakes import ScriptedToolModel, fake_ask
-from findyfixy.console.server import STORM_PAGE, EvalRequest, RunHub, wire
+from findyfixy.console.server import EvalRequest, RunHub, wire
 from findyfixy.events import EventKind
 from findyfixy.paths import PAGE, ROOT, WORKSPACE
 from findyfixy.tools.deploys import make_deploys_tool
 from findyfixy.tools.investigate import build_investigator
 from findyfixy.triage.graph import build_graph
-import simprod
 from wyld3rness.eval.events import EvalEventKind
-from wyld3rness.loop.watch import LoopEventKind
 
 REPLAY = ROOT / "tests" / "js" / "replay.js"
-SIMPROD_SRC = Path(inspect.getfile(simprod)).resolve().parents[1]  # the simulated production's source root
 
 _NODE = re.compile(r'<g class="node"([^>]*)>(.*?)</g>', re.S)
 _ATTR = re.compile(r'([\w-]+)="([^"]*)"')
@@ -104,7 +100,7 @@ def code_exists(code: str, graph: set[str]) -> bool:
     """True when `data-code` names a real graph node or an existing module in a package's source root."""
     if code.startswith("graph:"):
         return code.removeprefix("graph:") in graph
-    return any((src / code).is_file() for src in (WORKSPACE / "src", ROOT / "src", SIMPROD_SRC))
+    return any((src / code).is_file() for src in (WORKSPACE / "src", ROOT / "src"))
 
 
 def status_problems(page: str, graph: set[str]) -> list[str]:
@@ -142,13 +138,11 @@ def test_every_event_kind_the_code_can_emit_has_a_handler_and_none_is_stale() ->
     assert table.keys() == {"app", "harness"}
     assert table["app"] == set(get_args(EventKind))
     assert table["harness"] == set(get_args(EvalEventKind))
-    assert handler_table(STORM_PAGE.read_text()) == {"loop": set(get_args(LoopEventKind))}  # the storm page
 
 
-def test_the_three_vocabularies_share_no_kind() -> None:
-    """The console ends a stream on a kind alone, so the three sets must be disjoint."""
-    app, harness, loop = (set(get_args(k)) for k in (EventKind, EvalEventKind, LoopEventKind))
-    assert not app & harness and not app & loop and not harness & loop
+def test_the_two_vocabularies_share_no_kind() -> None:
+    """The console ends a stream on a kind alone, so the two sets must be disjoint."""
+    assert not set(get_args(EventKind)) & set(get_args(EvalEventKind))
 
 
 # ---- The whole stream through the page's own script ---------------------------

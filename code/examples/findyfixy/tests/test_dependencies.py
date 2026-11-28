@@ -7,7 +7,7 @@ Why this exists
     we add ourselves. Tested: with the override in place, `uv add pyjwt`
     succeeds and writes the line, and then `import jwt` fails. Nothing says why.
 
-    A credential broker would need PyJWT and an HTTP API needs a server
+    Day 7 (the credential broker) needs PyJWT and Day 9 (the API) needs a server
     such as uvicorn. This test turns that silent failure into an immediate one
     with the fix in the message.
 """
@@ -34,8 +34,6 @@ def direct_dependencies(root: dict, members: list[dict]) -> set[str]:
     names: set[str] = set()
     for data in [root, *members]:
         names |= package_names(data.get("project", {}).get("dependencies", []))
-        for extra in data.get("project", {}).get("optional-dependencies", {}).values():
-            names |= package_names(extra)
         for group in data.get("dependency-groups", {}).values():
             names |= package_names([g for g in group if isinstance(g, str)])
     return names

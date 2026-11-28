@@ -34,20 +34,6 @@ logs/
 # Generated reports (eval and drift)
 reports/
 
-# The on-call image's requirements, exported from uv.lock by make oncall-up
-.oncall-requirements.txt
-.oncall-trace.env
-# The loop container's token, the host's only (make oncall-up, 0600)
-.oncall-loop.token
-# The hand-off token: proves to the console's inbox that the loop sent it (make oncall-up, 0600)
-.oncall-handoff.token
-
-# The vault's root token and passes for simprod (code/examples/simprod/src/simprod/vault.py)
-.bao/
-
-# The gate at commit's exported tree and its environment (code/src/wyld3rness/eval/staged.py)
-.gate/
-
 # Recordings
 *.mov
 *.mp4
@@ -72,5 +58,3 @@ Icon?
 # Local working material and the agent's instructions. Never pushed.
 internal/
 CLAUDE.md
-# Load-test and control results from the simulated production (code/examples/simprod)
-/code/examples/simprod/results/

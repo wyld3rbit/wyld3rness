@@ -558,13 +558,3 @@ def test_a_run_without_gate_writes_no_attestation_and_a_broken_tree_fails_before
     assert gate_cli(root, report, ["--gate"]) == 2
     assert "cannot fingerprint" in capsys.readouterr().err
     assert "_ran" not in report  # the run never started
-
-
-def test_the_attestation_says_which_scores_an_earlier_run_judged(root: Path) -> None:
-    """A gate run that reused scores names that run and the counts; verify ignores the field."""
-    report = {**passing(), "reuse": {"from": "eval-1.json", "reused": 27, "judged": 3}}
-    doc = json.loads(attest_now(root, report).read_text())
-    assert doc["reuse"] == {"from": "eval-1.json", "reused": 27, "judged": 3}
-    assert attest.verify(root / "evals" / "attestation.json", current(root)) == []
-    plain = json.loads(attest_now(root, {**passing(), "reuse": {"from": None, "reused": 0, "judged": 2}}).read_text())
-    assert "reuse" not in plain

@@ -36,7 +36,7 @@ Audit: 7 known vulnerabilities in packages this step did not touch (`filelock` 4
 
 ## Staffing
 
-One engineer and one AI assistant built the phase.
+No hire. One engineer and one AI assistant built the phase.
 
 ## What would change this
 

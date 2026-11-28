@@ -64,7 +64,7 @@ jobs:
       - name: Product tests
         if: ${{ !cancelled() }}
         run: |
-          uv sync --locked --all-packages --all-extras --project code
+          uv sync --locked --all-packages --project code
           make lint
           make test
 
