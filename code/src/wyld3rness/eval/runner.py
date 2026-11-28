@@ -5,7 +5,9 @@ What it does
        and scores every expected label by exact match.
     2. Judge pass: scores every answer with four model-graded metrics
        (wyld3rness/eval/metrics.py): faithfulness, response relevancy, context
-       recall and action quality.
+       recall and action quality. With a judge identity and an attested run's
+       scores (wyld3rness/eval/reuse.py), a case whose judge inputs are
+       identical takes that run's scores instead, and its record names the run.
     3. Aggregates overall and per group with seeded bootstrap 95% confidence
        intervals, merges the app's own aggregates from `summarise`, and returns
        the report dict. Writing it and gating it are report.py's job.
@@ -96,6 +98,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
+import copy
 from dataclasses import dataclass
 import threading
 import time
@@ -112,6 +115,7 @@ from wyld3rness.eval.metrics import (
     faithfulness,
     response_relevancy,
 )
+from wyld3rness.eval.reuse import PriorScores, judge_key
 from wyld3rness.eval.stats import (
     BOOTSTRAP_SEED,
     CORE_AGGREGATE_KEYS,
@@ -191,6 +195,9 @@ def new_record(case: Case) -> dict[str, Any]:
         "contexts": [],
         "metrics": {},
         "run_error": None,
+        "proposed_action": None,  # what the judge's action metric reads; stored so a reuse key can be audited
+        "judge_key": None,  # reuse.judge_key, when the run has a judge identity
+        "scores_from": None,  # the report a reused score came from; None when judged in this run
     }
     require_schema(record, CORE_RECORD_KEYS, "the core case record")
     for label, expected in case.expected.items():
@@ -325,6 +332,7 @@ def _answer(
         record["run_error"] = f"{type(err).__name__}: {err}"
         return _Answered(case, _unscored(record, case, on_event), None)
     record["latency_s"] = timer() - start
+    record["proposed_action"] = answer.action
     try:
         taken = sorted(RUNNER_KEYS & set(answer.meta))
         if taken:
@@ -459,6 +467,36 @@ def _send_scores(
             scores.score(trace_id, name, float(result.score), "NUMERIC")
 
 
+def _reuse(
+    item: _ToJudge, metrics: Mapping[str, Any], source: str, on_event: EvalEmit, scores: ScoreSink | None
+) -> None:
+    """Fill one record with an earlier run's scores, exactly as the judge pass would have.
+
+    The same record fields and the same events as `score_case`, so a viewer
+    and the report cannot tell a reused case from a judged one except by
+    `scores_from`, which names the run that judged them. No judge span and no
+    metric scores on the trace: nothing was judged in this run, and a metric
+    score on this run's trace would claim it had been. The label matches were
+    computed in this run, so they still go to the trace.
+    """
+    item.record["answer"] = item.answer.text
+    item.record["contexts"] = list(item.answer.contexts)
+    item.record["metrics"] = copy.deepcopy(dict(metrics))
+    item.record["scores_from"] = source
+    for name, result in item.record["metrics"].items():
+        on_event(
+            "metric_scored",
+            id=item.case.id,
+            name=name,
+            score=result["score"],
+            failed=bool(result["failed"]),
+            error=result["error"],
+        )
+    if scores is not None and item.tree is not None:
+        _send_scores(scores, item.tree.trace_id, item.case, item.record, {})
+    on_event("case_scored", id=item.case.id)
+
+
 def _status(record: Mapping[str, Any], case: Case) -> str:
     """One progress word per case: the run error, or each label's match."""
     if record["run_error"]:
@@ -528,6 +566,8 @@ def run_eval(
     should_stop: Callable[[], bool] = lambda: False,
     tracing: Tracing | None = None,
     scores: ScoreSink | None = None,
+    judge_identity: str | None = None,
+    prior: PriorScores | None = None,
 ) -> Report:
     """Run every case and return the report dict. No I/O apart from optional tracing.
 
@@ -552,6 +592,11 @@ def run_eval(
     `should_stop` is asked before each case in each pass. Yes raises
     `EvalStopped` once the cases already started have finished (see
     "Stopping" above).
+
+    `judge_identity` (wyld3rness/eval/reuse.py) makes every answered case
+    carry its `judge_key`. With `prior` as well, a case whose key matches the
+    attested run's takes that run's scores instead of being judged. The
+    report's `reuse` says how many cases were reused and from where.
     """
     if not 1 <= workers <= MAX_WORKERS:
         raise ValueError(f"workers must be between 1 and {MAX_WORKERS}, got {workers}")
@@ -618,7 +663,22 @@ def run_eval(
     start = timer()
     answered = each(lambda pair: answer_one(*pair), list(enumerate(cases)))
     answered_at = timer()
-    to_judge = [_ToJudge(a.case, a.record, a.answer, a.tree) for a in answered if a.answer is not None]
+    to_judge: list[_ToJudge] = []
+    reused = 0
+    for a in answered:
+        if a.answer is None:
+            continue
+        item = _ToJudge(a.case, a.record, a.answer, a.tree)
+        if judge_identity is not None:
+            item.record["judge_key"] = judge_key(judge_identity, item.case, item.answer)
+        found = prior.match(item.case.id, item.record["judge_key"]) if prior and item.record["judge_key"] else None
+        if prior is not None and found is not None:
+            metrics, judged_in = found
+            _reuse(item, metrics, judged_in, on_event, scores)
+            reused += 1
+            progress(f"[reused] {item.case.id}: judge inputs identical to {prior.run}, scored in {judged_in}")
+        else:
+            to_judge.append(item)
     each(judge_one, to_judge)  # score_case fills each record in place
     finished_at = timer()
     # `answered` keeps the order of `cases`, and holds the records the judge pass filled.
@@ -636,4 +696,10 @@ def run_eval(
         "timing": timing,
         "aggregates": _aggregates(records, sut, labels, seed, warn=progress),
         "cases": records,
+        # `from` is the attested report the scores were taken from, and only when one was.
+        "reuse": {
+            "from": prior.run if prior is not None and reused else None,
+            "reused": reused,
+            "judged": len(to_judge),
+        },
     }
