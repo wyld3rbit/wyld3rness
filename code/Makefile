@@ -6,11 +6,11 @@
 #   1. Known vulnerabilities in the locked set, without installing anything.
 #   2. Startup hooks: a .pth file runs code every time Python starts, which is
 #      how a hijacked package can persist. Only the known shims are allowed,
-#      and this workspace's own editable installs (wyld3rness.pth and
-#      findyfixy.pth), each a single line naming its src/ folder.
+#      and this workspace's own editable installs (wyld3rness.pth,
+#      findyfixy.pth and simprod.pth), each a single line naming its src/ folder.
 # On any finding, stop and read it. Do not upgrade or remove to make it pass.
 
-.PHONY: audit hooks scan up down setup ingest console triage test test-harness lint eval-retrieval eval eval-gate eval-baseline eval-freeze eval-compare eval-negative case golden verify-attestation obs-secrets obs-up obs-down obs-prices
+.PHONY: audit hooks scan up down setup ingest console triage test test-harness lint eval-retrieval eval eval-gate eval-baseline eval-freeze eval-compare eval-negative case golden verify-attestation obs-secrets obs-up obs-down obs-prices sim-up sim-down load-test controls-pilot controls
 
 # Memory for the Colima VM, in GB. 6 on most days, 8 on Langfuse days:
 #   make up COLIMA_MEMORY=8
@@ -20,6 +20,8 @@ COLIMA_MEMORY ?= 6
 # The example app's folder, its database services and its settings file.
 APP_DIR := examples/findyfixy
 APP_COMPOSE := $(APP_DIR)/docker-compose.yml
+# The simulated production (examples/simprod/README.md).
+SIM_COMPOSE := examples/simprod/docker-compose.yml
 APP_ENV := $(APP_DIR)/.env
 # Every workspace member installed: the harness and the example app.
 RUN := uv run --all-packages
@@ -39,10 +41,38 @@ up:
 # The compose step runs only while the VM is up. If it fails then, the make
 # stops there, so a half-stopped system is never reported as clean.
 down:
-	@if colima status >/dev/null 2>&1; then docker compose -f $(APP_COMPOSE) down; fi
+	@if colima status >/dev/null 2>&1; then docker compose -f $(SIM_COMPOSE) down; docker compose -f $(APP_COMPOSE) down; fi
 	colima stop
 	@if colima status >/dev/null 2>&1; then echo "FAILED: Colima is still running"; exit 1; fi
 	@echo "Colima is stopped."
+
+# sim-up: build and start the simulated production (gateway, ledger,
+# notifications, edge, and OpenBao with the actions' signing key) and wait until
+# every service is healthy. The vault steps write its root token and two passes
+# to the git-ignored examples/simprod/.bao/ and print none of them. Inspect it on
+# 127.0.0.1:8100 (examples/simprod/README.md). sim-down stops it; `make down` too.
+sim-up:
+	$(RUN) simprod-vault init
+	docker compose -f $(SIM_COMPOSE) up -d --build --wait
+	$(RUN) simprod-vault setup
+
+sim-down:
+	docker compose -f $(SIM_COMPOSE) down
+
+# load-test: a rate ramp, then three soaks at the chosen rate, about 25 minutes.
+# Needs sim-up. Prints the verdict and writes examples/simprod/results/loadtest-<UTC>.json.
+load-test:
+	$(RUN) simprod-loadtest
+
+# controls-pilot / controls: the pilot (about 45 minutes) measures recovery times
+# and sets WAIT and HOLD; the controls (about 2 hours) run storms in three arms
+# (nobody, the scripted fix, a wrong fix undone) against their bars.
+# Need sim-up. Results in examples/simprod/results/.
+controls-pilot:
+	$(RUN) simprod-controls pilot
+
+controls:
+	$(RUN) simprod-controls run
 
 audit:
 	uv export --frozen --all-packages --format requirements-txt --no-emit-workspace -o .audit-req.txt > /dev/null
@@ -53,7 +83,8 @@ audit:
 	    ! -name 'distutils-precedence.pth' \
 	    ! -name '__editable__*.pth' \
 	    ! -name 'wyld3rness.pth' \
-	    ! -name 'findyfixy.pth'); \
+	    ! -name 'findyfixy.pth' \
+	    ! -name 'simprod.pth'); \
 	if [ -n "$$bad" ]; then \
 	    echo "UNEXPECTED .pth FILES, show their contents before going on:"; \
 	    echo "$$bad"; exit 1; \
