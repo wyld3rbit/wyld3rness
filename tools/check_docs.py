@@ -5,7 +5,8 @@ worse than no doc, because the reader trusts it. These errors are mechanical,
 so a machine finds them. Judgment calls (is the prose still true?) stay with
 the person who changes the code; this only catches what can be proven wrong.
 
-Checked in README.md and the README of every folder (code/CHANGELOG.md is history):
+Checked in README.md, AGENTS.md, every guide in docs/ and each package's README
+(CHANGELOG.md and the decision records in docs/adr/ are history):
 1. Every `make <target>` named in code is a target in the root Makefile.
 2. Every repository path named in code exists, except the few that are not in
    git on purpose (see ALLOWED_MISSING).
@@ -21,20 +22,22 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DOCS = (
     "README.md",
+    "AGENTS.md",
     "CONTRIBUTING.md",
-    "tools/README.md",
-    ".githooks/README.md",
     "code/README.md",
-    "code/src/wyld3rness/README.md",
-    "code/tests/README.md",
-    "code/infra/README.md",
     "code/examples/findyfixy/README.md",
     "code/examples/simprod/README.md",
-    "code/examples/findyfixy/tests/README.md",
-    "code/examples/findyfixy/data/README.md",
-    "code/examples/findyfixy/evals/README.md",
-    "code/docs/README.md",
-    "code/docs/adr/README.md",
+    "docs/design.md",
+    "docs/harness.md",
+    "docs/findyfixy.md",
+    "docs/simprod.md",
+    "docs/infra.md",
+    "docs/testing.md",
+    "docs/data.md",
+    "docs/evals.md",
+    "docs/tools.md",
+    "docs/hooks.md",
+    "docs/adr/README.md",
 )
 
 # Paths a doc may name that are absent from a fresh clone on purpose: secrets

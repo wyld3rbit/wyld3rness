@@ -1,8 +1,70 @@
-# Engineering strategy
+# Design and strategy
 
-This is the strategy for wyld3rness. The decision records in `adr/` are its design documents, and this page draws out the decisions that recur across them. A vision written at the end of the build projects it forward. It has three parts: a diagnosis of how things work today, the guiding policies, and the actions that enforce, escalate and change them. [`design.md`](design.md) is the target shape the transitions move toward.
+This document is the target design of wyld3rness and the strategy that moves the code toward it. Its ground is the incident flow in the root README, after 12-Factor Agents: an incident runs as ordinary code with two model steps, what is wrong and what to do, and the harness owns everything else. The decision records in `docs/adr/` record what each phase decided and built. The first half is the shape; the second half is the diagnosis, the policies and the invariants.
 
-## Diagnosis
+## The question
+
+An LLM agent is a non-deterministic component inside a system that must behave deterministically where it matters. The same alert can produce a different answer on a different day, a retrieved document can carry instructions, and a confident answer can be wrong. The question the harness answers is how much an agent may do on its own, and on what evidence.
+
+The answer this design gives: the agent never decides its own authority. Every request crosses a fixed set of checkpoints, each checkpoint enforces one invariant in code, and the authority each kind of action runs with is set by measured evidence, also in code.
+
+## Two planes
+
+The **data plane** is the app. FindyFixy, the example app, takes an incident alert, recalls similar past incidents, calls models and tools, and proposes a triage record with a next action. The data plane is where the model's judgement is used.
+
+The **control plane** is the harness. It sits on every path in and out of the data plane: requests, model calls, tool calls, proposed actions, releases. It never relies on the model behaving. Each of its checkpoints is deterministic code that holds the same way for every request.
+
+![The two planes: the agent as the data plane, the harness as the control plane around it. Solid is built, dashed is planned.](img/target-design.svg)
+
+## Invariants
+
+Each checkpoint enforces one invariant. The invariants, the policy behind each and the check that proves it are listed once, in [Enforcements](#enforcements) below.
+
+## One request, end to end
+
+An engineer pastes an alert. The request carries the engineer's identity, which the broker uses for every later token. Recall reads past incidents from memory and marks them as untrusted data in the prompt. The model call goes through the gateway, which checks the budget, picks the model, and records tokens and cost.
+
+The model proposes a triage record and an action. Schema validation rejects a malformed record, and the router escalates to the larger model when a computed signal, not the model's own confidence, says the answer is weak. Policy then checks the proposed action against facts the model cannot forge: the action is on the allow-list, the severity comes from the validated record, the deploy it wants to roll back exists in the deploy log.
+
+If the action is allowed, its class decides what happens next. A read action runs. A destructive action runs at the level the autonomy policy grants its class: it waits for a human at Level 2, and runs with a human on the loop only at Level 3. Every tool call presents a token the broker issued for that one tool, resource and minute. Every step lands in the trace, and eval scores attach to the same trace.
+
+## Autonomy as policy
+
+The levels come from the series thesis. At Level 1 the agent advises and humans act. At Level 2 the agent acts after a human approves. At Level 3 the agent acts, and humans govern from on the loop, with the power to undo.
+
+Autonomy is set per action class, not per agent:
+
+| Class | Examples | Starts at |
+|---|---|---|
+| Read | recall, read logs, read metrics, list deploys | Level 3: runs freely |
+| Reversible | page a human, open a ticket | Level 3: acts, human on the loop |
+| Destructive | roll back a deploy | Level 2: acts after a human approves |
+
+A class moves up one level only when its evidence passes thresholds stored in code: the eval gate on the current golden set, 0 unauthorized actions in the injection suite, and an approval record in which humans agreed with the agent's proposals often enough over enough cases. A regression in any of them moves the class down without a human decision, as far as Level 1, where the action is only proposed. The thresholds are set from measured data, not guessed in advance.
+
+## How an app plugs in
+
+The harness never imports the app. Each control is a port the app implements or calls:
+
+- `SystemUnderTest` (built): describe, answer, summarise. The eval gate runs the app through it.
+- The event adapter (built): the app reports its steps, and the harness turns them into spans.
+- The action port (planned): the app declares its actions, their classes and the facts policy checks.
+- The model port (planned): the app asks the gateway for a completion and never holds a model client.
+- The approval port (planned): the harness pauses a run and resumes it on an approval record.
+
+Dependencies point inward: the harness defines the ports, the app depends on them, and one composition root in the app wires the real implementations.
+
+## Two harnesses
+
+This design is the runtime harness: what ships around the app. The build harness is how the coding agent is constrained while it writes the code: written rules for the agent, the pre-commit hooks, the privacy scan, plan-before-code, and a fresh-agent review before each substantial commit. Both are named in every write-up, because the word harness means the second one to many readers.
+
+## What this design does not cover
+
+It is one machine, one engineer and synthetic data. Multi-tenant isolation, high availability, data retention and a real identity provider are named where they would change a decision, and are not built. The judge is a model too, so the eval gate measures agreement with a judge, which is itself checked by hand on sampled cases.
+
+## Strategy
+
+### Diagnosis
 
 The harness wraps a model whose output varies from run to run and whose statements about itself have not held up. The evidence is consistent across three phases, and it is what the strategy rests on.
 
@@ -12,7 +74,7 @@ Three controls work today: the eval gate, the CI gate that refuses an unmeasured
 
 Four gaps remain. First, the agent only proposes: its next action is free text, and no step in the graph acts on it. That is safe today only because nothing is connected, so there is no policy yet between a proposal and a system. Second, model clients are created in 7 modules, 2 in the harness and 5 in the app. So there is no single place that could enforce a budget, a route or a model pin. Third, the golden set is 30 synthetic cases, two thirds of them built around a near-duplicate in memory. It never exercised the escalation path, so it cannot tell a better router from a worse one. Fourth, every control trusts one developer: the attestation is a process control, and the model names come from an untracked `.env` file (ADR 0006).
 
-## Guiding policies
+### Guiding policies
 
 Each policy names its trade-off and the decision records it comes from.
 
@@ -25,9 +87,9 @@ Each policy names its trade-off and the decision records it comes from.
 
 Each policy is held to three tests. It is applicable, because it has already decided a real trade-off in the records above. It is enforced, by the checks below. And its effect compounds, because the same rule carries into every later control.
 
-## Coherent actions
+### Coherent actions
 
-### Enforcements
+#### Enforcements
 
 These are the invariants the harness holds for every request. A control counts as built only when a check fails if someone goes around it.
 
@@ -43,22 +105,24 @@ These are the invariants the harness holds for every request. A control counts a
 | Quality is measured in operation, not only before release | 2 | A scheduled run below the gate raises an alert, and once autonomy exists, lowers it | planned |
 | The authority of each action class is a function of evidence, in code | 1, 2 | Changing the evidence changes the level; no setting raises a level by hand | planned |
 
-### Escalations
+#### Escalations
 
 A policy can be challenged, and the challenge has one path. An exception needs the project owner's approval and an entry in the decision log that names the policy, the reason and what was rejected. The release cooldown of policy 5 has been overridden this way. Postgres 17.11 was taken for the tracing stack 3 days into its cooldown, as a named exception recorded on 2026-11-09. An exception that recurs is a signal to change the policy, not to keep granting it.
 
-### Transitions
+#### Transitions
 
 The gaps in the diagnosis close in this order, each recorded in the decision record of the phase that builds it:
 
-1. **Harder data and a computed escalation signal.** A versioned corpus and golden set with no-precedent alerts, conflicting signals, cascades and noisy alert text, with the current set frozen for regression. Escalation moves to a signal the system computes. Closes the third gap and applies policy 1.
-2. **A trust boundary.** A policy checkpoint between a proposed action and any system, and short-lived scoped credentials per tool call. Closes the first gap.
-3. **One path to every model.** All model clients move behind a gateway that enforces budget, routing and pins. Closes the second gap.
-4. **Operation.** The service, human approval for destructive actions, and scheduled evaluation in operation.
-5. **Autonomy as policy.** The level each action class runs at is set from measured evidence, and the vision is written.
+1. **Incidents from a simulated production.** Faults injected into running services become recorded incidents, with severity computed by code from measured customer impact and the agent judged on cause and fix. The earlier synthetic set is frozen for regression. Closes the third gap.
+2. **The harness as its own package.** An event log holds each incident's state, so a crash resumes, and a second small agent proves nothing in the harness is specific to FindyFixy.
+3. **Context first, a typed action out.** Code gathers metrics, past incidents and recent deploys before the model is called, and the model returns a typed action, never free text.
+4. **A trust boundary.** Policy, a one-time pass per action, verification against customers, undo and a budget between a proposed action and any system. Closes the first gap.
+5. **One path to every model.** All model clients move behind a gateway that enforces budget, routing and pins. Closes the second gap.
+6. **Approval once per kind of action**, a hand-off to a person as a typed action, and scheduled evaluation in operation.
+7. **Autonomy as policy.** The level each kind of action runs at is set from measured evidence, and the vision is written.
 
 The fourth gap, trust in one developer, stays open by design while there is one developer. It closes when a second developer or an outsider must trust a merge, and a real run on a GPU runner replaces the attestation (ADR 0006).
 
-## Review
+### Review
 
 Each phase's decision record reports whether this strategy held: which policy it applied, and any evidence against a policy or the diagnosis. If several policies fail their tests, the diagnosis is re-examined first.

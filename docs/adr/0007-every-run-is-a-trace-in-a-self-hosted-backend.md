@@ -1,7 +1,7 @@
 # ADR 0007: Every run is an OpenTelemetry trace in a self-hosted backend
 
 Status: accepted. Written 2026-11-10, in the commit that closes the phase.
-Phase: Day 6. Code at close: the commit that adds this record. Run data: the Results section of [lessons/d06.md](../../../lessons/d06.md).
+Phase: Day 6. Code at close: the commit that adds this record. Run data: the Results section of [lessons/d06.md](../../lessons/d06.md).
 
 ## Decision
 
