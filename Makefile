@@ -7,7 +7,7 @@
 # its own, so the real commands stay readable in one place each.
 
 .DEFAULT_GOAL := help
-.PHONY: help adr-snapshot setup up down console triage test test-harness lint eval-retrieval eval eval-gate eval-baseline eval-freeze eval-compare eval-negative obs-secrets obs-up obs-down obs-prices case golden ingest audit verify-attestation check
+.PHONY: help adr-snapshot setup up down console triage test test-harness lint eval-retrieval eval eval-gate eval-baseline eval-freeze eval-compare eval-negative obs-secrets obs-up obs-down obs-prices case golden ingest audit verify-attestation gate-at-commit gate-at-push check
 
 help:
 	@echo "First time:       make setup"
@@ -16,6 +16,7 @@ help:
 	@echo "Measure / test:   make test   make test-harness   make lint   make eval-retrieval"
 	@echo "Answer quality:   make eval   make eval-gate   make eval-baseline   make eval-negative"
 	@echo "CI gate:          make verify-attestation   (the attestation eval-gate writes on a pass)"
+	@echo "Gate at commit:   make gate-at-commit   make gate-at-push   (run by the git hooks)"
 	@echo "See test cases:   make golden   make case ID=g07"
 	@echo "Freeze baseline:  make eval-freeze REPORT=examples/findyfixy/reports/eval-<timestamp>.json"
 	@echo "Compare runs:     make eval-compare REPORT=examples/findyfixy/reports/eval-<timestamp>.json"
@@ -24,7 +25,7 @@ help:
 	@echo "Before a commit:  make check   make audit"
 
 # Product targets: see code/Makefile for what each one runs.
-setup up down console triage test test-harness lint eval-retrieval eval eval-gate eval-baseline eval-negative golden ingest audit verify-attestation:
+setup up down console triage test test-harness lint eval-retrieval eval eval-gate eval-baseline eval-negative golden ingest audit verify-attestation gate-at-commit gate-at-push:
 	$(MAKE) -C code $@
 
 # Targets that take a value are forwarded explicitly, because the pattern rule

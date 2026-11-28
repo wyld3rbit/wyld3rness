@@ -103,9 +103,9 @@ def test_the_control_flag_and_workers_reach_the_run(tmp_path: Path) -> None:
     cli(["--negative-control"], tmp_path, go)
     cli(["--no-recall", "--workers", "3"], tmp_path, go, control_flag="--no-recall")
     assert go.seen == [
-        {"negative_control": False, "workers": 1},
-        {"negative_control": True, "workers": 1},
-        {"negative_control": True, "workers": 3},
+        {"negative_control": False, "workers": 1, "prior": None},
+        {"negative_control": True, "workers": 1, "prior": None},
+        {"negative_control": True, "workers": 3, "prior": None},
     ]
     with pytest.raises(SystemExit):
         cli(["--workers", "9"], tmp_path, go)

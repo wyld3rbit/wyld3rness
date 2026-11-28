@@ -11,6 +11,8 @@ What it does
     --compare REPORT    compare REPORT with a second saved report (`--report`,
                         default the newest), case by case; exit 1 on any difference
     --baseline-from F   freeze a saved report as the baseline, without running
+    --no-reuse          judge every case, even where the attested run's scores
+                        could be reused (wyld3rness/eval/reuse.py)
 
 The attestation (wyld3rness/eval/attest.py)
     When the app passes an `AttestationSpec`, a `--gate` command that ends
@@ -23,6 +25,12 @@ The attestation (wyld3rness/eval/attest.py)
     then does not start, and again before writing. A refused attestation is
     printed with every reason and does not change the exit code: CI fails on
     the missing attestation instead.
+
+Score reuse (wyld3rness/eval/reuse.py)
+    An attested `--gate` run reuses the last attested run's score for every
+    case whose judge inputs are identical, when the app's session declares a
+    `reuse_identity`, and judges the rest. `--no-reuse` judges every case.
+    The attestation records how many scores were reused and from which run.
 
 Why the app passes everything in
     The harness cannot know where an app keeps its golden set, its reports or
@@ -40,7 +48,7 @@ that cannot be fingerprinted, or an unmet attestation precondition.
 from __future__ import annotations
 
 import argparse
-from collections.abc import Callable, Collection, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from datetime import datetime
@@ -64,7 +72,7 @@ from wyld3rness.eval.case import Case
 from wyld3rness.eval.events import EvalEmit, no_eval_emit
 from wyld3rness.eval.judge import Judge, make_ollama_judge
 from wyld3rness.eval.metrics import Embed
-from wyld3rness.eval.provenance import build_provenance, git_info, ollama_digest
+from wyld3rness.eval.provenance import build_provenance, ollama_digest, source_info
 from wyld3rness.eval.report import (
     BaselineMissing,
     BaselineRefused,
@@ -79,6 +87,7 @@ from wyld3rness.eval.report import (
     write_baseline,
     write_report,
 )
+from wyld3rness.eval.reuse import PriorScores, judge_code_digest, judge_identity, load_prior
 from wyld3rness.eval.runner import MAX_WORKERS, run_eval
 from wyld3rness.eval.stats import Report
 from wyld3rness.eval.sut import SystemUnderTest
@@ -106,6 +115,11 @@ class Session:
     both land in one trace. `scores` is where the harness sends each case's
     scores. The app builds both in its composition root, which picks the
     backend, and closes them when the session ends.
+
+    `reuse_identity` is what, beyond the judge model, its prompts and its
+    code, decides a score in this app: FindyFixy names its embedder and the
+    hash of its lock file. None, the default, turns score reuse off, because
+    the harness cannot know what else the app's judging depends on.
     """
 
     sut: SystemUnderTest
@@ -114,6 +128,7 @@ class Session:
     embed: Embed
     tracing: Tracing | None = None
     scores: ScoreSink | None = None
+    reuse_identity: Mapping[str, str] | None = None
 
 
 @dataclass(frozen=True)
@@ -156,8 +171,12 @@ class RunFn(Protocol):
         workers: int,
         on_event: EvalEmit = no_eval_emit,
         should_stop: Callable[[], bool] = lambda: False,
+        prior: PriorScores | None = None,
     ) -> Report:
-        """Run every case and return the report. No file is written here."""
+        """Run every case and return the report. No file is written here.
+
+        `prior` is the attested run's scores to reuse where judge inputs are identical.
+        """
         ...
 
 
@@ -168,7 +187,7 @@ def live_runner(
     repo_dir: Path,
     make_judge: Callable[..., Judge] = make_ollama_judge,
     digest: Callable[[str], str] = ollama_digest,
-    git: Callable[[Path], tuple[str, bool | None]] = git_info,
+    git: Callable[[Path], tuple[str, bool | None]] = source_info,
     now: Callable[[], datetime] = utc_now,
 ) -> RunFn:
     """Compose a live run from the app's session factory. Builds nothing until called.
@@ -184,6 +203,7 @@ def live_runner(
         workers: int,
         on_event: EvalEmit = no_eval_emit,
         should_stop: Callable[[], bool] = lambda: False,
+        prior: PriorScores | None = None,
     ) -> Report:
         """Open the session, stamp provenance, run every case, close the session."""
         with open_session(negative_control) as session:
@@ -196,6 +216,21 @@ def live_runner(
                 now=now,
                 negative_control=negative_control,
             )
+            identity = (
+                judge_identity(
+                    judge_model=provenance["judge_model"],
+                    judge_digest=provenance["judge_digest"],
+                    prompt_versions=provenance["prompt_versions"],
+                    judge_code=judge_code_digest(),
+                    extra=session.reuse_identity,
+                )
+                if session.reuse_identity is not None
+                else None
+            )
+            if prior is not None and identity is None:
+                progress(
+                    "no score reuse after all: the judge's digest is unknown, or the app declares no reuse identity"
+                )
             return run_eval(
                 session.cases,
                 sut=session.sut,
@@ -213,6 +248,8 @@ def live_runner(
                 should_stop=should_stop,
                 tracing=session.tracing,
                 scores=session.scores,
+                judge_identity=identity,
+                prior=prior if identity is not None else None,
             )
 
     return run
@@ -249,6 +286,11 @@ def _parser(prog: str, control_flag: str, control_help: str) -> argparse.Argumen
         metavar="REPORT",
         type=Path,
         help="freeze a saved report as the baseline, without running anything",
+    )
+    parser.add_argument(
+        "--no-reuse",
+        action="store_true",
+        help="judge every case, even where the attested run's scores could be reused",
     )
     return parser
 
@@ -313,11 +355,17 @@ def main(
             print("error: not running: this gate run could not be attested", file=sys.stderr)
             return 2
 
+    prior: PriorScores | None = None
+    if armed is not None and not args.no_reuse:
+        # Only an attested gate run reuses, and only from the attested run.
+        prior, why = load_prior(armed[0].path, reports_dir)
+        print(why, file=sys.stderr)
     try:
         report = run(
             lambda msg: print(msg, file=sys.stderr, flush=True),
             negative_control=args.negative_control,
             workers=args.workers,
+            prior=prior,
         )
     except ConfigError as err:
         print(f"error: {err}", file=sys.stderr)
@@ -325,6 +373,9 @@ def main(
     path = write_report(report, now(), reports_dir)
     print(format_table(report))
     print(f"report: {_shown(path, display_root)}")
+    reuse = report.get("reuse")
+    if reuse and reuse.get("from"):
+        print(f"reuse: {reuse['reused']} case(s) scored by {reuse['from']}, {reuse['judged']} judged in this run")
     timing = report.get("timing")
     if timing:
         print(

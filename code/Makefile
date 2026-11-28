@@ -155,6 +155,24 @@ eval-negative:
 verify-attestation:
 	python3 -I src/wyld3rness/eval/attest.py verify --root . --attestation examples/findyfixy/evals/attestation.json
 
+# gate-at-commit: the eval gate on exactly the staged tree, run by the
+# pre-commit hook when code/ is staged (wyld3rness/eval/staged.py). It runs
+# nothing when the committed attestation still covers that tree. Otherwise it
+# answers every case in an exported copy with its own environment, reuses the
+# attested run's score wherever the judge inputs are identical, judges the
+# rest, and adds the new attestation to the commit. A failed gate refuses the
+# commit. The links bring in what git ignores: the settings and the reports.
+STAGED := $(RUN) python -m wyld3rness.eval.staged
+GATED := --workspace code --attestation examples/findyfixy/evals/attestation.json
+gate-at-commit:
+	$(STAGED) commit $(GATED) --link examples/findyfixy/.env --link infra/langfuse/.env \
+	  --link examples/findyfixy/reports -- uv run --all-packages --frozen --no-sync findyfixy-eval --gate
+
+# gate-at-push: the attestation of every commit being pushed, read from the
+# pre-push hook's stdin. A merge, rebase or cherry-pick skips pre-commit.
+gate-at-push:
+	$(STAGED) push $(GATED)
+
 # golden: print the 30 golden cases (alert, expected severity, reference) to read
 # and check by eye. Read-only.
 golden:
