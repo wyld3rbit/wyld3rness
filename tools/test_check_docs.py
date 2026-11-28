@@ -105,10 +105,10 @@ def test_the_real_repository_has_no_drift() -> None:
 
 
 def test_every_readme_in_the_repository_is_checked() -> None:
-    """A new README must be added to DOCS, so it cannot drift unnoticed."""
+    """A new README or guide must be added to DOCS, so it cannot drift unnoticed."""
     import subprocess
 
-    tracked = subprocess.run(["git", "ls-files", "README.md", "*/README.md"], cwd=check_docs.ROOT,
+    tracked = subprocess.run(["git", "ls-files", "README.md", "*/README.md", ":(glob)docs/*.md"], cwd=check_docs.ROOT,
                              capture_output=True, text=True, check=True).stdout.split()
     assert set(tracked) <= set(check_docs.DOCS)
 

@@ -3,7 +3,7 @@
 # only these changes, so an upgrade is a clean diff against the next release:
 #
 #   - Every image pinned by digest, each built before the 7-day release
-#     cooldown and scanned with Grype before first use (code/infra/README.md).
+#     cooldown and scanned with Grype before first use (docs/infra.md).
 #   - redis:7 replaced by Valkey 8.1 (BSD-3-Clause), Alpine build. Redis 7.4 is RSALv2/SSPL
 #     only, which are not OSI licenses. Valkey speaks the same protocol.
 #   - Every published port bound to 127.0.0.1. Upstream publishes the web UI

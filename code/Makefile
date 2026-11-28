@@ -20,7 +20,7 @@ COLIMA_MEMORY ?= 6
 # The example app's folder, its database services and its settings file.
 APP_DIR := examples/findyfixy
 APP_COMPOSE := $(APP_DIR)/docker-compose.yml
-# The simulated production (examples/simprod/README.md).
+# The simulated production (docs/simprod.md).
 SIM_COMPOSE := examples/simprod/docker-compose.yml
 APP_ENV := $(APP_DIR)/.env
 # Every workspace member installed: the harness and the example app.
@@ -50,7 +50,7 @@ down:
 # notifications, edge, and OpenBao with the actions' signing key) and wait until
 # every service is healthy. The vault steps write its root token and two passes
 # to the git-ignored examples/simprod/.bao/ and print none of them. Inspect it on
-# 127.0.0.1:8100 (examples/simprod/README.md). sim-down stops it; `make down` too.
+# 127.0.0.1:8100 (docs/simprod.md). sim-down stops it; `make down` too.
 sim-up:
 	$(RUN) simprod-vault init
 	docker compose -f $(SIM_COMPOSE) up -d --build --wait

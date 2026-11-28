@@ -20,12 +20,17 @@ Notable changes to wyld3rness and its example app. The format follows [Keep a Ch
 - **Hybrid retrieval.** Keyword and vector search fused by reciprocal rank, then a cross-encoder reranker, returning incidents rather than chunks. ([ADR 0004](docs/adr/0004-hybrid-retrieval-with-reranker.md))
 - **Console.** A local page that runs a triage or an eval and shows each step on the live architecture diagram.
 
+### Simulated production: simprod
+
+- **simprod.** Three services under generated customer traffic, seeded faults that hurt them and typed actions that fix them, behind an allow-list edge, with a one-time signed pass per action from OpenBao. `make sim-up` starts it; `make load-test` and `make controls` test it. The harness gains the recovery rule, the action type and the pass it relies on (`code/src/wyld3rness/loop/`).
+
 ### Tooling and security
 
 - Locked dependencies with a 7-day release cooldown, `make audit` for known vulnerabilities and unexpected startup hooks, and container images pinned by digest and scanned with Grype before first use.
 - A privacy scanner in the pre-commit and pre-push hooks blocks personal data and secrets in files and commit metadata.
 - Ruff and mypy in the hooks and in CI. CI runs with a read-only token and no secrets, with actions pinned by commit.
 - `make check` covers documentation drift, the repository tools' tests and the privacy scan.
+- Every guide is in `docs/`, with the design and strategy in one document, `docs/design.md`. The root README is written for the user, `AGENTS.md` is for coding agents, and each package keeps a short README of its own.
 
 ### Known issues
 
